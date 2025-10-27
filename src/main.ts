@@ -1,7 +1,7 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
-import { ValidationPipe } from '@nestjs/common'; // ✅ thêm dòng này
+import { ValidationPipe } from '@nestjs/common';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -9,9 +9,9 @@ async function bootstrap() {
   // ✅ Cấu hình ValidationPipe
   app.useGlobalPipes(
     new ValidationPipe({
-      whitelist: true, // loại bỏ các field không có trong DTO
-      forbidNonWhitelisted: true, // nếu có field lạ thì báo lỗi
-      transform: true, // tự động convert kiểu dữ liệu (string -> number, ...)
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: true,
       transformOptions: { enableImplicitConversion: true },
     }),
   );
