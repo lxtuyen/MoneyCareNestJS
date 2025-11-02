@@ -6,7 +6,6 @@ import { ValidationPipe } from '@nestjs/common';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  // ✅ Cấu hình ValidationPipe
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
@@ -16,7 +15,6 @@ async function bootstrap() {
     }),
   );
 
-  // ✅ Cấu hình Swagger
   const config = new DocumentBuilder()
     .setTitle('MoneyCare API')
     .setDescription('API documentation for MoneyCare system')

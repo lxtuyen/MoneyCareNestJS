@@ -1,34 +1,21 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
+import { Controller, Get, Patch, Body, UseGuards } from '@nestjs/common';
+import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
 import { UserProfileService } from './user-profile.service';
-import { CreateUserProfileDto } from './dto/create-user-profile.dto';
-import { UpdateUserProfileDto } from './dto/update-user-profile.dto';
+import { UpdateProfileDto } from './dto/update-user-profile.dto';
+import { User } from 'src/decorators/user.decorator';
 
 @Controller('user-profile')
+@UseGuards(JwtAuthGuard)
 export class UserProfileController {
-  constructor(private readonly userProfileService: UserProfileService) {}
+  constructor(private readonly profileService: UserProfileService) {}
 
-  @Post()
-  create(@Body() createUserProfileDto: CreateUserProfileDto) {
-    return this.userProfileService.create(createUserProfileDto);
+  @Get('me')
+  getMyProfile(@User('sub') userId: number) {
+    return this.profileService.getProfile(userId);
   }
 
-  @Get()
-  findAll() {
-    return this.userProfileService.findAll();
-  }
-
-  @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.userProfileService.findOne(+id);
-  }
-
-  @Patch(':id')
-  update(@Param('id') id: string, @Body() updateUserProfileDto: UpdateUserProfileDto) {
-    return this.userProfileService.update(+id, updateUserProfileDto);
-  }
-
-  @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.userProfileService.remove(+id);
+  @Patch('me')
+  updateMyProfile(@User('sub') userId: number, @Body() dto: UpdateProfileDto) {
+    return this.profileService.updateProfile(userId, dto);
   }
 }

@@ -22,13 +22,13 @@ export class User {
   @Column()
   password: string;
 
-  @Column({ default: true })
-  is_active: boolean;
-
   @Column({ default: false })
   verify_email: boolean;
 
-  @OneToOne(() => UserProfile, (profile) => profile.user)
+  @OneToOne(() => UserProfile, (profile) => profile.user, {
+    cascade: true,
+    eager: true,
+  })
   profile: UserProfile;
 
   @OneToMany(() => OTP, (otp) => otp.user)

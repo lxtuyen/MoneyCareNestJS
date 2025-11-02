@@ -15,13 +15,13 @@ export class UserProfile {
   id: number;
 
   @Column({ nullable: true })
-  full_name: string;
+  first_name: string;
 
   @Column({ nullable: true })
-  phone: string;
+  last_name: string;
 
-  @Column({ nullable: true })
-  avatar_url: string;
+  @Column({ type: 'decimal', precision: 12, scale: 2, nullable: true })
+  monthly_income: number;
 
   @OneToOne(() => User, (user) => user.profile, { onDelete: 'CASCADE' })
   @JoinColumn()
