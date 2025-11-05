@@ -21,6 +21,9 @@ export class Category {
   @Column({ nullable: true })
   icon: string;
 
+  @Column({ type: 'float', default: 0 })
+  percentage: number;
+
   @ManyToOne(() => SavingFund, (fund) => fund.categories, {
     onDelete: 'CASCADE',
   })
