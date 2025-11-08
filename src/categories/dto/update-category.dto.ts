@@ -1,4 +1,24 @@
-import { PartialType } from '@nestjs/swagger';
-import { CreateCategoryDto } from './create-category.dto';
+import { IsString, IsOptional, IsNumber, Min, Max } from 'class-validator';
 
-export class UpdateCategoryDto extends PartialType(CreateCategoryDto) {}
+export class UpdateCategoryDto {
+  @IsOptional()
+  @IsNumber()
+  id?: number;
+
+  @IsString()
+  name: string;
+
+  @IsOptional()
+  @IsString()
+  icon?: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  percentage?: number;
+
+  @IsOptional()
+  @IsNumber()
+  savingFundId?: number;
+}

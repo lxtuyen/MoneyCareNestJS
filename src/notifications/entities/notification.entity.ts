@@ -1,5 +1,6 @@
 import { Entity, PrimaryGeneratedColumn, Column, ManyToOne } from 'typeorm';
 import { User } from '../../user/entities/user.entity';
+import { Transaction } from 'src/transactions/entities/transaction.entity';
 
 @Entity('notifications')
 export class Notification {
@@ -26,4 +27,9 @@ export class Notification {
 
   @ManyToOne(() => User, (user) => user.notifications, { onDelete: 'CASCADE' })
   user: User;
+
+  @ManyToOne(() => Transaction, (transaction) => transaction.notifications, {
+    onDelete: 'CASCADE',
+  })
+  transaction: Transaction;
 }

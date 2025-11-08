@@ -1,5 +1,6 @@
 import { Category } from 'src/categories/entities/category.entity';
 import { User } from 'src/user/entities/user.entity';
+import { Notification } from 'src/notifications/entities/notification.entity';
 import {
   Entity,
   PrimaryGeneratedColumn,
@@ -7,6 +8,7 @@ import {
   ManyToOne,
   CreateDateColumn,
   UpdateDateColumn,
+  OneToMany,
 } from 'typeorm';
 
 @Entity('transactions')
@@ -17,8 +19,11 @@ export class Transaction {
   @Column()
   amount: number;
 
-  @Column()
+  @Column({ type: 'enum', enum: ['income', 'expense'] })
   type: 'income' | 'expense';
+
+  @Column({ type: 'date' })
+  transaction_date: Date;
 
   @Column({ nullable: true })
   note: string;
@@ -33,7 +38,11 @@ export class Transaction {
   user: User;
 
   @ManyToOne(() => Category, (category) => category.transactions, {
-    onDelete: 'CASCADE',
+    nullable: true,
+    onDelete: 'SET NULL',
   })
-  category: Category;
+  category?: Category | null;
+
+  @OneToMany(() => Notification, (notification) => notification.transaction)
+  notifications: Notification[];
 }

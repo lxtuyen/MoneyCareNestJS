@@ -18,12 +18,6 @@ export class SavingFund {
   @Column()
   name: string;
 
-  @Column()
-  percentage: number;
-
-  @Column({ default: false })
-  is_custom: boolean;
-
   @ManyToOne(() => User, (user) => user.savingFunds, { onDelete: 'CASCADE' })
   user: User;
 

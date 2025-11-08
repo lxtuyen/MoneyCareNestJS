@@ -1,34 +1,49 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Param,
+  Patch,
+  Delete,
+} from '@nestjs/common';
 import { SavingFundsService } from './saving-funds.service';
 import { CreateSavingFundDto } from './dto/create-saving-fund.dto';
 import { UpdateSavingFundDto } from './dto/update-saving-fund.dto';
+import { SavingFundResponseDto } from './dto/saving-fund-response.dto';
+import { ApiResponse } from '@nestjs/swagger';
 
 @Controller('saving-funds')
 export class SavingFundsController {
   constructor(private readonly savingFundsService: SavingFundsService) {}
 
   @Post()
-  create(@Body() createSavingFundDto: CreateSavingFundDto) {
-    return this.savingFundsService.create(createSavingFundDto);
+  @ApiResponse({ type: SavingFundResponseDto })
+  create(@Body() dto: CreateSavingFundDto) {
+    return this.savingFundsService.create(dto);
   }
 
-  @Get()
-  findAll() {
-    return this.savingFundsService.findAll();
+  @Get('user/:userId')
+  @ApiResponse({ type: [SavingFundResponseDto] })
+  findAllByUser(@Param('userId') userId: number) {
+    return this.savingFundsService.findAllByUser(userId);
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.savingFundsService.findOne(+id);
+  @ApiResponse({ type: SavingFundResponseDto })
+  findOne(@Param('id') id: number) {
+    return this.savingFundsService.findOne(id);
   }
 
   @Patch(':id')
-  update(@Param('id') id: string, @Body() updateSavingFundDto: UpdateSavingFundDto) {
-    return this.savingFundsService.update(+id, updateSavingFundDto);
+  @ApiResponse({ type: SavingFundResponseDto })
+  update(@Param('id') id: number, @Body() dto: UpdateSavingFundDto) {
+    return this.savingFundsService.update(+id, dto);
   }
 
   @Delete(':id')
-  remove(@Param('id') id: string) {
+  @ApiResponse({ type: SavingFundResponseDto })
+  remove(@Param('id') id: number) {
     return this.savingFundsService.remove(+id);
   }
 }
