@@ -11,6 +11,11 @@ import {
   OneToMany,
 } from 'typeorm';
 
+export enum UserRole {
+  USER = 'user',
+  ADMIN = 'admin',
+}
+
 @Entity('users')
 export class User {
   @PrimaryGeneratedColumn()
@@ -24,6 +29,9 @@ export class User {
 
   @Column({ default: false })
   verify_email: boolean;
+
+  @Column({ type: 'enum', enum: UserRole, default: UserRole.USER })
+  role: UserRole;
 
   @OneToOne(() => UserProfile, (profile) => profile.user, {
     cascade: true,
