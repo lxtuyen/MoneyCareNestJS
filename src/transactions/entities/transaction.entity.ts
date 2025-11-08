@@ -17,8 +17,11 @@ export class Transaction {
   @Column()
   amount: number;
 
-  @Column()
+  @Column({ type: 'enum', enum: ['income', 'expense'] })
   type: 'income' | 'expense';
+
+  @Column({ type: 'date' })
+  transaction_date: Date;
 
   @Column({ nullable: true })
   note: string;
@@ -33,7 +36,8 @@ export class Transaction {
   user: User;
 
   @ManyToOne(() => Category, (category) => category.transactions, {
-    onDelete: 'CASCADE',
+    nullable: true,
+    onDelete: 'SET NULL',
   })
-  category: Category;
+  category?: Category | null;
 }
