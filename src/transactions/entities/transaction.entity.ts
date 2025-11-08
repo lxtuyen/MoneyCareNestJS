@@ -17,7 +17,7 @@ export class Transaction {
   @Column()
   amount: number;
 
-  @Column()
+  @Column({ type: 'enum', enum: ['income', 'expense'] })
   type: 'income' | 'expense';
 
   @Column({ nullable: true })

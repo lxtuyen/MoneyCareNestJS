@@ -11,6 +11,7 @@ import { TransactionsModule } from './transactions/transactions.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { UserModule } from './user/user.module';
 import { OtpModule } from './otp/otp.module';
+import { MailModule } from './mail/mail.module';
 
 @Module({
   imports: [
@@ -49,6 +50,8 @@ import { OtpModule } from './otp/otp.module';
     UserModule,
 
     OtpModule,
+
+    MailModule,
   ],
   controllers: [AppController],
   providers: [AppService],
