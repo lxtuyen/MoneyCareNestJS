@@ -14,12 +14,10 @@ import { plainToInstance } from 'class-transformer';
 import { TransactionResponseDto } from './dto/transaction-response.dto';
 import { TransactionFilterDto } from './dto/transaction-filter.dto';
 import { TotalByType } from 'src/interfaces/total-by-type.interface';
+import { Notification } from 'src/notifications/entities/notification.entity';
 
 @Injectable()
 export class TransactionService {
-  findAll() {
-    throw new Error('Method not implemented.');
-  }
   constructor(
     @InjectRepository(Transaction)
     private transactionRepo: Repository<Transaction>,
@@ -27,6 +25,8 @@ export class TransactionService {
     private userRepo: Repository<User>,
     @InjectRepository(Category)
     private categoryRepo: Repository<Category>,
+    @InjectRepository(Notification)
+    private notificationRepo: Repository<Notification>,
   ) {}
 
   async create(dto: CreateTransactionDto) {
@@ -52,16 +52,19 @@ export class TransactionService {
       category,
     });
     await this.transactionRepo.save(transaction);
+
+    await this.createNotification(
+      user.id,
+      dto.type === 'income' ? 'Thu nhập mới' : 'Chi tiêu mới',
+      dto.type === 'income'
+        ? `Bạn vừa nhận ${dto.amount} VND`
+        : `Bạn vừa chi ${dto.amount} VND cho ${category?.name || 'giao dịch'}`,
+      dto.type,
+      transaction,
+    );
+
     return plainToInstance(TransactionResponseDto, transaction, {
       excludeExtraneousValues: true,
-    });
-  }
-
-  async findAllByUser(userId: number) {
-    return this.transactionRepo.find({
-      where: { user: { id: userId } },
-      relations: ['category', 'user'],
-      order: { created_at: 'DESC' },
     });
   }
 
@@ -89,8 +92,27 @@ export class TransactionService {
     }
 
     await this.transactionRepo.save(transaction);
+
+    await this.createNotification(
+      transaction.user.id,
+      'Cập nhật giao dịch',
+      transaction.type === 'income'
+        ? `Bạn vừa cập nhật giao dịch thu: ${transaction.amount} VND`
+        : `Bạn vừa cập nhật giao dịch chi: ${transaction.amount} VND cho ${transaction.category?.name || 'giao dịch'}`,
+      transaction.type,
+      transaction,
+    );
+
     return plainToInstance(TransactionResponseDto, transaction, {
       excludeExtraneousValues: true,
+    });
+  }
+
+  async findAllByUser(userId: number) {
+    return this.transactionRepo.find({
+      where: { user: { id: userId } },
+      relations: ['category', 'user'],
+      order: { created_at: 'DESC' },
     });
   }
 
@@ -111,18 +133,12 @@ export class TransactionService {
       query.andWhere('category.id = :categoryId', { categoryId });
     }
 
-    if (start_date && end_date) {
-      query.andWhere('transaction.transaction_date BETWEEN :start AND :end', {
-        start: start_date,
-        end: end_date,
-      });
-    } else if (start_date) {
+    if (start_date)
       query.andWhere('transaction.transaction_date >= :start', {
         start: start_date,
       });
-    } else if (end_date) {
+    if (end_date)
       query.andWhere('transaction.transaction_date <= :end', { end: end_date });
-    }
 
     query.orderBy('transaction.transaction_date', 'DESC');
 
@@ -198,5 +214,22 @@ export class TransactionService {
     if (!transaction) throw new NotFoundException('Transaction not found');
     await this.transactionRepo.remove(transaction);
     return { message: 'Transaction deleted successfully' };
+  }
+
+  private async createNotification(
+    userId: number,
+    title: string,
+    message: string,
+    type?: string,
+    transaction?: Transaction,
+  ) {
+    const notification = this.notificationRepo.create({
+      user_id: userId,
+      title,
+      message,
+      type: type ?? transaction?.type ?? '',
+      transaction,
+    });
+    await this.notificationRepo.save(notification);
   }
 }

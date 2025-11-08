@@ -1,5 +1,6 @@
 import { Category } from 'src/categories/entities/category.entity';
 import { User } from 'src/user/entities/user.entity';
+import { Notification } from 'src/notifications/entities/notification.entity';
 import {
   Entity,
   PrimaryGeneratedColumn,
@@ -7,6 +8,7 @@ import {
   ManyToOne,
   CreateDateColumn,
   UpdateDateColumn,
+  OneToMany,
 } from 'typeorm';
 
 @Entity('transactions')
@@ -40,4 +42,7 @@ export class Transaction {
     onDelete: 'SET NULL',
   })
   category?: Category | null;
+
+  @OneToMany(() => Notification, (notification) => notification.transaction)
+  notifications: Notification[];
 }

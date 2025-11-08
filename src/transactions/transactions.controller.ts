@@ -54,6 +54,11 @@ export class TransactionController {
     return this.transactionService.findById(id);
   }
 
+  @Get('me/:userId')
+  async findAllByUser(@Param('userId', ParseIntPipe) userId: number) {
+    return this.transactionService.findAllByUser(userId);
+  }
+
   @Get('totals/:userId')
   async getTotals(
     @Param('userId', ParseIntPipe) userId: number,
