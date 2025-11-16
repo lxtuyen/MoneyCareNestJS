@@ -13,7 +13,7 @@ import { UpdateSavingFundDto } from './dto/update-saving-fund.dto';
 import { SavingFundResponseDto } from './dto/saving-fund-response.dto';
 import { ApiResponse } from '@nestjs/swagger';
 
-@Controller('saving-funds')
+@Controller('saving-fund')
 export class SavingFundsController {
   constructor(private readonly savingFundsService: SavingFundsService) {}
 
@@ -45,5 +45,13 @@ export class SavingFundsController {
   @ApiResponse({ type: SavingFundResponseDto })
   remove(@Param('id') id: number) {
     return this.savingFundsService.remove(+id);
+  }
+
+  @Patch('select/:fundId')
+  async selectSavingFund(
+    @Param('fundId') fundId: number,
+    @Body('userId') userId: number,
+  ) {
+    return this.savingFundsService.selectSavingFund(userId, fundId);
   }
 }

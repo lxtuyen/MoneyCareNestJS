@@ -9,9 +9,6 @@ export class SavingFundResponseDto {
   name: string;
 
   @Expose()
-  is_custom: boolean;
-
-  @Expose()
   @Type(() => CategoryResponseDto)
   categories?: CategoryResponseDto[];
 

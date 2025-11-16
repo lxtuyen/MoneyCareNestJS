@@ -13,7 +13,7 @@ import { Category } from 'src/categories/entities/category.entity';
 import { plainToInstance } from 'class-transformer';
 import { TransactionResponseDto } from './dto/transaction-response.dto';
 import { TransactionFilterDto } from './dto/transaction-filter.dto';
-import { TotalByType } from 'src/interfaces/total-by-type.interface';
+import { TotalByType } from 'src/common/interfaces/total-by-type.interface';
 import { Notification } from 'src/notifications/entities/notification.entity';
 
 @Injectable()

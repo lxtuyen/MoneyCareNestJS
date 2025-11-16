@@ -2,10 +2,10 @@ import { Type } from 'class-transformer';
 import {
   IsString,
   IsNumber,
-  IsBoolean,
   IsOptional,
   IsArray,
   ValidateNested,
+  IsBoolean,
 } from 'class-validator';
 import { UpdateCategoryDto } from 'src/categories/dto/update-category.dto';
 
@@ -15,12 +15,12 @@ export class UpdateSavingFundDto {
   name?: string;
 
   @IsOptional()
-  @IsBoolean()
-  is_custom?: boolean;
-
-  @IsOptional()
   @IsNumber()
   userId?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  is_selected?: boolean;
 
   @IsOptional()
   @IsArray()

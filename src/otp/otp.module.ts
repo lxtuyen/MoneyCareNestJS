@@ -4,10 +4,11 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { OTP } from './entities/otp.entity';
 import { User } from 'src/user/entities/user.entity';
 import { MailModule } from 'src/mail/mail.module';
-import { AuthModule } from 'src/auth/auth.module';
+import { AuthController } from './otp.controller';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([OTP, User]), MailModule, AuthModule],
+  imports: [TypeOrmModule.forFeature([OTP, User]), MailModule],
   providers: [OtpService],
+  controllers: [AuthController],
 })
 export class OtpModule {}

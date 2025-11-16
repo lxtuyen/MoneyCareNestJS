@@ -18,6 +18,9 @@ export class SavingFund {
   @Column()
   name: string;
 
+  @Column({ default: false })
+  is_selected: boolean;
+
   @ManyToOne(() => User, (user) => user.savingFunds, { onDelete: 'CASCADE' })
   user: User;
 

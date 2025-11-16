@@ -2,7 +2,6 @@ import { Type } from 'class-transformer';
 import {
   IsString,
   IsNumber,
-  IsBoolean,
   IsOptional,
   IsArray,
   ValidateNested,
@@ -12,10 +11,6 @@ import { CreateCategoryDto } from 'src/categories/dto/create-category.dto';
 export class CreateSavingFundDto {
   @IsString()
   name: string;
-
-  @IsBoolean()
-  @IsOptional()
-  is_custom?: boolean;
 
   @IsNumber()
   userId: number;

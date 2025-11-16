@@ -12,6 +12,7 @@ import { User, UserRole } from 'src/user/entities/user.entity';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { UserProfile } from 'src/user-profile/entities/user-profile.entity';
+import { ApiResponse } from 'src/common/dto/api-response.dto';
 
 @Injectable()
 export class AuthService {
@@ -23,7 +24,7 @@ export class AuthService {
     private readonly jwtService: JwtService,
   ) {}
 
-  async register(dto: RegisterDto) {
+  async register(dto: RegisterDto): Promise<ApiResponse<null>> {
     const exist = await this.userRepo.findOne({ where: { email: dto.email } });
     if (exist) throw new ConflictException('Email đã tồn tại');
 
@@ -43,14 +44,20 @@ export class AuthService {
     });
     await this.userRepo.save(user);
 
-    return {
+    return new ApiResponse({
       statusCode: HttpStatus.OK,
       message: 'Đăng Ký Tài Khoản Thành Công',
-    };
+    });
   }
 
-  async login(dto: LoginDto) {
-    const user = await this.userRepo.findOne({ where: { email: dto.email } });
+  async login(
+    dto: LoginDto,
+  ): Promise<ApiResponse<{ accessToken: string; user: any }>> {
+    const user = await this.userRepo.findOne({
+      where: { email: dto.email },
+      relations: ['savingFunds', 'profile'],
+    });
+
     if (!user)
       throw new UnauthorizedException('Email hoặc mật khẩu không hợp lệ');
 
@@ -58,23 +65,24 @@ export class AuthService {
     if (!isMatch)
       throw new UnauthorizedException('Email hoặc mật khẩu không hợp lệ');
 
-    return this.generateToken(user);
-  }
+    const selectedFund = user.savingFunds.find((fund) => fund.is_selected);
 
-  public generateToken(user: User) {
     const payload = { sub: user.id, email: user.email, role: user.role };
     const accessToken = this.jwtService.sign(payload);
 
-    return {
+    return new ApiResponse({
       statusCode: HttpStatus.OK,
       message: 'Đăng nhập thành công',
-      accessToken,
-      user: {
-        id: user.id,
-        email: user.email,
-        profile: user.profile,
-        role: user.role,
+      data: {
+        accessToken,
+        user: {
+          id: user.id,
+          email: user.email,
+          profile: user.profile,
+          savingFund: selectedFund || null,
+          role: user.role,
+        },
       },
-    };
+    });
   }
 }
