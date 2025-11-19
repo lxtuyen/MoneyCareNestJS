@@ -39,6 +39,7 @@ export class OtpService {
     await this.createOtpForUser(user);
 
     return new ApiResponse({
+      success: true,
       statusCode: HttpStatus.OK,
       message: 'OTP đã được gửi tới email của bạn',
     });
@@ -55,6 +56,7 @@ export class OtpService {
     await this.userRepo.save(user);
 
     return new ApiResponse({
+      success: true,
       statusCode: HttpStatus.OK,
       message: 'Đổi mật khẩu thành công',
     });
@@ -76,6 +78,7 @@ export class OtpService {
     await this.otpRepo.remove(otp);
 
     return new ApiResponse({
+      success: true,
       statusCode: HttpStatus.OK,
       message: 'Xác thực thành công',
     });

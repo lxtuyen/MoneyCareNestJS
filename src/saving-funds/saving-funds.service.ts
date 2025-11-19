@@ -49,6 +49,7 @@ export class SavingFundsService {
     }
 
     return new ApiResponse({
+      success: true,
       statusCode: HttpStatus.OK,
       data: plainToInstance(SavingFundResponseDto, savedFund),
     });
@@ -61,6 +62,7 @@ export class SavingFundsService {
     });
 
     return new ApiResponse({
+      success: true,
       statusCode: HttpStatus.OK,
       data: funds,
     });
@@ -75,6 +77,7 @@ export class SavingFundsService {
     if (!fund) throw new NotFoundException('Saving fund not found');
 
     return new ApiResponse({
+      success: true,
       statusCode: HttpStatus.OK,
       data: fund,
     });
@@ -119,6 +122,7 @@ export class SavingFundsService {
     const updated = await this.savingFundRepo.save(fund);
 
     return new ApiResponse({
+      success: true,
       statusCode: HttpStatus.OK,
       data: updated,
     });
@@ -143,6 +147,7 @@ export class SavingFundsService {
     await this.savingFundRepo.remove(fund);
 
     return new ApiResponse({
+      success: true,
       statusCode: HttpStatus.OK,
       data: 'Deleted successfully',
     });
@@ -171,6 +176,7 @@ export class SavingFundsService {
     const updated = await this.savingFundRepo.save(fund);
 
     return new ApiResponse({
+      success: true,
       statusCode: HttpStatus.OK,
       data: updated,
     });

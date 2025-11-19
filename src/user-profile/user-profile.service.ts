@@ -1,9 +1,10 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { HttpStatus, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { UserProfile } from './entities/user-profile.entity';
 import { User } from 'src/user/entities/user.entity';
 import { UpdateProfileDto } from './dto/update-user-profile.dto';
+import { ApiResponse } from 'src/common/dto/api-response.dto';
 
 @Injectable()
 export class UserProfileService {
@@ -27,7 +28,10 @@ export class UserProfileService {
     return user.profile;
   }
 
-  async updateProfile(userId: number, dto: UpdateProfileDto) {
+  async updateProfile(
+    userId: number,
+    dto: UpdateProfileDto,
+  ): Promise<ApiResponse<User>> {
     const user = await this.userRepo.findOne({
       where: { id: userId },
       relations: ['profile'],
@@ -40,6 +44,11 @@ export class UserProfileService {
     Object.assign(user.profile, dto);
     await this.profileRepo.save(user.profile);
 
-    return user.profile;
+    return new ApiResponse({
+      success: true,
+      statusCode: HttpStatus.OK,
+      data: user,
+      message: 'Cập nhật thành công',
+    });
   }
 }

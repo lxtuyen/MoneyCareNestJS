@@ -45,6 +45,7 @@ export class AuthService {
     await this.userRepo.save(user);
 
     return new ApiResponse({
+      success: true,
       statusCode: HttpStatus.OK,
       message: 'Đăng Ký Tài Khoản Thành Công',
     });
@@ -71,6 +72,7 @@ export class AuthService {
     const accessToken = this.jwtService.sign(payload);
 
     return new ApiResponse({
+      success: true,
       statusCode: HttpStatus.OK,
       message: 'Đăng nhập thành công',
       data: {
