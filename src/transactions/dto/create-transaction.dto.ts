@@ -17,6 +17,10 @@ export class CreateTransactionDto {
   @IsString()
   note?: string;
 
+  @IsOptional()
+  @IsString()
+  pictuteURL?: string;
+
   @IsDateString()
   transactionDate: string;
 

@@ -28,6 +28,9 @@ export class Transaction {
   @Column({ nullable: true })
   note: string;
 
+  @Column({ nullable: true })
+  pictuteURL: string;
+
   @CreateDateColumn()
   created_at: Date;
 

@@ -5,7 +5,7 @@ import { NotificationsService } from './notifications.service';
 export class NotificationsController {
   constructor(private readonly notificationService: NotificationsService) {}
 
-  @Get('user/:userId')
+  @Get('me/:userId')
   getAllByUserID(@Param('userId', ParseIntPipe) userId: number) {
     return this.notificationService.getAllByUserID(userId);
   }
