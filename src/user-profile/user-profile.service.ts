@@ -27,8 +27,16 @@ export class UserProfileService {
     if (!user || !user.profile) {
       throw new NotFoundException('Profile not found');
     }
+    if (dto.monthlyIncome !== undefined) {
+      user.profile.monthly_income = dto.monthlyIncome;
+    }
+    if (dto.firstName !== undefined) {
+      user.profile.first_name = dto.firstName;
+    }
+    if (dto.lastName !== undefined) {
+      user.profile.last_name = dto.lastName;
+    }
 
-    Object.assign(user.profile, dto);
     await this.profileRepo.save(user.profile);
 
     return new ApiResponse({

@@ -16,6 +16,7 @@ import { TotalByType } from 'src/common/interfaces/total-by-type.interface';
 import { Notification } from 'src/notifications/entities/notification.entity';
 import { CreateNotificationDto } from 'src/notifications/dto/create-notification.dto';
 import { ApiResponse } from 'src/common/dto/api-response.dto';
+import { TotalByCategory } from 'src/common/interfaces/total-by-category.interface';
 
 @Injectable()
 export class TransactionService {
@@ -117,11 +118,15 @@ export class TransactionService {
     });
   }
 
-  async findAllByUser(userId: number): Promise<ApiResponse<Transaction[]>> {
+  async findAllByUser(
+    userId: number,
+    limit: number = 10,
+  ): Promise<ApiResponse<Transaction[]>> {
     const transactions = await this.transactionRepo.find({
       where: { user: { id: userId } },
       relations: ['category', 'user'],
       order: { created_at: 'DESC' },
+      take: limit,
     });
     return new ApiResponse({
       success: true,
@@ -133,7 +138,7 @@ export class TransactionService {
   async findAllByFilter(
     filter: TransactionFilterDto,
   ): Promise<ApiResponse<Transaction[]>> {
-    const { userId, type, categoryId, start_date, end_date } = filter;
+    const { userId, type, categoryId, startDate, endDate } = filter;
 
     const query = this.transactionRepo
       .createQueryBuilder('transaction')
@@ -149,12 +154,12 @@ export class TransactionService {
       query.andWhere('category.id = :categoryId', { categoryId });
     }
 
-    if (start_date)
+    if (startDate)
       query.andWhere('transaction.transaction_date >= :start', {
-        start: start_date,
+        start: startDate,
       });
-    if (end_date)
-      query.andWhere('transaction.transaction_date <= :end', { end: end_date });
+    if (endDate)
+      query.andWhere('transaction.transaction_date <= :end', { end: endDate });
 
     query.orderBy('transaction.transaction_date', 'DESC');
 
@@ -164,6 +169,50 @@ export class TransactionService {
       success: true,
       statusCode: HttpStatus.OK,
       data: results,
+    });
+  }
+
+  async sumByCategory(
+    userId: number,
+    startDate?: string,
+    endDate?: string,
+  ): Promise<ApiResponse<any[]>> {
+    const query = this.transactionRepo
+      .createQueryBuilder('transaction')
+      .leftJoin('transaction.category', 'category')
+      .leftJoin('transaction.user', 'user')
+      .select('category.name', 'categoryName')
+      .addSelect('category.percentage', 'percentage')
+      .addSelect('category.icon', 'categoryIcon')
+      .addSelect('SUM(transaction.amount)', 'total')
+      .where('user.id = :userId', { userId })
+      .andWhere('transaction.type = :type', { type: 'expense' })
+      .groupBy('category.id')
+      .addGroupBy('category.percentage');
+
+    if (startDate)
+      query.andWhere('transaction.transaction_date >= :start', {
+        start: startDate,
+      });
+
+    if (endDate)
+      query.andWhere('transaction.transaction_date <= :end', {
+        end: endDate,
+      });
+
+    const raw = await query.getRawMany<TotalByCategory>();
+
+    const formatted = raw.map((item) => ({
+      categoryName: item.categoryName,
+      categoryIcon: item.categoryIcon,
+      percentage: item.percentage,
+      total: Number(item.total),
+    }));
+
+    return new ApiResponse({
+      success: true,
+      statusCode: HttpStatus.OK,
+      data: formatted,
     });
   }
 
@@ -181,7 +230,7 @@ export class TransactionService {
     });
   }
 
-  async getTotals(
+  async getTotalsByType(
     userId: number,
     start_date?: string,
     end_date?: string,
@@ -220,7 +269,6 @@ export class TransactionService {
     const expenseTotal = Number(
       results.find((r) => r.type === 'expense')?.total ?? 0,
     );
-
     return new ApiResponse({
       success: true,
       statusCode: HttpStatus.OK,
@@ -250,5 +298,32 @@ export class TransactionService {
       type: dto.type,
     });
     await this.notificationRepo.save(notification);
+  }
+
+  async findLatest4ByTypePerUser(
+    userId: number,
+  ): Promise<ApiResponse<{ income: Transaction[]; expense: Transaction[] }>> {
+    const incomeTransactions = await this.transactionRepo.find({
+      where: { user: { id: userId }, type: 'income' },
+      relations: ['category'],
+      order: { created_at: 'DESC' },
+      take: 4,
+    });
+
+    const expenseTransactions = await this.transactionRepo.find({
+      where: { user: { id: userId }, type: 'expense' },
+      relations: ['category'],
+      order: { created_at: 'DESC' },
+      take: 4,
+    });
+
+    return new ApiResponse({
+      success: true,
+      statusCode: HttpStatus.OK,
+      data: {
+        income: incomeTransactions,
+        expense: expenseTransactions,
+      },
+    });
   }
 }

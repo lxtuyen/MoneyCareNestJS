@@ -55,17 +55,38 @@ export class TransactionController {
   }
 
   @Get('me/:userId')
-  async findAllByUser(@Param('userId', ParseIntPipe) userId: number) {
-    return this.transactionService.findAllByUser(userId);
+  async findAllByUser(
+    @Param('userId', ParseIntPipe) userId: number,
+    @Query('limit') limit?: number,
+  ) {
+    return this.transactionService.findAllByUser(userId, limit);
   }
 
-  @Get('totals/:userId')
-  async getTotals(
+  @Get(':userId/total-by-type')
+  async getTotalsByType(
     @Param('userId', ParseIntPipe) userId: number,
     @Query('start_date') start_date?: string,
     @Query('end_date') end_date?: string,
   ) {
-    return this.transactionService.getTotals(userId, start_date, end_date);
+    return this.transactionService.getTotalsByType(
+      userId,
+      start_date,
+      end_date,
+    );
+  }
+
+  @Get(':userId/total-by-category')
+  async getTotalsByCate(
+    @Param('userId', ParseIntPipe) userId: number,
+    @Query('start_date') start_date?: string,
+    @Query('end_date') end_date?: string,
+  ) {
+    return this.transactionService.sumByCategory(userId, start_date, end_date);
+  }
+
+  @Get('latest-per-type/:userId')
+  async getLatest4ByType(@Param('userId', ParseIntPipe) userId: number) {
+    return this.transactionService.findLatest4ByTypePerUser(userId);
   }
 
   @Delete(':id')

@@ -24,7 +24,6 @@ export class CreateTransactionDto {
   @IsDateString()
   transactionDate: string;
 
-  @IsOptional()
   @IsNumber()
   categoryId?: number;
 

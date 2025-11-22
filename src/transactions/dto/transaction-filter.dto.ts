@@ -14,9 +14,9 @@ export class TransactionFilterDto {
 
   @IsOptional()
   @IsDateString()
-  start_date?: string;
+  startDate?: string;
 
   @IsOptional()
   @IsDateString()
-  end_date?: string;
+  endDate?: string;
 }
