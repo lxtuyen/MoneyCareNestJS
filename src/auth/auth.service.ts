@@ -60,11 +60,15 @@ export class AuthService {
     });
 
     if (!user)
-      throw new UnauthorizedException('Email hoặc mật khẩu không hợp lệ');
+      throw new UnauthorizedException('Email hoặc mật khẩu không hợp lệp-user');
 
     const isMatch = await bcrypt.compare(dto.password, user.password);
+    console.log('isMatch = ', isMatch);
+    if (!isMatch) {
+      throw new UnauthorizedException('Mật khẩu không đúng');
+    }
     if (!isMatch)
-      throw new UnauthorizedException('Email hoặc mật khẩu không hợp lệ');
+      throw new UnauthorizedException('Email hoặc mật khẩu không hợp lệismatc');
 
     const selectedFund = user.savingFunds.find((fund) => fund.is_selected);
 

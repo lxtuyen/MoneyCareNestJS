@@ -12,6 +12,7 @@ import { NotificationsModule } from './notifications/notifications.module';
 import { UserModule } from './user/user.module';
 import { OtpModule } from './otp/otp.module';
 import { MailModule } from './mail/mail.module';
+import { ReceiptModule } from './receipt/receipt.module';
 
 @Module({
   imports: [
@@ -36,6 +37,7 @@ import { MailModule } from './mail/mail.module';
     }),
 
     AuthModule,
+    ReceiptModule,
 
     UserProfileModule,
 
@@ -52,6 +54,7 @@ import { MailModule } from './mail/mail.module';
     OtpModule,
 
     MailModule,
+
   ],
   controllers: [AppController],
   providers: [AppService],

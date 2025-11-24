@@ -167,7 +167,7 @@ export class SavingFundsService {
 
     const fund = await this.savingFundRepo.findOne({
       where: { id: fundId, user: { id: userId } },
-      relations: ['categories', 'user'],
+      relations: ['categories'],
     });
 
     if (!fund) throw new NotFoundException('Saving fund not found');
