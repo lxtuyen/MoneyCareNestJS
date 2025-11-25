@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { AiGeminiReceiptService } from './ai-gemini-receipt.service';
-import { ReceiptScanResult } from './receipt.types';
+import { AiGeminiReceiptService } from '../ai/ai-gemini-receipt.service';
+import { ReceiptScanResult } from 'src/common/interfaces/receipt.interface';
 
 @Injectable()
 export class ReceiptService {

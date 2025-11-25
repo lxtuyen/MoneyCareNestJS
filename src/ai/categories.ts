@@ -8,9 +8,9 @@ export type CategoryKey =
   | 'OTHER';
 
 export interface CategoryDef {
-  id: number; // 1..7
-  key: CategoryKey; // dùng cho ML
-  name: string; // hiển thị cho user
+  id: number;
+  key: CategoryKey;
+  name: string;
 }
 
 export const CATEGORIES: CategoryDef[] = [

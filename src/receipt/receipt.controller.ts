@@ -19,10 +19,12 @@ export class ReceiptController {
     if (!file) {
       throw new BadRequestException('Không nhận được file ảnh');
     }
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
     if (!file.buffer) {
       throw new BadRequestException('File không hợp lệ');
     }
 
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-member-access
     const result = await this.receiptService.scan(file.buffer);
     return result;
   }

@@ -1,7 +1,10 @@
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+/* eslint-disable @typescript-eslint/no-unsafe-call */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import { Injectable, Logger } from '@nestjs/common';
 import { GoogleGenAI } from '@google/genai';
-import { ReceiptScanResult } from './receipt.types';
 import JSON5 from 'json5';
+import { ReceiptScanResult } from 'src/common/interfaces/receipt.interface';
 
 @Injectable()
 export class AiGeminiReceiptService {
@@ -13,7 +16,6 @@ export class AiGeminiReceiptService {
     if (!apiKey) throw new Error('Thiếu GEMINI_API_KEY');
     this.ai = new GoogleGenAI({ apiKey });
   }
-
 
   private buildPrompt(): string {
     return `
@@ -68,7 +70,6 @@ YÊU CẦU:
     return text.length > max ? text.slice(0, max) + '...' : text;
   }
 
-
   async scan(imageBuffer: Buffer): Promise<ReceiptScanResult> {
     this.logger.log(
       `🚀 [SCAN] Start, imageBuffer = ${imageBuffer.length} bytes`,
@@ -100,11 +101,15 @@ YÊU CẦU:
     this.logger.log('📥 [SCAN] Gemini RAW preview = ' + this.preview(raw));
 
     if (raw.startsWith('```')) {
-      raw = raw.replace(/```[\w]*\n?/g, '').replace(/```$/, '').trim();
+      raw = raw
+        .replace(/```[\w]*\n?/g, '')
+        .replace(/```$/, '')
+        .trim();
       this.logger.log('🧹 [SCAN] cleaned preview = ' + this.preview(raw));
     }
 
     try {
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
       const parsed = JSON5.parse(raw) as ReceiptScanResult;
 
       if (!parsed.raw_text) {

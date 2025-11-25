@@ -24,6 +24,6 @@ export class ReceiptController {
     }
 
     const result = await this.receiptService.scan(file.buffer);
-    return result; 
+    return result;
   }
 }

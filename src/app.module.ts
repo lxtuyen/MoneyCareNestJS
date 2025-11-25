@@ -54,7 +54,6 @@ import { ReceiptModule } from './receipt/receipt.module';
     OtpModule,
 
     MailModule,
-
   ],
   controllers: [AppController],
   providers: [AppService],
