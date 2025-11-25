@@ -1,5 +1,4 @@
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
-/* eslint-disable @typescript-eslint/no-unsafe-call */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import { Injectable, Logger } from '@nestjs/common';
 import { GoogleGenAI } from '@google/genai';
@@ -32,7 +31,6 @@ Nhận 1 ẢNH HÓA ĐƠN và trả về DUY NHẤT MỘT JSON hợp lệ với 
   "currency": string | null,
   "category_key": string,
   "category_name": string,
-  "confidence": number
 }
 
 Ý NGHĨA:
@@ -66,19 +64,52 @@ YÊU CẦU:
   }
 
   private preview(text: string, max = 400): string {
-    if (!text) return text;
-    return text.length > max ? text.slice(0, max) + '...' : text;
+    return text && text.length > max ? text.slice(0, max) + '...' : text;
+  }
+
+  private cleanModelOutput(raw: string): string {
+    let cleaned = raw.trim();
+
+    if (cleaned.startsWith('```')) {
+      cleaned = cleaned
+        .replace(/```[\w]*\n?/g, '')
+        .replace(/```$/, '')
+        .trim();
+    }
+    return cleaned;
+  }
+
+  private extractTextFromGemini(res: any): string {
+    const text =
+      res?.candidates?.[0]?.content?.parts?.[0]?.text ?? res?.text ?? '';
+
+    return typeof text === 'string' ? text : '';
+  }
+
+  private parseJsonSafe(raw: string): ReceiptScanResult {
+    try {
+      const parsed = JSON5.parse(raw);
+
+      return {
+        raw_text: parsed.raw_text ?? '',
+        merchant_name: parsed.merchant_name ?? null,
+        address: parsed.address ?? null,
+        date: parsed.date ?? null,
+        total_amount: parsed.total_amount ?? null,
+        currency: parsed.currency ?? null,
+        category_key: parsed.category_key ?? 'OTHER',
+        category_name: parsed.category_name ?? 'Khác',
+      };
+    } catch (err) {
+      this.logger.error('JSON parse lỗi:', err);
+      throw new Error('Gemini trả JSON sai định dạng');
+    }
   }
 
   async scan(imageBuffer: Buffer): Promise<ReceiptScanResult> {
-    this.logger.log(
-      `🚀 [SCAN] Start, imageBuffer = ${imageBuffer.length} bytes`,
-    );
+    this.logger.log(`[SCAN] Start, buffer = ${imageBuffer.length} bytes`);
 
     const base64 = imageBuffer.toString('base64');
-    this.logger.log(`📸 [SCAN] Base64 length = ${base64.length}`);
-
-    const prompt = this.buildPrompt();
 
     const res = await this.ai.models.generateContent({
       model: 'gemini-2.0-flash',
@@ -86,7 +117,7 @@ YÊU CẦU:
         {
           role: 'user',
           parts: [
-            { text: prompt },
+            { text: this.buildPrompt() },
             { inlineData: { data: base64, mimeType: 'image/jpeg' } },
           ],
         },
@@ -97,34 +128,17 @@ YÊU CẦU:
       },
     });
 
-    let raw = (res.text || '').trim();
-    this.logger.log('📥 [SCAN] Gemini RAW preview = ' + this.preview(raw));
+    const raw = this.extractTextFromGemini(res);
+    const cleaned = this.cleanModelOutput(raw);
 
-    if (raw.startsWith('```')) {
-      raw = raw
-        .replace(/```[\w]*\n?/g, '')
-        .replace(/```$/, '')
-        .trim();
-      this.logger.log('🧹 [SCAN] cleaned preview = ' + this.preview(raw));
-    }
+    this.logger.log('[SCAN] Output preview = ' + this.preview(cleaned));
 
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
-      const parsed = JSON5.parse(raw) as ReceiptScanResult;
+    const result = this.parseJsonSafe(cleaned);
 
-      if (!parsed.raw_text) {
-        this.logger.warn('⚠️ [SCAN] Model không trả raw_text, fallback = ""');
-        parsed.raw_text = '';
-      }
+    this.logger.log(
+      '[SCAN] FINAL = ' + this.preview(JSON.stringify(result), 500),
+    );
 
-      this.logger.log(
-        '🎉 [SCAN] FINAL RESULT = ' + this.preview(JSON.stringify(parsed), 500),
-      );
-      return parsed;
-    } catch (err) {
-      this.logger.error('❌ [SCAN] Parse JSON failed', err);
-      this.logger.error('❌ [SCAN] JSON full = ' + raw);
-      throw new Error('Gemini trả JSON không hợp lệ');
-    }
+    return result;
   }
 }

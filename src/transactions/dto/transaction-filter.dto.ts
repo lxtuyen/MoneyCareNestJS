@@ -1,4 +1,10 @@
-import { IsOptional, IsEnum, IsNumber, IsDateString } from 'class-validator';
+import {
+  IsOptional,
+  IsEnum,
+  IsNumber,
+  IsDateString,
+  IsString,
+} from 'class-validator';
 
 export class TransactionFilterDto {
   @IsNumber()
@@ -9,8 +15,8 @@ export class TransactionFilterDto {
   type?: 'income' | 'expense';
 
   @IsOptional()
-  @IsNumber()
-  categoryId?: number;
+  @IsString()
+  categoryName?: string;
 
   @IsOptional()
   @IsDateString()

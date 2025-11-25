@@ -13,6 +13,7 @@ import { CreateTransactionDto } from './dto/create-transaction.dto';
 import { UpdateTransactionDto } from './dto/update-transaction.dto';
 import { TransactionService } from './transactions.service';
 import { TransactionFilterDto } from './dto/transaction-filter.dto';
+import { GetTransactionDto } from './dto/get-transaction.dto';
 
 @Controller('transactions')
 export class TransactionController {
@@ -45,8 +46,13 @@ export class TransactionController {
   }
 
   @Get()
-  async findAll(@Query() filter: TransactionFilterDto) {
+  async findAllByFilter(@Query() filter: TransactionFilterDto) {
     return this.transactionService.findAllByFilter(filter);
+  }
+
+  @Get('me/:userId')
+  async findAllByUser(@Param('userId', ParseIntPipe) userId: number) {
+    return this.transactionService.findByNotePerUser(userId);
   }
 
   @Get(':id')
@@ -54,18 +60,52 @@ export class TransactionController {
     return this.transactionService.findById(id);
   }
 
-  @Get('me/:userId')
-  async findAllByUser(@Param('userId', ParseIntPipe) userId: number) {
-    return this.transactionService.findAllByUser(userId);
+  @Get(':userId/total-by-day')
+  async getTotalsByDay(
+    @Param('userId', ParseIntPipe) userId: number,
+    @Query('start_date') startDate?: string,
+    @Query('end_date') endDate?: string,
+  ) {
+    const dto: GetTransactionDto = {
+      userId,
+      startDate,
+      endDate,
+    };
+    return this.transactionService.sumByDay(dto);
   }
 
-  @Get('totals/:userId')
-  async getTotals(
+  @Get(':userId/total-by-type')
+  async getTotalsByType(
     @Param('userId', ParseIntPipe) userId: number,
-    @Query('start_date') start_date?: string,
-    @Query('end_date') end_date?: string,
+    @Query('start_date') startDate?: string,
+    @Query('end_date') endDate?: string,
   ) {
-    return this.transactionService.getTotals(userId, start_date, end_date);
+    const dto: GetTransactionDto = {
+      userId,
+      startDate,
+      endDate,
+    };
+
+    return this.transactionService.getTotalsByType(dto);
+  }
+
+  @Get('latest-per-type/:userId')
+  async getLatest4ByType(@Param('userId', ParseIntPipe) userId: number) {
+    return this.transactionService.findLatest4ByTypePerUser(userId);
+  }
+
+  @Get(':userId/total-by-category')
+  async getTotalsByCate(
+    @Param('userId', ParseIntPipe) userId: number,
+    @Query('start_date') startDate?: string,
+    @Query('end_date') endDate?: string,
+  ) {
+    const dto: GetTransactionDto = {
+      userId,
+      startDate,
+      endDate,
+    };
+    return this.transactionService.sumByCategory(dto);
   }
 
   @Delete(':id')
