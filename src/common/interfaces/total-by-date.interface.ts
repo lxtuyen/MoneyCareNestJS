@@ -1,5 +1,11 @@
 interface TotalByDate {
   date: string;
+  type?: string;
   total: number | null;
 }
-export type { TotalByDate };
+
+interface TotalsByDate {
+  income: TotalByDate[];
+  expense: TotalByDate[];
+}
+export type { TotalByDate, TotalsByDate };

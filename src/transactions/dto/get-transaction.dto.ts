@@ -4,6 +4,9 @@ export class GetTransactionDto {
   @IsNumber()
   userId: number;
 
+  @IsNumber()
+  fundId: number;
+
   @IsOptional()
   @IsDateString()
   startDate?: string;

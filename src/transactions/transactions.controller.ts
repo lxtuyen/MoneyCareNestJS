@@ -45,29 +45,34 @@ export class TransactionController {
     return this.transactionService.update(id, dto);
   }
 
-  @Get()
-  async findAllByFilter(@Query() filter: TransactionFilterDto) {
-    return this.transactionService.findAllByFilter(filter);
-  }
-
-  @Get('me/:userId')
-  async findAllByUser(@Param('userId', ParseIntPipe) userId: number) {
-    return this.transactionService.findByNotePerUser(userId);
-  }
-
-  @Get(':id')
-  async findById(@Param('id', ParseIntPipe) id: number) {
-    return this.transactionService.findById(id);
+  @Get('filter/:userId')
+  async findAllByFilter(
+    @Param('userId', ParseIntPipe) userId: number,
+    @Query('fundId') fundId: number,
+    @Query('categoryId') categoryId?: number,
+    @Query('start_date') startDate?: string,
+    @Query('end_date') endDate?: string,
+  ) {
+    const dto: TransactionFilterDto = {
+      userId,
+      categoryId,
+      fundId,
+      startDate,
+      endDate,
+    };
+    return this.transactionService.findAllByFilter(dto);
   }
 
   @Get(':userId/total-by-day')
   async getTotalsByDay(
     @Param('userId', ParseIntPipe) userId: number,
+    @Query('fundId') fundId: number,
     @Query('start_date') startDate?: string,
     @Query('end_date') endDate?: string,
   ) {
     const dto: GetTransactionDto = {
       userId,
+      fundId,
       startDate,
       endDate,
     };
@@ -77,11 +82,13 @@ export class TransactionController {
   @Get(':userId/total-by-type')
   async getTotalsByType(
     @Param('userId', ParseIntPipe) userId: number,
+    @Query('fundId') fundId: number,
     @Query('start_date') startDate?: string,
     @Query('end_date') endDate?: string,
   ) {
     const dto: GetTransactionDto = {
       userId,
+      fundId,
       startDate,
       endDate,
     };
@@ -89,19 +96,16 @@ export class TransactionController {
     return this.transactionService.getTotalsByType(dto);
   }
 
-  @Get('latest-per-type/:userId')
-  async getLatest4ByType(@Param('userId', ParseIntPipe) userId: number) {
-    return this.transactionService.findLatest4ByTypePerUser(userId);
-  }
-
   @Get(':userId/total-by-category')
   async getTotalsByCate(
     @Param('userId', ParseIntPipe) userId: number,
+    @Query('fundId') fundId: number,
     @Query('start_date') startDate?: string,
     @Query('end_date') endDate?: string,
   ) {
     const dto: GetTransactionDto = {
       userId,
+      fundId,
       startDate,
       endDate,
     };

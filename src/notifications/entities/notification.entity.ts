@@ -8,9 +8,6 @@ export class Notification {
   id: number;
 
   @Column()
-  user_id: number;
-
-  @Column()
   title: string;
 
   @Column()
@@ -30,6 +27,7 @@ export class Notification {
 
   @ManyToOne(() => Transaction, (transaction) => transaction.notifications, {
     onDelete: 'CASCADE',
+    nullable: true,
   })
   transaction: Transaction;
 }

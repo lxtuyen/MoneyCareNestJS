@@ -63,7 +63,6 @@ export class AuthService {
       throw new UnauthorizedException('Email hoặc mật khẩu không hợp lệp-user');
 
     const isMatch = await bcrypt.compare(dto.password, user.password);
-    console.log('isMatch = ', isMatch);
     if (!isMatch) {
       throw new UnauthorizedException('Mật khẩu không đúng');
     }

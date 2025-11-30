@@ -10,18 +10,14 @@ export class NotificationsService {
     private notificationRepo: Repository<Notification>,
   ) {}
 
-  async getAllByUserID(userId: number) {
+  async getAllByUserID(userId: number): Promise<Notification[]> {
     const notifications = await this.notificationRepo.find({
-      where: { user_id: userId },
+      where: { user: { id: userId } },
       relations: ['transaction'],
       order: { created_at: 'DESC' },
     });
 
-    if (!notifications.length) {
-      throw new NotFoundException('No notifications found for this user');
-    }
-
-    return notifications;
+    return notifications || [];
   }
 
   async markAsRead(notificationId: number) {

@@ -18,10 +18,10 @@ export class UserProfileService {
   async updateProfile(
     userId: number,
     dto: UpdateProfileDto,
-  ): Promise<ApiResponse<User>> {
+  ): Promise<ApiResponse<any>> {
     const user = await this.userRepo.findOne({
       where: { id: userId },
-      relations: ['profile'],
+      relations: ['profile', 'savingFunds'],
     });
 
     if (!user || !user.profile) {
@@ -31,11 +31,21 @@ export class UserProfileService {
     Object.assign(user.profile, dto);
     await this.profileRepo.save(user.profile);
 
+    const selectedFund = user.savingFunds.find((fund) => fund.is_selected);
+
     return new ApiResponse({
       success: true,
       statusCode: HttpStatus.OK,
-      data: user,
       message: 'Cập nhật thành công',
+      data: {
+        user: {
+          id: user.id,
+          email: user.email,
+          profile: user.profile,
+          savingFund: selectedFund || null,
+          role: user.role,
+        },
+      },
     });
   }
 }

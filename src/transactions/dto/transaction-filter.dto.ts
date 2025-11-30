@@ -1,28 +1,21 @@
-import {
-  IsOptional,
-  IsEnum,
-  IsNumber,
-  IsDateString,
-  IsString,
-} from 'class-validator';
+import { IsOptional, IsNumber, IsDateString } from 'class-validator';
 
 export class TransactionFilterDto {
   @IsNumber()
   userId: number;
 
   @IsOptional()
-  @IsEnum(['income', 'expense'])
-  type?: 'income' | 'expense';
+  @IsNumber()
+  categoryId?: number;
 
-  @IsOptional()
-  @IsString()
-  categoryName?: string;
-
-  @IsOptional()
-  @IsDateString()
-  start_date?: string;
+  @IsNumber()
+  fundId: number;
 
   @IsOptional()
   @IsDateString()
-  end_date?: string;
+  startDate?: string;
+
+  @IsOptional()
+  @IsDateString()
+  endDate?: string;
 }
