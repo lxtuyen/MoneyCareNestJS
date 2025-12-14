@@ -3,7 +3,7 @@ import { OTP } from './entities/otp.entity';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User } from 'src/user/entities/user.entity';
-import { MailService } from 'src/mail/mail.service';
+import { MailService } from 'src/mailer/mail.service';
 import { randomInt } from 'crypto';
 import { ApiResponse } from 'src/common/dto/api-response.dto';
 

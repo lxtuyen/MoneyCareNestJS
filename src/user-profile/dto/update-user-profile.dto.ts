@@ -3,13 +3,13 @@ import { IsOptional, IsString, IsNumber } from 'class-validator';
 export class UpdateProfileDto {
   @IsOptional()
   @IsString()
-  firstName?: string;
+  first_name?: string;
 
   @IsOptional()
   @IsString()
-  lastName?: string;
+  last_name?: string;
 
   @IsOptional()
   @IsNumber()
-  monthlyIncome?: number;
+  monthly_income?: number;
 }

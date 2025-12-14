@@ -11,7 +11,7 @@ import { TransactionsModule } from './transactions/transactions.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { UserModule } from './user/user.module';
 import { OtpModule } from './otp/otp.module';
-import { MailModule } from './mail/mail.module';
+import { MailModule } from './mailer/mail.module';
 import { ReceiptModule } from './receipt/receipt.module';
 
 @Module({
