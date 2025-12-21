@@ -3,16 +3,19 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-import { AuthModule } from './auth/auth.module';
-import { UserProfileModule } from './user-profile/user-profile.module';
-import { SavingFundsModule } from './saving-funds/saving-funds.module';
-import { CategoriesModule } from './categories/categories.module';
-import { TransactionsModule } from './transactions/transactions.module';
-import { NotificationsModule } from './notifications/notifications.module';
-import { UserModule } from './user/user.module';
-import { OtpModule } from './otp/otp.module';
-import { MailModule } from './mailer/mail.module';
-import { ReceiptModule } from './receipt/receipt.module';
+import { AuthModule } from './modules/auth/auth.module';
+import { UserProfileModule } from './modules/user-profile/user-profile.module';
+import { SavingFundsModule } from './modules/saving-funds/saving-funds.module';
+import { CategoriesModule } from './modules/categories/categories.module';
+import { TransactionsModule } from './modules/transactions/transactions.module';
+import { UserModule } from './modules/user/user.module';
+import { OtpModule } from './modules/otp/otp.module';
+import { MailModule } from './modules/mailer/mail.module';
+import { ReceiptModule } from './modules/receipt/receipt.module';
+import { EmailTransferModule } from './modules/email-transfer/email-transfer.module';
+import { GmailModule } from './modules/gmail/gmail.module';
+import { ScheduleModule } from '@nestjs/schedule';
+import { PendingTransactionModule } from './modules/pending-transaction/pending-transaction.module';
 
 @Module({
   imports: [
@@ -20,6 +23,8 @@ import { ReceiptModule } from './receipt/receipt.module';
       isGlobal: true,
       envFilePath: '.env',
     }),
+
+    ScheduleModule.forRoot(),
 
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
@@ -47,13 +52,17 @@ import { ReceiptModule } from './receipt/receipt.module';
 
     TransactionsModule,
 
-    NotificationsModule,
-
     UserModule,
 
     OtpModule,
 
     MailModule,
+
+    EmailTransferModule,
+
+    GmailModule,
+
+    PendingTransactionModule,
   ],
   controllers: [AppController],
   providers: [AppService],
