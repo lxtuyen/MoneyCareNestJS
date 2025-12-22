@@ -16,6 +16,8 @@ import { EmailTransferModule } from './modules/email-transfer/email-transfer.mod
 import { GmailModule } from './modules/gmail/gmail.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { PendingTransactionModule } from './modules/pending-transaction/pending-transaction.module';
+import { ChatbotModule } from './modules/chatbot/chatbot.module';
+import { PaymentsModule } from './modules/payment/payment.module';
 
 @Module({
   imports: [
@@ -63,6 +65,10 @@ import { PendingTransactionModule } from './modules/pending-transaction/pending-
     GmailModule,
 
     PendingTransactionModule,
+
+    PaymentsModule,
+
+    ChatbotModule,
   ],
   controllers: [AppController],
   providers: [AppService],
