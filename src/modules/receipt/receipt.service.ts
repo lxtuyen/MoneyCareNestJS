@@ -1,5 +1,5 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
-import { AiGeminiReceiptService } from '../ai/ai-gemini-receipt.service';
+import { AiGeminiReceiptService } from './ai-gemini-receipt.service';
 import { ReceiptScanResult } from 'src/common/interfaces/receipt.interface';
 import { ApiResponse } from 'src/common/dto/api-response.dto';
 
