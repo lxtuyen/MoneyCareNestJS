@@ -8,6 +8,7 @@ import {
   Column,
   OneToOne,
   OneToMany,
+  CreateDateColumn,
 } from 'typeorm';
 import { GmailToken } from 'src/modules/gmail/entities/gmail-token.entity';
 
@@ -32,6 +33,9 @@ export class User {
 
   @Column({ type: 'enum', enum: UserRole, default: UserRole.USER })
   role: UserRole;
+
+  @CreateDateColumn()
+  createdAt: Date;
 
   @OneToOne(() => UserProfile, (profile) => profile.user, {
     cascade: true,
