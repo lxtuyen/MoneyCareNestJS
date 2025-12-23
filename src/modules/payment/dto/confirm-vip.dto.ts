@@ -1,4 +1,4 @@
-import { IsIn, IsNumber, IsObject, IsString } from 'class-validator';
+import { IsIn, IsNumber, IsString } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class ConfirmVipDto {
@@ -15,7 +15,4 @@ export class ConfirmVipDto {
 
   @IsString()
   currency: string;
-
-  @IsObject()
-  paymentData: any;
 }

@@ -1,8 +1,9 @@
-import { Injectable } from '@nestjs/common';
+import { HttpStatus, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ConfirmVipDto } from './dto/confirm-vip.dto';
 import { VipPayment } from './entities/payment.entity';
+import { ApiResponse } from 'src/common/dto/api-response.dto';
 
 @Injectable()
 export class PaymentsService {
@@ -11,21 +12,21 @@ export class PaymentsService {
     private readonly repo: Repository<VipPayment>,
   ) {}
 
-  async confirm(dto: ConfirmVipDto) {
+  async confirm(dto: ConfirmVipDto): Promise<ApiResponse<null>> {
     const row = this.repo.create({
       userId: dto.userId,
       platform: dto.platform,
       amount: dto.amount,
       currency: dto.currency,
       status: 'SUCCEEDED',
-      paymentData: dto.paymentData ?? null,
     });
 
     await this.repo.save(row);
 
-    return {
+    return new ApiResponse({
       success: true,
-      PaymentId: row.id,
-    };
+      statusCode: HttpStatus.OK,
+      message: 'Thanh toán thành công!',
+    });
   }
 }

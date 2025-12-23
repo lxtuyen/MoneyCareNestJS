@@ -27,9 +27,6 @@ export class VipPayment {
   @Column({ type: 'varchar', length: 20, default: 'SUCCEEDED' })
   status: 'SUCCEEDED' | 'FAILED';
 
-  @Column({ type: 'json', nullable: true })
-  paymentData?: any;
-
   @CreateDateColumn()
   createdAt: Date;
 }
