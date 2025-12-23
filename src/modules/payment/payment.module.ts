@@ -8,5 +8,6 @@ import { VipPayment } from './entities/payment.entity';
   imports: [TypeOrmModule.forFeature([VipPayment])],
   controllers: [PaymentsController],
   providers: [PaymentsService],
+  exports: [PaymentsService],
 })
 export class PaymentsModule {}

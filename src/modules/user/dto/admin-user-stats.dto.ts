@@ -3,4 +3,5 @@ export class AdminUserStatsDto {
   newUsersThisMonth: number;
   freePercent: number;
   vipPercent: number;
+  monthlyRevenue: number;
 }

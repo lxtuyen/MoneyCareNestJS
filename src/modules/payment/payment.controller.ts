@@ -1,4 +1,4 @@
-import { Body, Controller, Post } from '@nestjs/common';
+import { Body, Controller, Get, Post } from '@nestjs/common';
 import { PaymentsService } from './payment.service';
 import { ConfirmVipDto } from './dto/confirm-vip.dto';
 
@@ -9,5 +9,10 @@ export class PaymentsController {
   @Post('confirm')
   confirm(@Body() dto: ConfirmVipDto) {
     return this.service.confirm(dto);
+  }
+
+  @Get('monthly-revenue')
+  getMonthlyRevenue() {
+    return this.service.getMonthlyRevenueByIndex();
   }
 }

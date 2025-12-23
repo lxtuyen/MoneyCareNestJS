@@ -6,12 +6,15 @@ import { User } from './entities/user.entity';
 import { ApiResponse } from 'src/common/dto/api-response.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UserListDto } from './dto/user-list.dto';
+import { VipPayment } from '../payment/entities/payment.entity';
 
 @Injectable()
 export class UserService {
   constructor(
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
+    @InjectRepository(VipPayment)
+    private readonly repo: Repository<VipPayment>,
   ) {}
 
   async getTotalUsers(): Promise<ApiResponse<number>> {
@@ -59,6 +62,41 @@ export class UserService {
       statusCode: HttpStatus.OK,
       data: count,
     });
+  }
+  async getMonthlyRevenue(): Promise<number> {
+    const now = new Date();
+
+    const startOfMonth = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      1,
+      0,
+      0,
+      0,
+    );
+
+    const endOfMonth = new Date(
+      now.getFullYear(),
+      now.getMonth() + 1,
+      0,
+      23,
+      59,
+      59,
+    );
+
+    const result = await this.repo
+      .createQueryBuilder('p')
+      .select('SUM(p.amount)', 'total')
+      .where('p.status = :status', { status: 'SUCCEEDED' })
+      .andWhere('p.createdAt BETWEEN :start AND :end', {
+        start: startOfMonth,
+        end: endOfMonth,
+      })
+      .getRawOne<{ total: string | null }>();
+
+    const total = Number(result?.total ?? 0);
+
+    return Number(total ?? 0);
   }
 
   async updateUser(
@@ -140,18 +178,21 @@ export class UserService {
   }
 
   async getAdminUserStats(): Promise<ApiResponse<AdminUserStatsDto>> {
-    const [total, newThisMonth, vip] = await Promise.all([
+    const [total, newThisMonth, vip, monthlyRevenue] = await Promise.all([
       this.userRepo.count(),
-      this.getNewUsersThisMonth().then((r) => r.data),
+      this.getNewUsersThisMonth().then((r) => r.data ?? 0),
       this.userRepo.count({ where: { isVip: true } }),
+      this.getMonthlyRevenue(),
     ]);
 
     const free = total - vip;
+
     const stats: AdminUserStatsDto = {
       totalUsers: total,
-      newUsersThisMonth: newThisMonth ?? 0,
+      newUsersThisMonth: newThisMonth,
       freePercent: total ? +((free / total) * 100).toFixed(2) : 0,
       vipPercent: total ? +((vip / total) * 100).toFixed(2) : 0,
+      monthlyRevenue: monthlyRevenue,
     };
 
     return new ApiResponse({
