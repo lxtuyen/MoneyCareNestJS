@@ -21,7 +21,7 @@ export class UserProfileService {
   ): Promise<ApiResponse<any>> {
     const user = await this.userRepo.findOne({
       where: { id: userId },
-      relations: ['profile', 'savingFunds'],
+      relations: ['profile'],
     });
 
     if (!user || !user.profile) {
@@ -29,23 +29,13 @@ export class UserProfileService {
     }
 
     Object.assign(user.profile, dto);
-    await this.profileRepo.save(user.profile);
-
-    const selectedFund = user.savingFunds.find((fund) => fund.is_selected);
+    const savedProfile = await this.profileRepo.save(user.profile);
 
     return new ApiResponse({
       success: true,
       statusCode: HttpStatus.OK,
       message: 'Cập nhật thành công',
-      data: {
-        user: {
-          id: user.id,
-          email: user.email,
-          profile: user.profile,
-          savingFund: selectedFund || null,
-          role: user.role,
-        },
-      },
+      data: savedProfile,
     });
   }
 }
