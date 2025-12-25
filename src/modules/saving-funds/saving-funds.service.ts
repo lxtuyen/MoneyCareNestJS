@@ -26,7 +26,9 @@ export class SavingFundsService {
   async create(
     dto: CreateSavingFundDto,
   ): Promise<ApiResponse<SavingFundResponseDto>> {
-    const user = await this.userRepo.findOne({ where: { id: dto.userId } });
+    const user = await this.userRepo.findOne({
+      where: { id: dto.userId },
+    });
     if (!user) throw new NotFoundException('User not found');
 
     const fund = this.savingFundRepo.create({
@@ -45,13 +47,17 @@ export class SavingFundsService {
       );
 
       await this.categoryRepo.save(categories);
-      savedFund.categories = categories;
     }
+
+    const result = await this.savingFundRepo.findOne({
+      where: { id: savedFund.id },
+      relations: ['categories'],
+    });
 
     return new ApiResponse({
       success: true,
       statusCode: HttpStatus.OK,
-      data: plainToInstance(SavingFundResponseDto, savedFund),
+      data: plainToInstance(SavingFundResponseDto, result),
     });
   }
 
