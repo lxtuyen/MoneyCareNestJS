@@ -10,7 +10,6 @@ import {
   OneToMany,
   CreateDateColumn,
 } from 'typeorm';
-import { GmailToken } from 'src/modules/gmail/entities/gmail-token.entity';
 
 export enum UserRole {
   USER = 'user',
@@ -42,12 +41,6 @@ export class User {
     eager: true,
   })
   profile: UserProfile;
-
-  @OneToOne(() => GmailToken, (emailToken) => emailToken.user, {
-    cascade: true,
-    eager: true,
-  })
-  emailToken: GmailToken;
 
   @OneToMany(() => OTP, (otp) => otp.user)
   otps: OTP[];

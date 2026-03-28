@@ -16,7 +16,6 @@ import { ApiResponse } from 'src/common/dto/api-response.dto';
 import { GoogleLoginDto } from './dto/google-login.dto';
 import axios from 'axios';
 import { GoogleOAuthTokenResponse } from 'src/common/interfaces/google-oauth.interface';
-import { GmailToken } from '../gmail/entities/gmail-token.entity';
 
 @Injectable()
 export class AuthService {
@@ -25,8 +24,6 @@ export class AuthService {
     private readonly userRepo: Repository<User>,
     @InjectRepository(UserProfile)
     private readonly profileRepo: Repository<UserProfile>,
-    @InjectRepository(GmailToken)
-    private readonly gmailTokenRepo: Repository<GmailToken>,
     private readonly jwtService: JwtService,
   ) {}
 
@@ -177,12 +174,5 @@ export class AuthService {
     if (!data.access_token || !data.expires_in) {
       throw new Error('Invalid Google OAuth response');
     }
-
-    await this.gmailTokenRepo.save({
-      user: { id: userId } as User,
-      accessToken: data.access_token,
-      refreshToken: data.refresh_token,
-      expiresAt: new Date(Date.now() + data.expires_in * 1000),
-    });
   }
 }

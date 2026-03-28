@@ -11,11 +11,8 @@ import { TransactionsModule } from './modules/transactions/transactions.module';
 import { UserModule } from './modules/user/user.module';
 import { OtpModule } from './modules/otp/otp.module';
 import { MailModule } from './modules/mailer/mail.module';
-import { ReceiptModule } from './modules/receipt/receipt.module';
-import { EmailTransferModule } from './modules/email-transfer/email-transfer.module';
-import { GmailModule } from './modules/gmail/gmail.module';
+import { ReceiptModule } from './modules/receipt/receipt.module';;
 import { ScheduleModule } from '@nestjs/schedule';
-import { PendingTransactionModule } from './modules/pending-transaction/pending-transaction.module';
 import { ChatbotModule } from './modules/chatbot/chatbot.module';
 import { PaymentsModule } from './modules/payment/payment.module';
 
@@ -59,12 +56,6 @@ import { PaymentsModule } from './modules/payment/payment.module';
     OtpModule,
 
     MailModule,
-
-    EmailTransferModule,
-
-    GmailModule,
-
-    PendingTransactionModule,
 
     PaymentsModule,
 

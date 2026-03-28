@@ -101,42 +101,68 @@ export class TransactionService {
   async sumByCategory(
     dto: GetTransactionDto,
   ): Promise<ApiResponse<TotalByCategory[]>> {
-    const query = this.transactionRepo
+    const categoryQuery = this.categoryRepo
+      .createQueryBuilder('category')
+      .leftJoin('category.savingFund', 'savingFund')
+      .leftJoin('savingFund.user', 'user')
+      .select('category.id', 'categoryId')
+      .addSelect('category.name', 'categoryName')
+      .addSelect('category.percentage', 'percentage')
+      .addSelect('category.icon', 'categoryIcon')
+      .where('user.id = :userId', { userId: dto.userId });
+
+    if (dto.fundId)
+      categoryQuery.andWhere('savingFund.id = :fundId', {
+        fundId: dto.fundId,
+      });
+
+    const categories = await categoryQuery.getRawMany<{
+      categoryId: number;
+      categoryName: string;
+      percentage: number;
+      categoryIcon: string;
+    }>();
+    
+    const transactionQuery = this.transactionRepo
       .createQueryBuilder('transaction')
       .leftJoin('transaction.category', 'category')
       .leftJoin('category.savingFund', 'savingFund')
       .leftJoin('savingFund.user', 'user')
-      .select('category.name', 'categoryName')
-      .addSelect('category.percentage', 'percentage')
-      .addSelect('category.icon', 'categoryIcon')
+      .select('category.id', 'categoryId')
       .addSelect('SUM(transaction.amount)', 'total')
       .where('user.id = :userId', { userId: dto.userId })
       .andWhere('transaction.type = :type', { type: 'expense' })
-      .groupBy('category.id')
-      .addGroupBy('category.percentage');
+      .groupBy('category.id');
 
     if (dto.startDate)
-      query.andWhere('transaction.transaction_date >= :start', {
+      transactionQuery.andWhere('transaction.transaction_date >= :start', {
         start: dto.startDate,
       });
 
     if (dto.endDate)
-      query.andWhere('transaction.transaction_date <= :end', {
+      transactionQuery.andWhere('transaction.transaction_date <= :end', {
         end: dto.endDate,
       });
 
     if (dto.fundId)
-      query.andWhere('savingFund.id = :fundId', {
+      transactionQuery.andWhere('savingFund.id = :fundId', {
         fundId: dto.fundId,
       });
 
-    const raw = await query.getRawMany<TotalByCategory>();
+    const totals = await transactionQuery.getRawMany<{
+      categoryId: number;
+      total: string;
+    }>();
 
-    const formatted = raw.map((item) => ({
-      categoryName: item.categoryName,
-      categoryIcon: item.categoryIcon,
-      percentage: item.percentage,
-      total: Number(item.total),
+    const totalMap = new Map(
+      totals.map((t) => [Number(t.categoryId), Number(t.total) || 0]),
+    );
+
+    const formatted: TotalByCategory[] = categories.map((cat) => ({
+      categoryName: cat.categoryName,
+      categoryIcon: cat.categoryIcon,
+      percentage: cat.percentage,
+      total: totalMap.get(Number(cat.categoryId)) ?? 0,
     }));
 
     return new ApiResponse({
@@ -201,11 +227,22 @@ export class TransactionService {
   async getTotalsByType(
     dto: GetTransactionDto,
   ): Promise<ApiResponse<{ income_total: number; expense_total: number }>> {
-    const incomeTotalRes = await this.transactionRepo
+    const incomeQuery = this.transactionRepo
       .createQueryBuilder('transaction')
       .leftJoin('transaction.user', 'user')
       .where('user.id = :userId', { userId: dto.userId })
-      .andWhere('transaction.type = :type', { type: 'income' })
+      .andWhere('transaction.type = :type', { type: 'income' });
+
+    if (dto.startDate)
+      incomeQuery.andWhere('transaction.transaction_date >= :start', {
+        start: dto.startDate,
+      });
+    if (dto.endDate)
+      incomeQuery.andWhere('transaction.transaction_date <= :end', {
+        end: dto.endDate,
+      });
+
+    const incomeTotalRes = await incomeQuery
       .select('SUM(transaction.amount)', 'total')
       .getRawOne<{ total: string }>();
 
