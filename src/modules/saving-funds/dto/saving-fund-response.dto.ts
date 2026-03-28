@@ -9,6 +9,15 @@ export class SavingFundResponseDto {
   name: string;
 
   @Expose()
+  amount: number;
+
+  @Expose()
+  start_date: Date;
+
+  @Expose()
+  end_date: Date;
+
+  @Expose()
   @Type(() => CategoryResponseDto)
   categories?: CategoryResponseDto[];
 

@@ -30,20 +30,21 @@ export class SavingFundsService {
       where: { id: dto.userId },
     });
     if (!user) throw new NotFoundException('User not found');
-
     const fund = this.savingFundRepo.create({
       name: dto.name,
       user,
-    });
+      amount: dto.amount ?? 0,
+      start_date: dto.start_date ?? null,
+      end_date: dto.end_date ?? null,
+    } as Partial<SavingFund>);
 
     const savedFund = await this.savingFundRepo.save(fund);
-
     if (dto.categories?.length) {
       const categories = dto.categories.map((cat) =>
         this.categoryRepo.create({
           ...cat,
           savingFund: savedFund,
-        }),
+        } as Partial<Category>),
       );
 
       await this.categoryRepo.save(categories);
@@ -102,6 +103,9 @@ export class SavingFundsService {
 
     fund.name = dto.name ?? fund.name;
     fund.is_selected = dto.is_selected ?? fund.is_selected;
+    fund.amount = dto.amount ?? fund.amount;
+    fund.start_date = dto.start_date ?? fund.start_date;
+    fund.end_date = dto.end_date ?? fund.end_date;
 
     if (dto.categories) {
       for (const catDto of dto.categories) {

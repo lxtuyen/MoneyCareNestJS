@@ -23,6 +23,16 @@ export class UpdateSavingFundDto {
   is_selected?: boolean;
 
   @IsOptional()
+  @IsNumber()
+  amount?: number;
+
+  @IsOptional()
+  start_date?: Date;
+
+  @IsOptional()
+  end_date?: Date;
+
+  @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => UpdateCategoryDto)

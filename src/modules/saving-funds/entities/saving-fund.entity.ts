@@ -18,6 +18,15 @@ export class SavingFund {
   @Column()
   name: string;
 
+  @Column({ type: 'decimal', precision: 15, scale: 2, default: 0 })
+  amount: number;
+
+  @Column({ type: 'timestamp', nullable: true })
+  start_date: Date;
+
+  @Column({ type: 'timestamp', nullable: true })
+  end_date: Date;
+
   @Column({ default: false })
   is_selected: boolean;
 

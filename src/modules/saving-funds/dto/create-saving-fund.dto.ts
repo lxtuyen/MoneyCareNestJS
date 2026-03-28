@@ -15,6 +15,16 @@ export class CreateSavingFundDto {
   @IsNumber()
   userId: number;
 
+  @IsNumber()
+  @IsOptional()
+  amount?: number;
+
+  @IsOptional()
+  start_date?: Date;
+
+  @IsOptional()
+  end_date?: Date;
+
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => CreateCategoryDto)

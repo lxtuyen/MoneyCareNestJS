@@ -112,7 +112,7 @@ YÊU CẦU:
     const base64 = imageBuffer.toString('base64');
 
     const res = await this.ai.models.generateContent({
-      model: 'gemini-2.0-flash',
+      model: 'gemini-2.5-flash-preview-09-2025',
       contents: [
         {
           role: 'user',
@@ -124,7 +124,7 @@ YÊU CẦU:
       ],
       config: {
         temperature: 0.1,
-        maxOutputTokens: 1200,
+        maxOutputTokens: 5000,
       },
     });
 
