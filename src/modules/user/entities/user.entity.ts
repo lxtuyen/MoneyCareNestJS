@@ -2,6 +2,8 @@ import { OTP } from 'src/modules/otp/entities/otp.entity';
 import { SavingFund } from 'src/modules/saving-funds/entities/saving-fund.entity';
 import { Transaction } from 'src/modules/transactions/entities/transaction.entity';
 import { UserProfile } from 'src/modules/user-profile/entities/user-profile.entity';
+import { DeviceToken } from 'src/modules/notifications/entities/device-token.entity';
+import { Notification } from 'src/modules/notifications/entities/notification.entity';
 import {
   Entity,
   PrimaryGeneratedColumn,
@@ -24,7 +26,7 @@ export class User {
   @Column({ unique: true })
   email: string;
 
-  @Column({ nullable: true })
+  @Column({ nullable: true, select: false })
   password: string;
 
   @Column({ default: false })
@@ -50,4 +52,10 @@ export class User {
 
   @OneToMany(() => Transaction, (trans) => trans.user)
   transactions: Transaction[];
+
+  @OneToMany(() => DeviceToken, (token) => token.user)
+  deviceTokens: DeviceToken[];
+
+  @OneToMany(() => Notification, (notification) => notification.user)
+  notifications: Notification[];
 }

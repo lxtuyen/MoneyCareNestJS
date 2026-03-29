@@ -108,21 +108,22 @@ export class SavingFundsService {
     fund.end_date = dto.end_date ?? fund.end_date;
 
     if (dto.categories) {
-      for (const catDto of dto.categories) {
+      const categoryPromises = dto.categories.map((catDto) => {
         if (catDto.id) {
-          await this.categoryRepo.update(catDto.id, {
+          return this.categoryRepo.update(catDto.id, {
             name: catDto.name,
             icon: catDto.icon,
             percentage: catDto.percentage,
           });
-        } else {
-          const newCat = this.categoryRepo.create({
-            ...catDto,
-            savingFund: fund,
-          });
-          await this.categoryRepo.save(newCat);
         }
-      }
+        const newCat = this.categoryRepo.create({
+          ...catDto,
+          savingFund: fund,
+        });
+        return this.categoryRepo.save(newCat);
+      });
+
+      await Promise.all(categoryPromises);
 
       fund.categories = await this.categoryRepo.find({
         where: { savingFund: { id: fund.id } },
@@ -167,20 +168,17 @@ export class SavingFundsService {
     userId: number,
     fundId: number,
   ): Promise<ApiResponse<SavingFund>> {
-    const user = await this.userRepo.findOne({ where: { id: userId } });
-    if (!user) throw new NotFoundException('User not found');
-
-    await this.savingFundRepo.update(
-      { user: { id: userId } },
-      { is_selected: false },
-    );
-
     const fund = await this.savingFundRepo.findOne({
       where: { id: fundId, user: { id: userId } },
       relations: ['categories'],
     });
 
     if (!fund) throw new NotFoundException('Saving fund not found');
+
+    await this.savingFundRepo.update(
+      { user: { id: userId } },
+      { is_selected: false },
+    );
 
     fund.is_selected = true;
     const updated = await this.savingFundRepo.save(fund);

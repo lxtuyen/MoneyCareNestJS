@@ -19,6 +19,7 @@ import {
 } from 'src/common/interfaces/total-by-date.interface';
 import { TotalByCategory } from 'src/common/interfaces/total-by-category.interface';
 import { GetTransactionDto } from './dto/get-transaction.dto';
+import { NotificationsService } from 'src/modules/notifications/notifications.service';
 
 @Injectable()
 export class TransactionService {
@@ -29,19 +30,21 @@ export class TransactionService {
     private userRepo: Repository<User>,
     @InjectRepository(Category)
     private categoryRepo: Repository<Category>,
+    private notificationsService: NotificationsService,
   ) {}
 
   async create(dto: CreateTransactionDto): Promise<ApiResponse<Transaction>> {
-    const user = await this.userRepo.findOne({ where: { id: dto.userId } });
-    if (!user) throw new NotFoundException('User not found');
+    const [user, category] = await Promise.all([
+      this.userRepo.findOne({ where: { id: dto.userId } }),
+      dto.type === 'expense' && dto.categoryId
+        ? this.categoryRepo.findOne({ where: { id: dto.categoryId }, relations: ['savingFund'] })
+        : Promise.resolve(null),
+    ]);
 
-    let category: Category | null = null;
+    if (!user) throw new NotFoundException('User not found');
     if (dto.type === 'expense') {
       if (!dto.categoryId)
         throw new BadRequestException('Category is required for expense');
-      category = await this.categoryRepo.findOne({
-        where: { id: dto.categoryId },
-      });
       if (!category) throw new NotFoundException('Category not found');
     }
 
@@ -53,7 +56,33 @@ export class TransactionService {
       user,
       category,
     });
+
+    let currentExpenseTotal = 0;
+    if (dto.type === 'expense' && category?.savingFund) {
+      const currentExpenseRes = await this.transactionRepo
+        .createQueryBuilder('t')
+        .where('t.category.id = :categoryId', { categoryId: category.id })
+        .andWhere('t.type = :type', { type: 'expense' })
+        .select('SUM(t.amount)', 'total')
+        .getRawOne<{ total: string }>();
+        
+      currentExpenseTotal = Number(currentExpenseRes?.total || 0);
+    }
+
     await this.transactionRepo.save(transaction);
+
+    if (dto.type === 'expense' && category?.savingFund) {
+      const budget = (Number(category.savingFund.amount) * Number(category.percentage)) / 100;
+      const sumExpensesAfter = currentExpenseTotal + Number(dto.amount);
+      
+      if (currentExpenseTotal <= budget && sumExpensesAfter > budget) {
+        await this.notificationsService.sendPushNotification(
+          user,
+          'Cảnh báo ngân sách',
+          `Khoản chi vừa rồi đã khiến mục "${category.name}" vượt quá ngân sách dự kiến (${budget.toLocaleString('vi-VN')} đ)!`,
+        );  
+      }
+    }
 
     return new ApiResponse({
       success: true,
@@ -68,7 +97,7 @@ export class TransactionService {
   ): Promise<ApiResponse<Transaction>> {
     const transaction = await this.transactionRepo.findOne({
       where: { id },
-      relations: ['category', 'user'],
+      relations: ['category'],
     });
     if (!transaction) throw new NotFoundException('Transaction not found');
 
@@ -116,43 +145,29 @@ export class TransactionService {
         fundId: dto.fundId,
       });
 
-    const categories = await categoryQuery.getRawMany<{
-      categoryId: number;
-      categoryName: string;
-      percentage: number;
-      categoryIcon: string;
-    }>();
-    
-    const transactionQuery = this.transactionRepo
-      .createQueryBuilder('transaction')
-      .leftJoin('transaction.category', 'category')
-      .leftJoin('category.savingFund', 'savingFund')
-      .leftJoin('savingFund.user', 'user')
+    const transactionQuery = this.getBaseExpenseQuery(
+      dto.userId,
+      undefined,
+      dto.fundId,
+      dto.startDate,
+      dto.endDate,
+    )
       .select('category.id', 'categoryId')
       .addSelect('SUM(transaction.amount)', 'total')
-      .where('user.id = :userId', { userId: dto.userId })
-      .andWhere('transaction.type = :type', { type: 'expense' })
       .groupBy('category.id');
 
-    if (dto.startDate)
-      transactionQuery.andWhere('transaction.transaction_date >= :start', {
-        start: dto.startDate,
-      });
-
-    if (dto.endDate)
-      transactionQuery.andWhere('transaction.transaction_date <= :end', {
-        end: dto.endDate,
-      });
-
-    if (dto.fundId)
-      transactionQuery.andWhere('savingFund.id = :fundId', {
-        fundId: dto.fundId,
-      });
-
-    const totals = await transactionQuery.getRawMany<{
-      categoryId: number;
-      total: string;
-    }>();
+    const [categories, totals] = await Promise.all([
+      categoryQuery.getRawMany<{
+        categoryId: number;
+        categoryName: string;
+        percentage: number;
+        categoryIcon: string;
+      }>(),
+      transactionQuery.getRawMany<{
+        categoryId: number;
+        total: string;
+      }>(),
+    ]);
 
     const totalMap = new Map(
       totals.map((t) => [Number(t.categoryId), Number(t.total) || 0]),
@@ -177,45 +192,29 @@ export class TransactionService {
   ): Promise<ApiResponse<{ income: Transaction[]; expense: Transaction[] }>> {
     const { userId, categoryId, startDate, endDate, fundId } = filter;
 
-    const incomeQuery = this.transactionRepo
-      .createQueryBuilder('transaction')
-      .leftJoinAndSelect('transaction.user', 'user')
-      .where('user.id = :userId', { userId })
-      .andWhere('transaction.type = :type', { type: 'income' });
+    const incomeQuery = this.getBaseIncomeQuery(
+      userId,
+      startDate,
+      endDate,
+      true,
+    );
 
-    if (startDate)
-      incomeQuery.andWhere('transaction.transaction_date >= :start', {
-        start: startDate,
-      });
-    if (endDate)
-      incomeQuery.andWhere('transaction.transaction_date <= :end', {
-        end: endDate,
-      });
-
-    const expenseQuery = this.transactionRepo
-      .createQueryBuilder('transaction')
-      .leftJoinAndSelect('transaction.category', 'category')
-      .leftJoin('category.savingFund', 'savingFund')
-      .leftJoin('savingFund.user', 'user')
-      .where('user.id = :userId', { userId })
-      .andWhere('transaction.type = :type', { type: 'expense' });
-    if (categoryId)
-      expenseQuery.andWhere('category.id = :categoryId', { categoryId });
-    if (fundId) expenseQuery.andWhere('savingFund.id = :fundId', { fundId });
-    if (startDate)
-      expenseQuery.andWhere('transaction.transaction_date >= :start', {
-        start: startDate,
-      });
-    if (endDate)
-      expenseQuery.andWhere('transaction.transaction_date <= :end', {
-        end: endDate,
-      });
+    const expenseQuery = this.getBaseExpenseQuery(
+      userId,
+      categoryId,
+      fundId,
+      startDate,
+      endDate,
+      true,
+    );
 
     incomeQuery.orderBy('transaction.transaction_date', 'DESC');
     expenseQuery.orderBy('transaction.transaction_date', 'DESC');
 
-    const income = await incomeQuery.getMany();
-    const expense = await expenseQuery.getMany();
+    const [income, expense] = await Promise.all([
+      incomeQuery.getMany(),
+      expenseQuery.getMany(),
+    ]);
 
     return new ApiResponse({
       success: true,
@@ -227,49 +226,26 @@ export class TransactionService {
   async getTotalsByType(
     dto: GetTransactionDto,
   ): Promise<ApiResponse<{ income_total: number; expense_total: number }>> {
-    const incomeQuery = this.transactionRepo
-      .createQueryBuilder('transaction')
-      .leftJoin('transaction.user', 'user')
-      .where('user.id = :userId', { userId: dto.userId })
-      .andWhere('transaction.type = :type', { type: 'income' });
+    const incomeQuery = this.getBaseIncomeQuery(
+      dto.userId,
+      dto.startDate,
+      dto.endDate,
+    );
 
-    if (dto.startDate)
-      incomeQuery.andWhere('transaction.transaction_date >= :start', {
-        start: dto.startDate,
-      });
-    if (dto.endDate)
-      incomeQuery.andWhere('transaction.transaction_date <= :end', {
-        end: dto.endDate,
-      });
+    const expenseQuery = this.getBaseExpenseQuery(
+      dto.userId,
+      undefined,
+      dto.fundId,
+      dto.startDate,
+      dto.endDate,
+    );
 
-    const incomeTotalRes = await incomeQuery
-      .select('SUM(transaction.amount)', 'total')
-      .getRawOne<{ total: string }>();
+    const [incomeTotalRes, expenseTotalRes] = await Promise.all([
+      incomeQuery.select('SUM(transaction.amount)', 'total').getRawOne<{ total: string }>(),
+      expenseQuery.select('SUM(transaction.amount)', 'total').getRawOne<{ total: string }>(),
+    ]);
 
     const incomeTotal = Number(incomeTotalRes?.total ?? 0);
-
-    const expenseQuery = this.transactionRepo
-      .createQueryBuilder('transaction')
-      .leftJoin('transaction.category', 'category')
-      .leftJoin('category.savingFund', 'savingFund')
-      .leftJoin('savingFund.user', 'user')
-      .where('user.id = :userId', { userId: dto.userId })
-      .andWhere('transaction.type = :type', { type: 'expense' });
-
-    if (dto.fundId)
-      expenseQuery.andWhere('savingFund.id = :fundId', { fundId: dto.fundId });
-    if (dto.startDate)
-      expenseQuery.andWhere('transaction.transaction_date >= :start', {
-        start: dto.startDate,
-      });
-    if (dto.endDate)
-      expenseQuery.andWhere('transaction.transaction_date <= :end', {
-        end: dto.endDate,
-      });
-
-    const expenseTotalRes = await expenseQuery
-      .select('SUM(transaction.amount)', 'total')
-      .getRawOne<{ total: string }>();
     const expenseTotal = Number(expenseTotalRes?.total ?? 0);
 
     return new ApiResponse({
@@ -291,47 +267,32 @@ export class TransactionService {
   }
 
   async sumByDay(dto: GetTransactionDto): Promise<ApiResponse<TotalsByDate>> {
-    const incomeRes = await this.transactionRepo
-      .createQueryBuilder('transaction')
-      .leftJoin('transaction.user', 'user')
-      .where('user.id = :userId', { userId: dto.userId })
-      .andWhere('transaction.type = :type', { type: 'income' })
-      .andWhere(
-        dto.startDate ? 'transaction.transaction_date >= :start' : '1=1',
-        { start: dto.startDate },
-      )
-      .andWhere(dto.endDate ? 'transaction.transaction_date <= :end' : '1=1', {
-        end: dto.endDate,
-      })
-      .select('DATE(transaction.transaction_date)', 'date')
-      .addSelect('SUM(transaction.amount)', 'total')
-      .groupBy('DATE(transaction.transaction_date)')
-      .getRawMany<TotalByDate>();
+    const incomeQuery = this.getBaseIncomeQuery(
+      dto.userId,
+      dto.startDate,
+      dto.endDate,
+    );
 
-    const expenseQuery = this.transactionRepo
-      .createQueryBuilder('transaction')
-      .leftJoin('transaction.category', 'category')
-      .leftJoin('category.savingFund', 'savingFund')
-      .leftJoin('savingFund.user', 'user')
-      .where('user.id = :userId', { userId: dto.userId })
-      .andWhere('transaction.type = :type', { type: 'expense' });
+    const expenseQuery = this.getBaseExpenseQuery(
+      dto.userId,
+      undefined,
+      dto.fundId,
+      dto.startDate,
+      dto.endDate,
+    );
 
-    if (dto.fundId)
-      expenseQuery.andWhere('savingFund.id = :fundId', { fundId: dto.fundId });
-    if (dto.startDate)
-      expenseQuery.andWhere('transaction.transaction_date >= :start', {
-        start: dto.startDate,
-      });
-    if (dto.endDate)
-      expenseQuery.andWhere('transaction.transaction_date <= :end', {
-        end: dto.endDate,
-      });
-
-    const expenseRes = await expenseQuery
-      .select('DATE(transaction.transaction_date)', 'date')
-      .addSelect('SUM(transaction.amount)', 'total')
-      .groupBy('DATE(transaction.transaction_date)')
-      .getRawMany<TotalByDate>();
+    const [incomeRes, expenseRes] = await Promise.all([
+      incomeQuery
+        .select('DATE(transaction.transaction_date)', 'date')
+        .addSelect('SUM(transaction.amount)', 'total')
+        .groupBy('DATE(transaction.transaction_date)')
+        .getRawMany<TotalByDate>(),
+      expenseQuery
+        .select('DATE(transaction.transaction_date)', 'date')
+        .addSelect('SUM(transaction.amount)', 'total')
+        .groupBy('DATE(transaction.transaction_date)')
+        .getRawMany<TotalByDate>(),
+    ]);
 
     return new ApiResponse({
       success: true,
@@ -347,5 +308,68 @@ export class TransactionService {
         })),
       },
     });
+  }
+
+  private getBaseIncomeQuery(
+    userId: number,
+    startDate?: string,
+    endDate?: string,
+    withRelations = false,
+  ) {
+    const query = this.transactionRepo
+      .createQueryBuilder('transaction')
+      .where('user.id = :userId', { userId })
+      .andWhere('transaction.type = :type', { type: 'income' });
+
+    if (withRelations) {
+      query.leftJoinAndSelect('transaction.user', 'user');
+    } else {
+      query.leftJoin('transaction.user', 'user');
+    }
+
+    if (startDate) {
+      query.andWhere('transaction.transaction_date >= :start', { start: startDate });
+    }
+    if (endDate) {
+      query.andWhere('transaction.transaction_date <= :end', { end: endDate });
+    }
+    return query;
+  }
+
+  private getBaseExpenseQuery(
+    userId: number,
+    categoryId?: number,
+    fundId?: number,
+    startDate?: string,
+    endDate?: string,
+    withRelations = false,
+  ) {
+    const query = this.transactionRepo
+      .createQueryBuilder('transaction')
+      .where('user.id = :userId', { userId })
+      .andWhere('transaction.type = :type', { type: 'expense' });
+
+    if (withRelations) {
+      query.leftJoinAndSelect('transaction.category', 'category');
+      query.leftJoinAndSelect('transaction.user', 'user');
+    } else {
+      query.leftJoin('transaction.category', 'category');
+      query.leftJoin('transaction.user', 'user');
+    }
+
+    if (categoryId) {
+      query.andWhere('category.id = :categoryId', { categoryId });
+    }
+    if (fundId) {
+      query.leftJoin('category.savingFund', 'savingFund');
+      query.andWhere('savingFund.id = :fundId', { fundId });
+    }
+    if (startDate) {
+      query.andWhere('transaction.transaction_date >= :start', { start: startDate });
+    }
+    if (endDate) {
+      query.andWhere('transaction.transaction_date <= :end', { end: endDate });
+    }
+    return query;
   }
 }

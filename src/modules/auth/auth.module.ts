@@ -7,12 +7,12 @@ import { User } from 'src/modules/user/entities/user.entity';
 import { UserProfile } from 'src/modules/user-profile/entities/user-profile.entity';
 import { JwtStrategy } from './jwt.strategy';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { GoogleGmailController } from './google-gmail.controller';
 
 @Module({
-  controllers: [AuthController, GoogleGmailController],
+  controllers: [AuthController],
   providers: [AuthService, JwtStrategy],
   imports: [
+    ConfigModule,
     TypeOrmModule.forFeature([User, UserProfile]),
     JwtModule.registerAsync({
       imports: [ConfigModule],

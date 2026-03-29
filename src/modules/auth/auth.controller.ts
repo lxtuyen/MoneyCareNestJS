@@ -25,18 +25,4 @@ export class AuthController {
   googleLogin(@Body() dto: GoogleLoginDto) {
     return this.authService.googleLogin(dto);
   }
-
-  @UseGuards(JwtAuthGuard)
-  @Post('google/gmail/connect')
-  async connectGmail(
-    @User('sub') userId: number,
-    @Body('code') code: string,
-  ): Promise<ApiResponse<null>> {
-    await this.authService.exchangeCode(userId, code);
-
-    return new ApiResponse({
-      success: true,
-      message: 'Đã kết nối Gmail',
-    });
-  }
 }

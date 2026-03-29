@@ -15,6 +15,7 @@ import { ReceiptModule } from './modules/receipt/receipt.module';;
 import { ScheduleModule } from '@nestjs/schedule';
 import { ChatbotModule } from './modules/chatbot/chatbot.module';
 import { PaymentsModule } from './modules/payment/payment.module';
+import { NotificationsModule } from './modules/notifications/notifications.module';
 
 @Module({
   imports: [
@@ -60,6 +61,8 @@ import { PaymentsModule } from './modules/payment/payment.module';
     PaymentsModule,
 
     ChatbotModule,
+
+    NotificationsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

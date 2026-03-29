@@ -14,18 +14,24 @@ import { LoginDto } from './dto/login.dto';
 import { UserProfile } from 'src/modules/user-profile/entities/user-profile.entity';
 import { ApiResponse } from 'src/common/dto/api-response.dto';
 import { GoogleLoginDto } from './dto/google-login.dto';
-import axios from 'axios';
-import { GoogleOAuthTokenResponse } from 'src/common/interfaces/google-oauth.interface';
+import { ConfigService } from '@nestjs/config';
+import { OAuth2Client } from 'google-auth-library';
 
 @Injectable()
 export class AuthService {
+  private googleClient: OAuth2Client;
+
   constructor(
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
     @InjectRepository(UserProfile)
     private readonly profileRepo: Repository<UserProfile>,
     private readonly jwtService: JwtService,
-  ) {}
+    private readonly configService: ConfigService,
+  ) {
+    const clientId = this.configService.get<string>('GOOGLE_CLIENT_ID');
+    this.googleClient = new OAuth2Client(clientId);
+  }
 
   async register(dto: RegisterDto): Promise<ApiResponse<null>> {
     const exist = await this.userRepo.findOne({ where: { email: dto.email } });
@@ -57,20 +63,22 @@ export class AuthService {
   async login(
     dto: LoginDto,
   ): Promise<ApiResponse<{ accessToken: string; user: any }>> {
-    const user = await this.userRepo.findOne({
-      where: { email: dto.email },
-      relations: ['savingFunds', 'profile'],
-    });
+    const user = await this.userRepo
+      .createQueryBuilder('user')
+      .leftJoinAndSelect('user.savingFunds', 'savingFunds')
+      .leftJoinAndSelect('user.profile', 'profile')
+      .addSelect('user.password')
+      .where('user.email = :email', { email: dto.email })
+      .getOne();
 
-    if (!user)
-      throw new UnauthorizedException('Email hoặc mật khẩu không hợp lệp-user');
+    if (!user) {
+      throw new UnauthorizedException('Email hoặc mật khẩu không hợp lệ');
+    }
 
     const isMatch = await bcrypt.compare(dto.password, user.password);
     if (!isMatch) {
-      throw new UnauthorizedException('Mật khẩu không đúng');
+      throw new UnauthorizedException('Email hoặc mật khẩu không hợp lệ');
     }
-    if (!isMatch)
-      throw new UnauthorizedException('Email hoặc mật khẩu không hợp lệismatc');
 
     const selectedFund = user.savingFunds.find((fund) => fund.is_selected);
 
@@ -99,10 +107,16 @@ export class AuthService {
     dto: GoogleLoginDto,
   ): Promise<ApiResponse<{ accessToken: string; user: any }>> {
     try {
-      const { email, firstName } = dto;
+      const ticket = await this.googleClient.verifyIdToken({
+        idToken: dto.idToken,
+      });
+      const payload = ticket.getPayload();
+      const email = payload?.email;
+      const firstName = payload?.given_name || payload?.name;
+      const lastName = payload?.family_name;
 
       if (!email) {
-        throw new UnauthorizedException('Email không hợp lệ');
+        throw new UnauthorizedException('Không lấy được email từ Google');
       }
 
       let user = await this.userRepo.findOne({
@@ -126,12 +140,12 @@ export class AuthService {
         await this.userRepo.save(user);
       }
 
-      const payload = {
+      const jwtPayload = {
         sub: user.id,
         email: user.email,
         role: user.role,
       };
-      const accessToken = this.jwtService.sign(payload);
+      const accessToken = this.jwtService.sign(jwtPayload);
 
       const selectedFund = user.savingFunds?.find((f) => f.is_selected) ?? null;
 
@@ -154,25 +168,6 @@ export class AuthService {
     } catch (error) {
       console.error(error);
       throw new UnauthorizedException('Đăng nhập Google thất bại');
-    }
-  }
-
-  async exchangeCode(userId: number, code: string): Promise<void> {
-    const response = await axios.post<GoogleOAuthTokenResponse>(
-      'https://oauth2.googleapis.com/token',
-      {
-        code,
-        client_id: process.env.CLIENT_ID!,
-        client_secret: process.env.CLIENT_SECRET!,
-        redirect_uri: process.env.REDIRECT_URI!,
-        grant_type: 'authorization_code',
-      },
-    );
-
-    const data = response.data;
-
-    if (!data.access_token || !data.expires_in) {
-      throw new Error('Invalid Google OAuth response');
     }
   }
 }

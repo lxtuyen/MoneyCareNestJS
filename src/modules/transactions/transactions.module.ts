@@ -6,14 +6,16 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { Category } from 'src/modules/categories/entities/category.entity';
 import { Transaction } from './entities/transaction.entity';
 import { User } from 'src/modules/user/entities/user.entity';
+import { NotificationsModule } from 'src/modules/notifications/notifications.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Transaction, Category, User]),
     forwardRef(() => UserModule),
+    NotificationsModule,
   ],
   controllers: [TransactionController],
   providers: [TransactionService],
-  exports: [TypeOrmModule],
+  exports: [TypeOrmModule, TransactionService],
 })
 export class TransactionsModule {}
