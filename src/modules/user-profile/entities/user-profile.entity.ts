@@ -20,9 +20,6 @@ export class UserProfile {
   @Column({ nullable: true })
   last_name: string;
 
-  @Column({ type: 'decimal', precision: 12, scale: 2, nullable: true })
-  monthly_income: number;
-
   @OneToOne(() => User, (user) => user.profile, { onDelete: 'CASCADE' })
   @JoinColumn()
   user: User;

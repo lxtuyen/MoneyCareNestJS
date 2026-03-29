@@ -11,6 +11,7 @@ import { CreateTransactionDto } from './dto/create-transaction.dto';
 import { UpdateTransactionDto } from './dto/update-transaction.dto';
 import { User } from 'src/modules/user/entities/user.entity';
 import { Category } from 'src/modules/categories/entities/category.entity';
+import { SavingFund } from 'src/modules/saving-funds/entities/saving-fund.entity';
 import { TransactionFilterDto } from './dto/transaction-filter.dto';
 import { ApiResponse } from 'src/common/dto/api-response.dto';
 import {
@@ -20,6 +21,7 @@ import {
 import { TotalByCategory } from 'src/common/interfaces/total-by-category.interface';
 import { GetTransactionDto } from './dto/get-transaction.dto';
 import { NotificationsService } from 'src/modules/notifications/notifications.service';
+import { StatisticsSummaryResponseDto } from './dto/statistics-summary-response.dto';
 
 @Injectable()
 export class TransactionService {
@@ -30,6 +32,8 @@ export class TransactionService {
     private userRepo: Repository<User>,
     @InjectRepository(Category)
     private categoryRepo: Repository<Category>,
+    @InjectRepository(SavingFund)
+    private savingFundRepo: Repository<SavingFund>,
     private notificationsService: NotificationsService,
   ) {}
 
@@ -138,6 +142,7 @@ export class TransactionService {
       .addSelect('category.name', 'categoryName')
       .addSelect('category.percentage', 'percentage')
       .addSelect('category.icon', 'categoryIcon')
+      .addSelect('savingFund.amount', 'amount')
       .where('user.id = :userId', { userId: dto.userId });
 
     if (dto.fundId)
@@ -162,6 +167,7 @@ export class TransactionService {
         categoryName: string;
         percentage: number;
         categoryIcon: string;
+        amount: string | null;
       }>(),
       transactionQuery.getRawMany<{
         categoryId: number;
@@ -177,6 +183,7 @@ export class TransactionService {
       categoryName: cat.categoryName,
       categoryIcon: cat.categoryIcon,
       percentage: cat.percentage,
+      limit: (Number(cat.percentage) * Number(cat.amount || 0)) / 100,
       total: totalMap.get(Number(cat.categoryId)) ?? 0,
     }));
 
@@ -225,7 +232,12 @@ export class TransactionService {
 
   async getTotalsByType(
     dto: GetTransactionDto,
-  ): Promise<ApiResponse<{ income_total: number; expense_total: number }>> {
+  ): Promise<ApiResponse<{ 
+    income_total: number; 
+    expense_total: number; 
+    current_saving: number;
+    target_saving: number;
+  }>> {
     const incomeQuery = this.getBaseIncomeQuery(
       dto.userId,
       dto.startDate,
@@ -240,19 +252,115 @@ export class TransactionService {
       dto.endDate,
     );
 
-    const [incomeTotalRes, expenseTotalRes] = await Promise.all([
+    const [incomeTotalRes, expenseTotalRes, savingFund] = await Promise.all([
       incomeQuery.select('SUM(transaction.amount)', 'total').getRawOne<{ total: string }>(),
       expenseQuery.select('SUM(transaction.amount)', 'total').getRawOne<{ total: string }>(),
+      dto.fundId ? this.savingFundRepo.findOne({ where: { id: dto.fundId } }) : Promise.resolve(null),
     ]);
 
     const incomeTotal = Number(incomeTotalRes?.total ?? 0);
     const expenseTotal = Number(expenseTotalRes?.total ?? 0);
+    const currentSaving = incomeTotal - expenseTotal;
+    const targetSaving = Number(savingFund?.amount ?? 0);
 
     return new ApiResponse({
       success: true,
       statusCode: HttpStatus.OK,
-      data: { income_total: incomeTotal, expense_total: expenseTotal },
+      data: { 
+        income_total: incomeTotal, 
+        expense_total: expenseTotal,
+        current_saving: currentSaving,
+        target_saving: targetSaving,
+      },
     });
+  }
+
+  async getStatisticsSummary(
+    userId: number,
+    fundId?: number,
+  ): Promise<ApiResponse<StatisticsSummaryResponseDto>> {
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth();
+
+    const currentMonthStart = new Date(currentYear, currentMonth, 1);
+    const currentMonthEnd = now;
+
+    const prevMonthStart = new Date(currentYear, currentMonth - 1, 1);
+    const prevMonthEnd = new Date(currentYear, currentMonth, 0);
+
+    const [currentMonthTotals, prevMonthTotals] = await Promise.all([
+      this.getTotalsForRange(userId, currentMonthStart, currentMonthEnd, fundId),
+      this.getTotalsForRange(userId, prevMonthStart, prevMonthEnd, fundId),
+    ]);
+
+    const daysPassedInCurrentMonth = now.getDate();
+    const daysInPrevMonth = prevMonthEnd.getDate();
+
+    const currentDailyAverage = currentMonthTotals.expense / daysPassedInCurrentMonth;
+    const prevDailyAverage = prevMonthTotals.expense / daysInPrevMonth;
+
+    const currentDailyIncomeAverage = currentMonthTotals.income / daysPassedInCurrentMonth;
+    const prevDailyIncomeAverage = prevMonthTotals.income / daysInPrevMonth;
+
+    const dailyAverageChange = this.calculatePercentageChange(
+      currentDailyAverage,
+      prevDailyAverage,
+    );
+    const dailyIncomeChange = this.calculatePercentageChange(
+      currentDailyIncomeAverage,
+      prevDailyIncomeAverage,
+    );
+
+    return new ApiResponse({
+      success: true,
+      statusCode: HttpStatus.OK,
+      data: {
+        dailyAverage: currentDailyAverage,
+        dailyAverageChange,
+        dailyIncomeChange,
+        monthlyBalance: currentMonthTotals.income - currentMonthTotals.expense,
+      },
+    });
+  }
+
+  private async getTotalsForRange(
+    userId: number,
+    start: Date,
+    end: Date,
+    fundId?: number,
+  ) {
+    const incomeQuery = this.getBaseIncomeQuery(
+      userId,
+      start.toISOString(),
+      end.toISOString(),
+    );
+    const expenseQuery = this.getBaseExpenseQuery(
+      userId,
+      undefined,
+      fundId,
+      start.toISOString(),
+      end.toISOString(),
+    );
+
+    const [incomeRes, expenseRes] = await Promise.all([
+      incomeQuery
+        .select('SUM(transaction.amount)', 'total')
+        .getRawOne<{ total: string }>(),
+      expenseQuery
+        .select('SUM(transaction.amount)', 'total')
+        .getRawOne<{ total: string }>(),
+    ]);
+
+    return {
+      income: Number(incomeRes?.total || 0),
+      expense: Number(expenseRes?.total || 0),
+    };
+  }
+
+  private calculatePercentageChange(current: number, previous: number): number {
+    if (previous === 0) return 0;
+    return ((current - previous) / previous) * 100;
   }
 
   async remove(id: number): Promise<ApiResponse<string>> {

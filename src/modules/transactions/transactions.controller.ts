@@ -112,6 +112,14 @@ export class TransactionController {
     return this.transactionService.sumByCategory(dto);
   }
 
+  @Get(':userId/statistics-summary')
+  async getStatisticsSummary(
+    @Param('userId', ParseIntPipe) userId: number,
+    @Query('fundId') fundId?: number,
+  ) {
+    return this.transactionService.getStatisticsSummary(userId, fundId);
+  }
+
   @Delete(':id')
   async remove(@Param('id') id: number) {
     return this.transactionService.remove(id);
