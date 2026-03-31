@@ -2,7 +2,7 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Notification, NotificationType } from './entities/notification.entity';
 import { DeviceToken } from './entities/device-token.entity';
-import { Repository } from 'typeorm';
+import { Repository, In } from 'typeorm';
 import { User } from 'src/modules/user/entities/user.entity';
 import * as admin from 'firebase-admin';
 
@@ -20,13 +20,24 @@ export class NotificationsService implements OnModuleInit {
   onModuleInit() {
     try {
       if (!admin.apps.length) {
-        admin.initializeApp({
-          credential: admin.credential.applicationDefault(),
-        });
+        const jsonEnv = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
+        const pathEnv = process.env.FIREBASE_SERVICE_ACCOUNT_PATH;
+
+        let credential: admin.credential.Credential;
+        if (jsonEnv) {
+          credential = admin.credential.cert(JSON.parse(jsonEnv));
+        } else if (pathEnv) {
+          credential = admin.credential.cert(pathEnv);
+        } else {
+          this.logger.warn('No Firebase credentials configured (FIREBASE_SERVICE_ACCOUNT_JSON or FIREBASE_SERVICE_ACCOUNT_PATH). Push notifications disabled.');
+          return;
+        }
+
+        admin.initializeApp({ credential });
         this.logger.log('Firebase Admin SDK initialized successfully');
       }
     } catch (error) {
-      this.logger.warn('Failed to initialize Firebase Admin SDK. Push notifications will not be sent.', error);
+      this.logger.error('Failed to initialize Firebase Admin SDK', error);
     }
   }
 
@@ -58,11 +69,11 @@ export class NotificationsService implements OnModuleInit {
     return { success: true };
   }
 
-  async sendPushNotification(user: User, title: string, body: string, data?: any) {
+  async sendPushNotification(user: User, title: string, body: string, data?: any, type: NotificationType = NotificationType.SYSTEM) {
     const notification = this.notificationRepo.create({
       title,
       body,
-      type: NotificationType.SYSTEM,
+      type,
       user,
     });
     await this.notificationRepo.save(notification);
@@ -94,7 +105,7 @@ export class NotificationsService implements OnModuleInit {
           }
         });
         if (failedTokens.length > 0) {
-          await this.deviceTokenRepo.delete(failedTokens.map((t) => ({ token: t })));
+          await this.deviceTokenRepo.delete({ token: In(failedTokens) });
         }
       }
     } catch (error) {

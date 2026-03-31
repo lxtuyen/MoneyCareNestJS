@@ -11,6 +11,7 @@ import { SavingFundsService } from './saving-funds.service';
 import { CreateSavingFundDto } from './dto/create-saving-fund.dto';
 import { UpdateSavingFundDto } from './dto/update-saving-fund.dto';
 import { SavingFundResponseDto } from './dto/saving-fund-response.dto';
+import { ExtendSavingFundDto } from './dto/extend-saving-fund.dto';
 import { ApiResponse } from '@nestjs/swagger';
 
 @Controller('saving-fund')
@@ -53,5 +54,34 @@ export class SavingFundsController {
     @Body('userId') userId: number,
   ) {
     return this.savingFundsService.selectSavingFund(userId, fundId);
+  }
+
+  // ============ NEW ENDPOINTS FOR EXPIRED FUND HANDLING ============
+
+  @Get('check-expired/:userId')
+  async checkExpiredFund(@Param('userId') userId: number) {
+    return this.savingFundsService.checkExpiredFund(userId);
+  }
+
+  @Patch(':fundId/mark-notified')
+  async markAsNotified(@Param('fundId') fundId: number) {
+    return this.savingFundsService.markAsNotified(fundId);
+  }
+
+  @Patch(':fundId/extend')
+  async extendFund(
+    @Param('fundId') fundId: number,
+    @Body() dto: ExtendSavingFundDto,
+  ) {
+    return this.savingFundsService.extendFund(
+      fundId,
+      dto.new_end_date,
+      dto.new_start_date,
+    );
+  }
+
+  @Get(':fundId/report')
+  async getFundReport(@Param('fundId') fundId: number) {
+    return this.savingFundsService.getFundReport(fundId);
   }
 }

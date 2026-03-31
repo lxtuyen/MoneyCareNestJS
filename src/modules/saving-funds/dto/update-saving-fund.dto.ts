@@ -24,7 +24,11 @@ export class UpdateSavingFundDto {
 
   @IsOptional()
   @IsNumber()
-  amount?: number;
+  budget?: number;
+
+  @IsOptional()
+  @IsNumber()
+  target?: number;
 
   @IsOptional()
   start_date?: Date;

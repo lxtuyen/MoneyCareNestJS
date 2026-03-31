@@ -21,6 +21,7 @@ import {
 import { TotalByCategory } from 'src/common/interfaces/total-by-category.interface';
 import { GetTransactionDto } from './dto/get-transaction.dto';
 import { NotificationsService } from 'src/modules/notifications/notifications.service';
+import { NotificationType } from 'src/modules/notifications/entities/notification.entity';
 import { StatisticsSummaryResponseDto } from './dto/statistics-summary-response.dto';
 
 @Injectable()
@@ -76,7 +77,7 @@ export class TransactionService {
     await this.transactionRepo.save(transaction);
 
     if (dto.type === 'expense' && category?.savingFund) {
-      const budget = (Number(category.savingFund.amount) * Number(category.percentage)) / 100;
+      const budget = (Number(category.savingFund.budget) * Number(category.percentage)) / 100;
       const sumExpensesAfter = currentExpenseTotal + Number(dto.amount);
       
       if (currentExpenseTotal <= budget && sumExpensesAfter > budget) {
@@ -84,6 +85,8 @@ export class TransactionService {
           user,
           'Cảnh báo ngân sách',
           `Khoản chi vừa rồi đã khiến mục "${category.name}" vượt quá ngân sách dự kiến (${budget.toLocaleString('vi-VN')} đ)!`,
+          undefined,
+          NotificationType.ALERT,
         );  
       }
     }
@@ -142,7 +145,7 @@ export class TransactionService {
       .addSelect('category.name', 'categoryName')
       .addSelect('category.percentage', 'percentage')
       .addSelect('category.icon', 'categoryIcon')
-      .addSelect('savingFund.amount', 'amount')
+      .addSelect('savingFund.budget', 'budget')
       .where('user.id = :userId', { userId: dto.userId });
 
     if (dto.fundId)
@@ -167,7 +170,7 @@ export class TransactionService {
         categoryName: string;
         percentage: number;
         categoryIcon: string;
-        amount: string | null;
+        budget: string | null;
       }>(),
       transactionQuery.getRawMany<{
         categoryId: number;
@@ -183,7 +186,7 @@ export class TransactionService {
       categoryName: cat.categoryName,
       categoryIcon: cat.categoryIcon,
       percentage: cat.percentage,
-      limit: (Number(cat.percentage) * Number(cat.amount || 0)) / 100,
+      limit: (Number(cat.percentage) * Number(cat.budget || 0)) / 100,
       total: totalMap.get(Number(cat.categoryId)) ?? 0,
     }));
 
@@ -261,7 +264,7 @@ export class TransactionService {
     const incomeTotal = Number(incomeTotalRes?.total ?? 0);
     const expenseTotal = Number(expenseTotalRes?.total ?? 0);
     const currentSaving = incomeTotal - expenseTotal;
-    const targetSaving = Number(savingFund?.amount ?? 0);
+    const targetSaving = Number(savingFund?.target ?? 0);
 
     return new ApiResponse({
       success: true,

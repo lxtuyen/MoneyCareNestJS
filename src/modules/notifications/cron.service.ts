@@ -5,6 +5,7 @@ import { Repository, Between } from 'typeorm';
 import { User } from 'src/modules/user/entities/user.entity';
 import { Transaction } from 'src/modules/transactions/entities/transaction.entity';
 import { NotificationsService } from './notifications.service';
+import { NotificationType } from './entities/notification.entity';
 
 @Injectable()
 export class CronService {
@@ -53,6 +54,8 @@ export class CronService {
           user,
           '⏳ Đừng quên nhập chi tiêu',
           'Bạn chưa ghi chép khoản chi tiêu nào hôm nay. Hãy dành 1 phút cập nhật nhé!',
+          undefined,
+          NotificationType.REMINDER,
         );
         sentCount++;
       }

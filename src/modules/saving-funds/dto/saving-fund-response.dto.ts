@@ -9,7 +9,10 @@ export class SavingFundResponseDto {
   name: string;
 
   @Expose()
-  amount: number;
+  budget: number;
+
+  @Expose()
+  target: number;
 
   @Expose()
   start_date: Date;

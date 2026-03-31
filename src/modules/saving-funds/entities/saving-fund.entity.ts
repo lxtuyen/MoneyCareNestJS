@@ -19,13 +19,26 @@ export class SavingFund {
   name: string;
 
   @Column({ type: 'decimal', precision: 15, scale: 2, default: 0 })
-  amount: number;
+  budget: number;
+
+  @Column({ type: 'decimal', precision: 15, scale: 2, nullable: true })
+  target: number;
 
   @Column({ type: 'timestamp', nullable: true })
   start_date: Date;
 
   @Column({ type: 'timestamp', nullable: true })
   end_date: Date;
+
+  @Column({
+    type: 'enum',
+    enum: ['ACTIVE', 'EXPIRED', 'COMPLETED', 'ARCHIVED'],
+    default: 'ACTIVE',
+  })
+  status: string;
+
+  @Column({ default: false })
+  completion_notified: boolean;
 
   @Column({ default: false })
   is_selected: boolean;
