@@ -2,7 +2,8 @@ interface TotalByCategory {
   categoryIcon: string;
   categoryName: string;
   percentage: number;
+  spendingPercentage: number;
   limit: number;
-  total: string | number | null;
+  total: number;
 }
 export type { TotalByCategory };

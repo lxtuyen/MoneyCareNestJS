@@ -182,13 +182,19 @@ export class TransactionService {
       totals.map((t) => [Number(t.categoryId), Number(t.total) || 0]),
     );
 
-    const formatted: TotalByCategory[] = categories.map((cat) => ({
-      categoryName: cat.categoryName,
-      categoryIcon: cat.categoryIcon,
-      percentage: cat.percentage,
-      limit: (Number(cat.percentage) * Number(cat.budget || 0)) / 100,
-      total: totalMap.get(Number(cat.categoryId)) ?? 0,
-    }));
+    const grandTotal = Array.from(totalMap.values()).reduce((sum, v) => sum + v, 0);
+
+    const formatted: TotalByCategory[] = categories.map((cat) => {
+      const spent = totalMap.get(Number(cat.categoryId)) ?? 0;
+      return {
+        categoryName: cat.categoryName,
+        categoryIcon: cat.categoryIcon,
+        percentage: Number(cat.percentage),
+        spendingPercentage: grandTotal > 0 ? Math.round((spent / grandTotal) * 100) : 0,
+        limit: (Number(cat.percentage) * Number(cat.budget || 0)) / 100,
+        total: spent,
+      };
+    });
 
     return new ApiResponse({
       success: true,
