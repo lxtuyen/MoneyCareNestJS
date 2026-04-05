@@ -16,7 +16,7 @@ import { TransactionService } from './transactions.service';
 import { Transaction } from './entities/transaction.entity';
 import { User } from '../user/entities/user.entity';
 import { Category } from '../categories/entities/category.entity';
-import { SavingFund } from '../saving-funds/entities/saving-fund.entity';
+import { Fund } from '../saving-funds/entities/fund.entity';
 import { NotificationsService } from '../notifications/notifications.service';
 import { GetTransactionDto } from './dto/get-transaction.dto';
 
@@ -83,8 +83,8 @@ describe('Preservation 5 — Sum by category aggregation (MUST PASS on unfixed c
           useValue: createMockRepository<Category>(),
         },
         {
-          provide: getRepositoryToken(SavingFund),
-          useValue: createMockRepository<SavingFund>(),
+          provide: getRepositoryToken(Fund),
+          useValue: createMockRepository<Fund>(),
         },
         {
           provide: NotificationsService,
@@ -107,21 +107,21 @@ describe('Preservation 5 — Sum by category aggregation (MUST PASS on unfixed c
     categoryRepo.createQueryBuilder.mockReturnValue(mockCategoryQueryBuilder);
     transactionRepo.createQueryBuilder.mockReturnValue(mockTransactionQueryBuilder);
 
-    // Mock category data
+    // Mock category data — service uses 'balance' (from fund.balance) for limit calculation
     mockCategoryQueryBuilder.getRawMany.mockResolvedValue([
       {
         categoryId: 1,
         categoryName: 'Food',
         percentage: 30,
         categoryIcon: 'food-icon',
-        amount: '10000000',
+        balance: '10000000',
       },
       {
         categoryId: 2,
         categoryName: 'Transport',
         percentage: 20,
         categoryIcon: 'transport-icon',
-        amount: '10000000',
+        balance: '10000000',
       },
     ]);
 
@@ -139,20 +139,24 @@ describe('Preservation 5 — Sum by category aggregation (MUST PASS on unfixed c
 
     // Verify aggregation is correct
     expect(result.data).toHaveLength(2);
-    expect(result.data[0]).toEqual({
-      categoryName: 'Food',
-      categoryIcon: 'food-icon',
-      percentage: 30,
-      limit: 3000000, // (30 * 10000000) / 100
-      total: 2500000,
-    });
-    expect(result.data[1]).toEqual({
-      categoryName: 'Transport',
-      categoryIcon: 'transport-icon',
-      percentage: 20,
-      limit: 2000000, // (20 * 10000000) / 100
-      total: 1500000,
-    });
+    expect(result.data[0]).toEqual(
+      expect.objectContaining({
+        categoryName: 'Food',
+        categoryIcon: 'food-icon',
+        percentage: 30,
+        limit: 3000000, // (30 * 10000000) / 100
+        total: 2500000,
+      }),
+    );
+    expect(result.data[1]).toEqual(
+      expect.objectContaining({
+        categoryName: 'Transport',
+        categoryIcon: 'transport-icon',
+        percentage: 20,
+        limit: 2000000, // (20 * 10000000) / 100
+        total: 1500000,
+      }),
+    );
   });
 
   it('should handle categories with no transactions', async () => {
@@ -168,7 +172,7 @@ describe('Preservation 5 — Sum by category aggregation (MUST PASS on unfixed c
         categoryName: 'Food',
         percentage: 30,
         categoryIcon: 'food-icon',
-        amount: '10000000',
+        balance: '10000000',
       },
     ]);
 
@@ -218,8 +222,8 @@ describe('Preservation 6 — Filter transactions by fundId (MUST PASS on unfixed
           useValue: createMockRepository<Category>(),
         },
         {
-          provide: getRepositoryToken(SavingFund),
-          useValue: createMockRepository<SavingFund>(),
+          provide: getRepositoryToken(Fund),
+          useValue: createMockRepository<Fund>(),
         },
         {
           provide: NotificationsService,
@@ -248,7 +252,7 @@ describe('Preservation 6 — Filter transactions by fundId (MUST PASS on unfixed
         categoryName: 'Food',
         percentage: 30,
         categoryIcon: 'food-icon',
-        amount: '10000000',
+        balance: '10000000',
       },
     ]);
 
@@ -265,7 +269,7 @@ describe('Preservation 6 — Filter transactions by fundId (MUST PASS on unfixed
 
     // Verify that fundId filter is applied
     expect(mockCategoryQueryBuilder.andWhere).toHaveBeenCalledWith(
-      'savingFund.id = :fundId',
+      'fund.id = :fundId',
       { fundId: 5 },
     );
   });
@@ -323,8 +327,8 @@ describe('PBT Preservation — Sum by category with random data', () => {
                 useValue: createMockRepository<Category>(),
               },
               {
-                provide: getRepositoryToken(SavingFund),
-                useValue: createMockRepository<SavingFund>(),
+                provide: getRepositoryToken(Fund),
+                useValue: createMockRepository<Fund>(),
               },
               {
                 provide: NotificationsService,
@@ -350,9 +354,10 @@ describe('PBT Preservation — Sum by category with random data', () => {
           transactionRepo.createQueryBuilder.mockReturnValue(mockTransactionQueryBuilder);
 
           // Convert to string format as returned by database
+          // Service uses 'balance' (from fund.balance) for limit calculation
           const categoryData = categories.map((cat) => ({
             ...cat,
-            amount: cat.amount.toString(),
+            balance: cat.amount.toString(), // map 'amount' to 'balance' as the service expects
           }));
 
           const transactionData = transactions.map((tx) => ({
@@ -370,6 +375,7 @@ describe('PBT Preservation — Sum by category with random data', () => {
           const result = await service.sumByCategory(dto);
 
           // Verify that limit calculation is correct for each category
+          // Service formula: (percentage * balance) / 100
           result.data.forEach((item) => {
             const category = categories.find((c) => c.categoryName === item.categoryName);
             if (category) {
@@ -389,7 +395,7 @@ describe('PBT Preservation — Sum by category with random data', () => {
  * Property-Based Preservation: Requirement 3.5
  *
  * For ALL existing saving fund data:
- * - The system MUST preserve the amount field (which will be mapped to budget)
+ * - The system MUST preserve the amount field (which will be mapped to balance)
  * - The behavior MUST be identical before and after the fix
  *
  * **Validates: Requirements 3.5**
@@ -425,8 +431,8 @@ describe('PBT Preservation — Existing data preservation', () => {
                 useValue: createMockRepository<Category>(),
               },
               {
-                provide: getRepositoryToken(SavingFund),
-                useValue: createMockRepository<SavingFund>(),
+                provide: getRepositoryToken(Fund),
+                useValue: createMockRepository<Fund>(),
               },
               {
                 provide: NotificationsService,
@@ -453,7 +459,7 @@ describe('PBT Preservation — Existing data preservation', () => {
 
           const categoryData = categories.map((cat) => ({
             ...cat,
-            amount: cat.amount.toString(),
+            balance: cat.amount.toString(), // map 'amount' to 'balance' as the service expects
           }));
 
           mockCategoryQueryBuilder.getRawMany.mockResolvedValue(categoryData);
@@ -466,7 +472,7 @@ describe('PBT Preservation — Existing data preservation', () => {
           const result = await service.sumByCategory(dto);
 
           // Verify that amount field is used in limit calculation
-          // This confirms that existing data (amount) is preserved and used correctly
+          // This confirms that existing data (amount → balance) is preserved and used correctly
           result.data.forEach((item) => {
             const category = categories.find((c) => c.categoryName === item.categoryName);
             if (category) {

@@ -11,7 +11,7 @@ import { CreateTransactionDto } from './dto/create-transaction.dto';
 import { UpdateTransactionDto } from './dto/update-transaction.dto';
 import { User } from 'src/modules/user/entities/user.entity';
 import { Category } from 'src/modules/categories/entities/category.entity';
-import { SavingFund } from 'src/modules/saving-funds/entities/saving-fund.entity';
+import { Fund } from 'src/modules/saving-funds/entities/fund.entity';
 import { TransactionFilterDto } from './dto/transaction-filter.dto';
 import { ApiResponse } from 'src/common/dto/api-response.dto';
 import {
@@ -33,24 +33,25 @@ export class TransactionService {
     private userRepo: Repository<User>,
     @InjectRepository(Category)
     private categoryRepo: Repository<Category>,
-    @InjectRepository(SavingFund)
-    private savingFundRepo: Repository<SavingFund>,
+    @InjectRepository(Fund)
+    private fundRepo: Repository<Fund>,
     private notificationsService: NotificationsService,
   ) {}
 
   async create(dto: CreateTransactionDto): Promise<ApiResponse<Transaction>> {
     const [user, category] = await Promise.all([
       this.userRepo.findOne({ where: { id: dto.userId } }),
-      dto.type === 'expense' && dto.categoryId
-        ? this.categoryRepo.findOne({ where: { id: dto.categoryId }, relations: ['savingFund'] })
+      dto.categoryId
+        ? this.categoryRepo.findOne({
+            where: { id: dto.categoryId },
+            relations: ['fund'],
+          })
         : Promise.resolve(null),
     ]);
 
     if (!user) throw new NotFoundException('User not found');
-    if (dto.type === 'expense') {
-      if (!dto.categoryId)
-        throw new BadRequestException('Category is required for expense');
-      if (!category) throw new NotFoundException('Category not found');
+    if (dto.categoryId && !category) {
+      throw new NotFoundException('Category not found');
     }
 
     const transaction = this.transactionRepo.create({
@@ -63,7 +64,7 @@ export class TransactionService {
     });
 
     let currentExpenseTotal = 0;
-    if (dto.type === 'expense' && category?.savingFund) {
+    if (dto.type === 'expense' && category?.fund) {
       const currentExpenseRes = await this.transactionRepo
         .createQueryBuilder('t')
         .where('t.category.id = :categoryId', { categoryId: category.id })
@@ -76,15 +77,15 @@ export class TransactionService {
 
     await this.transactionRepo.save(transaction);
 
-    if (dto.type === 'expense' && category?.savingFund) {
-      const budget = (Number(category.savingFund.budget) * Number(category.percentage)) / 100;
+    if (dto.type === 'expense' && category?.fund) {
+      const balance = (Number(category.fund.balance) * Number(category.percentage)) / 100;
       const sumExpensesAfter = currentExpenseTotal + Number(dto.amount);
       
-      if (currentExpenseTotal <= budget && sumExpensesAfter > budget) {
+      if (currentExpenseTotal <= balance && sumExpensesAfter > balance) {
         await this.notificationsService.sendPushNotification(
           user,
           'Cảnh báo ngân sách',
-          `Khoản chi vừa rồi đã khiến mục "${category.name}" vượt quá ngân sách dự kiến (${budget.toLocaleString('vi-VN')} đ)!`,
+          `Khoản chi vừa rồi đã khiến mục "${category.name}" vượt quá ngân sách dự kiến (${balance.toLocaleString('vi-VN')} đ)!`,
           undefined,
           NotificationType.ALERT,
         );  
@@ -108,14 +109,14 @@ export class TransactionService {
     });
     if (!transaction) throw new NotFoundException('Transaction not found');
 
-    if (dto.type === 'income') {
-      transaction.category = null;
-    } else if (dto.type === 'expense' && dto.categoryId) {
+    if (dto.categoryId) {
       const category = await this.categoryRepo.findOne({
         where: { id: dto.categoryId },
       });
       if (!category) throw new NotFoundException('Category not found');
       transaction.category = category;
+    } else if (dto.categoryId === null) {
+      transaction.category = null;
     }
     transaction.amount = dto.amount ?? transaction.amount;
     transaction.type = dto.type ?? transaction.type;
@@ -137,29 +138,48 @@ export class TransactionService {
   async sumByCategory(
     dto: GetTransactionDto,
   ): Promise<ApiResponse<TotalByCategory[]>> {
+    // Khi có fundId: lấy categories từ quỹ (có balance để tính limit)
+    // Khi không có fundId: lấy categories thuộc user trực tiếp (user categories)
     const categoryQuery = this.categoryRepo
       .createQueryBuilder('category')
-      .leftJoin('category.savingFund', 'savingFund')
-      .leftJoin('savingFund.user', 'user')
       .select('category.id', 'categoryId')
       .addSelect('category.name', 'categoryName')
       .addSelect('category.percentage', 'percentage')
-      .addSelect('category.icon', 'categoryIcon')
-      .addSelect('savingFund.budget', 'budget')
-      .where('user.id = :userId', { userId: dto.userId });
+      .addSelect('category.icon', 'categoryIcon');
 
-    if (dto.fundId)
-      categoryQuery.andWhere('savingFund.id = :fundId', {
-        fundId: dto.fundId,
+    if (dto.fundId) {
+      categoryQuery
+        .leftJoin('category.fund', 'fund')
+        .leftJoin('fund.user', 'user')
+        .addSelect('fund.balance', 'balance')
+        .where('user.id = :userId', { userId: dto.userId })
+        .andWhere('fund.id = :fundId', { fundId: dto.fundId });
+    } else {
+      categoryQuery
+        .leftJoin('category.user', 'user')
+        .addSelect('NULL', 'balance')
+        .where('user.id = :userId', { userId: dto.userId });
+    }
+
+    if (dto.type) {
+      categoryQuery.andWhere('(category.type = :type OR category.type = :others)', { 
+        type: dto.type, 
+        others: 'others' 
       });
+    }
 
-    const transactionQuery = this.getBaseExpenseQuery(
-      dto.userId,
-      undefined,
-      dto.fundId,
-      dto.startDate,
-      dto.endDate,
-    )
+    const transactionQuery =
+      dto.type === 'income'
+        ? this.getBaseIncomeQuery(dto.userId, dto.startDate, dto.endDate, false)
+        : this.getBaseExpenseQuery(
+            dto.userId,
+            undefined,
+            dto.fundId,
+            dto.startDate,
+            dto.endDate,
+          );
+
+    transactionQuery
       .select('category.id', 'categoryId')
       .addSelect('SUM(transaction.amount)', 'total')
       .groupBy('category.id');
@@ -170,28 +190,37 @@ export class TransactionService {
         categoryName: string;
         percentage: number;
         categoryIcon: string;
-        budget: string | null;
+        balance: string | null;
       }>(),
       transactionQuery.getRawMany<{
-        categoryId: number;
+        categoryId: number | null;
         total: string;
       }>(),
     ]);
 
     const totalMap = new Map(
-      totals.map((t) => [Number(t.categoryId), Number(t.total) || 0]),
+      totals.map((t) => [
+        t.categoryId ? Number(t.categoryId) : -1,
+        Number(t.total) || 0,
+      ]),
     );
 
-    const grandTotal = Array.from(totalMap.values()).reduce((sum, v) => sum + v, 0);
+    const grandTotal = Array.from(totalMap.values()).reduce(
+      (sum, v) => sum + v,
+      0,
+    );
 
+    let categorizedTotal = 0;
     const formatted: TotalByCategory[] = categories.map((cat) => {
       const spent = totalMap.get(Number(cat.categoryId)) ?? 0;
+      categorizedTotal += spent;
       return {
         categoryName: cat.categoryName,
         categoryIcon: cat.categoryIcon,
         percentage: Number(cat.percentage),
-        spendingPercentage: grandTotal > 0 ? Math.round((spent / grandTotal) * 100) : 0,
-        limit: (Number(cat.percentage) * Number(cat.budget || 0)) / 100,
+        spendingPercentage:
+          grandTotal > 0 ? Math.round((spent / grandTotal) * 100) : 0,
+        limit: (Number(cat.percentage) * Number(cat.balance || 0)) / 100,
         total: spent,
       };
     });
@@ -261,16 +290,16 @@ export class TransactionService {
       dto.endDate,
     );
 
-    const [incomeTotalRes, expenseTotalRes, savingFund] = await Promise.all([
+    const [incomeTotalRes, expenseTotalRes, fund] = await Promise.all([
       incomeQuery.select('SUM(transaction.amount)', 'total').getRawOne<{ total: string }>(),
       expenseQuery.select('SUM(transaction.amount)', 'total').getRawOne<{ total: string }>(),
-      dto.fundId ? this.savingFundRepo.findOne({ where: { id: dto.fundId } }) : Promise.resolve(null),
+      dto.fundId ? this.fundRepo.findOne({ where: { id: dto.fundId } }) : Promise.resolve(null),
     ]);
 
     const incomeTotal = Number(incomeTotalRes?.total ?? 0);
     const expenseTotal = Number(expenseTotalRes?.total ?? 0);
     const currentSaving = incomeTotal - expenseTotal;
-    const targetSaving = Number(savingFund?.target ?? 0);
+    const targetSaving = Number(fund?.target ?? 0);
 
     return new ApiResponse({
       success: true,
@@ -439,8 +468,10 @@ export class TransactionService {
       .andWhere('transaction.type = :type', { type: 'income' });
 
     if (withRelations) {
+      query.leftJoinAndSelect('transaction.category', 'category');
       query.leftJoinAndSelect('transaction.user', 'user');
     } else {
+      query.leftJoin('transaction.category', 'category');
       query.leftJoin('transaction.user', 'user');
     }
 
@@ -478,8 +509,8 @@ export class TransactionService {
       query.andWhere('category.id = :categoryId', { categoryId });
     }
     if (fundId) {
-      query.leftJoin('category.savingFund', 'savingFund');
-      query.andWhere('savingFund.id = :fundId', { fundId });
+      query.leftJoin('category.fund', 'fund');
+      query.andWhere('fund.id = :fundId', { fundId });
     }
     if (startDate) {
       query.andWhere('transaction.transaction_date >= :start', { start: startDate });

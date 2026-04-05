@@ -21,27 +21,11 @@ export class TransactionController {
 
   @Post()
   async create(@Body() dto: CreateTransactionDto) {
-    if (dto.type === 'income' && !dto.categoryId) {
-      dto.categoryId = undefined;
-    }
-
-    if (dto.type === 'expense' && !dto.categoryId) {
-      throw new Error('Expense transaction must have a categoryId');
-    }
-
     return this.transactionService.create(dto);
   }
 
   @Put(':id')
   async update(@Param('id') id: number, @Body() dto: UpdateTransactionDto) {
-    if (dto.type === 'income' && !dto.categoryId) {
-      dto.categoryId = undefined;
-    }
-
-    if (dto.type === 'expense' && !dto.categoryId) {
-      throw new Error('Expense transaction must have a categoryId');
-    }
-
     return this.transactionService.update(id, dto);
   }
 
@@ -69,12 +53,14 @@ export class TransactionController {
     @Query('fundId') fundId: number,
     @Query('start_date') startDate?: string,
     @Query('end_date') endDate?: string,
+    @Query('type') type?: string,
   ) {
     const dto: GetTransactionDto = {
       userId,
       fundId,
       startDate,
       endDate,
+      type,
     };
     return this.transactionService.sumByDay(dto);
   }
@@ -85,12 +71,14 @@ export class TransactionController {
     @Query('fundId') fundId: number,
     @Query('start_date') startDate?: string,
     @Query('end_date') endDate?: string,
+    @Query('type') type?: string,
   ) {
     const dto: GetTransactionDto = {
       userId,
       fundId,
       startDate,
       endDate,
+      type,
     };
 
     return this.transactionService.getTotalsByType(dto);
@@ -102,12 +90,14 @@ export class TransactionController {
     @Query('fundId') fundId: number,
     @Query('start_date') startDate?: string,
     @Query('end_date') endDate?: string,
+    @Query('type') type?: string,
   ) {
     const dto: GetTransactionDto = {
       userId,
       fundId,
       startDate,
       endDate,
+      type,
     };
     return this.transactionService.sumByCategory(dto);
   }

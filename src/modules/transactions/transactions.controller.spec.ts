@@ -8,7 +8,21 @@ describe('TransactionsController', () => {
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [TransactionController],
-      providers: [TransactionService],
+      providers: [
+        {
+          provide: TransactionService,
+          useValue: {
+            create: jest.fn(),
+            update: jest.fn(),
+            findAllByFilter: jest.fn(),
+            sumByDay: jest.fn(),
+            getTotalsByType: jest.fn(),
+            sumByCategory: jest.fn(),
+            getStatisticsSummary: jest.fn(),
+            remove: jest.fn(),
+          },
+        },
+      ],
     }).compile();
 
     controller = module.get<TransactionController>(TransactionController);

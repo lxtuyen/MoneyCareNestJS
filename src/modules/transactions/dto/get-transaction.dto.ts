@@ -14,4 +14,7 @@ export class GetTransactionDto {
   @IsOptional()
   @IsDateString()
   endDate?: string;
+
+  @IsOptional()
+  type?: string;
 }
