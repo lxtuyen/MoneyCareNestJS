@@ -1,6 +1,6 @@
 import { IsOptional, IsDateString } from 'class-validator';
 
-export class ExtendSavingFundDto {
+export class ExtendFundDto {
   @IsDateString()
   new_end_date: Date;
 

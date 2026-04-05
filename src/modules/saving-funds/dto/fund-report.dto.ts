@@ -6,7 +6,7 @@ export class CategorySpendingDto {
   percentage: number;
 }
 
-export class SavingFundReportDto {
+export class FundReportDto {
   fund_id: number;
   fund_name: string;
   start_date: Date;
@@ -14,15 +14,15 @@ export class SavingFundReportDto {
   status: string;
 
   // Budget & Target
-  budget: number;
+  balance: number;
   target: number;
   total_spent: number;
-  remaining_budget: number;
+  remaining_balance: number;
 
   // Completion metrics
-  budget_usage_percentage: number;
+  balance_usage_percentage: number;
   target_completion_percentage: number;
-  is_over_budget: boolean;
+  is_over_balance: boolean;
   is_target_achieved: boolean;
 
   // Category breakdown

@@ -7,6 +7,6 @@ export class ExpiredFundCheckDto {
     completion_percentage: number;
     total_spent: number;
     target: number;
-    budget: number;
+    balance: number;
   };
 }

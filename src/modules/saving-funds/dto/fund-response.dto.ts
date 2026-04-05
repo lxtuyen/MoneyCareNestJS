@@ -1,7 +1,7 @@
 import { Expose, Type } from 'class-transformer';
 import { CategoryResponseDto } from 'src/modules/categories/dto/category-response.dto';
 
-export class SavingFundResponseDto {
+export class FundResponseDto {
   @Expose()
   id: number;
 
@@ -9,7 +9,7 @@ export class SavingFundResponseDto {
   name: string;
 
   @Expose()
-  budget: number;
+  balance: number;
 
   @Expose()
   target: number;

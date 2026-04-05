@@ -12,12 +12,13 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { Repository } from 'typeorm';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import * as fc from 'fast-check';
-import { SavingFundsService } from './saving-funds.service';
-import { SavingFund } from './entities/saving-fund.entity';
+import { FundsService } from './funds.service';
+import { Fund } from './entities/fund.entity';
 import { User } from '../user/entities/user.entity';
 import { Category } from '../categories/entities/category.entity';
-import { CreateSavingFundDto } from './dto/create-saving-fund.dto';
-import { UpdateSavingFundDto } from './dto/update-saving-fund.dto';
+import { Transaction } from '../transactions/entities/transaction.entity';
+import { CreateFundDto } from './dto/create-fund.dto';
+import { UpdateFundDto } from './dto/update-fund.dto';
 
 // ─── Test Utilities ──────────────────────────────────────────────────────────
 
@@ -43,18 +44,18 @@ function createMockRepository<T>() {
  * This behavior must remain unchanged after the fix.
  */
 describe('Preservation 1 — Create fund with name, dates, categories (MUST PASS on unfixed code)', () => {
-  let service: SavingFundsService;
-  let savingFundRepo: jest.Mocked<Repository<SavingFund>>;
+  let service: FundsService;
+  let fundRepo: jest.Mocked<Repository<Fund>>;
   let userRepo: jest.Mocked<Repository<User>>;
   let categoryRepo: jest.Mocked<Repository<Category>>;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
-        SavingFundsService,
+        FundsService,
         {
-          provide: getRepositoryToken(SavingFund),
-          useValue: createMockRepository<SavingFund>(),
+          provide: getRepositoryToken(Fund),
+          useValue: createMockRepository<Fund>(),
         },
         {
           provide: getRepositoryToken(User),
@@ -64,11 +65,15 @@ describe('Preservation 1 — Create fund with name, dates, categories (MUST PASS
           provide: getRepositoryToken(Category),
           useValue: createMockRepository<Category>(),
         },
+        {
+          provide: getRepositoryToken(Transaction),
+          useValue: createMockRepository<Transaction>(),
+        },
       ],
     }).compile();
 
-    service = module.get<SavingFundsService>(SavingFundsService);
-    savingFundRepo = module.get(getRepositoryToken(SavingFund));
+    service = module.get<FundsService>(FundsService);
+    fundRepo = module.get(getRepositoryToken(Fund));
     userRepo = module.get(getRepositoryToken(User));
     categoryRepo = module.get(getRepositoryToken(Category));
   });
@@ -78,22 +83,22 @@ describe('Preservation 1 — Create fund with name, dates, categories (MUST PASS
     const mockFund = {
       id: 1,
       name: 'Test Fund',
-      budget: 1000000,
+      balance: 1000000,
       target: null,
       start_date: new Date('2024-01-01'),
       end_date: new Date('2024-12-31'),
       user: mockUser,
-    } as SavingFund;
+    } as Fund;
 
     userRepo.findOne.mockResolvedValue(mockUser);
-    savingFundRepo.create.mockReturnValue(mockFund);
-    savingFundRepo.save.mockResolvedValue(mockFund);
-    savingFundRepo.findOne.mockResolvedValue(mockFund);
+    fundRepo.create.mockReturnValue(mockFund);
+    fundRepo.save.mockResolvedValue(mockFund);
+    fundRepo.findOne.mockResolvedValue(mockFund);
 
-    const dto: CreateSavingFundDto = {
+    const dto: CreateFundDto = {
       userId: 1,
       name: 'Test Fund',
-      budget: 1000000,
+      balance: 1000000,
       target: null,
       start_date: new Date('2024-01-01'),
       end_date: new Date('2024-12-31'),
@@ -102,7 +107,7 @@ describe('Preservation 1 — Create fund with name, dates, categories (MUST PASS
     const result = await service.create(dto);
 
     expect(result.data.name).toBe('Test Fund');
-    expect(savingFundRepo.create).toHaveBeenCalledWith(
+    expect(fundRepo.create).toHaveBeenCalledWith(
       expect.objectContaining({
         name: 'Test Fund',
         start_date: dto.start_date,
@@ -116,32 +121,32 @@ describe('Preservation 1 — Create fund with name, dates, categories (MUST PASS
     const mockFund = {
       id: 1,
       name: 'Test Fund',
-      budget: 1000000,
+      balance: 1000000,
       target: null,
       user: mockUser,
-    } as SavingFund;
+    } as Fund;
     const mockCategory = {
       id: 1,
       name: 'Food',
       percentage: 30,
       icon: 'food-icon',
-      savingFund: mockFund,
+      fund: mockFund,
     } as Category;
 
     userRepo.findOne.mockResolvedValue(mockUser);
-    savingFundRepo.create.mockReturnValue(mockFund);
-    savingFundRepo.save.mockResolvedValue(mockFund);
+    fundRepo.create.mockReturnValue(mockFund);
+    fundRepo.save.mockResolvedValue(mockFund);
     categoryRepo.create.mockReturnValue(mockCategory);
     categoryRepo.save.mockResolvedValue([mockCategory]);
-    savingFundRepo.findOne.mockResolvedValue({
+    fundRepo.findOne.mockResolvedValue({
       ...mockFund,
       categories: [mockCategory],
     });
 
-    const dto: CreateSavingFundDto = {
+    const dto: CreateFundDto = {
       userId: 1,
       name: 'Test Fund',
-      budget: 1000000,
+      balance: 1000000,
       target: null,
       categories: [
         {
@@ -172,7 +177,7 @@ describe('Preservation 1 — Create fund with name, dates, categories (MUST PASS
  *
  * WHEN the system calculates category percentages
  * THEN the system SHALL CONTINUE TO use the percentage field to determine
- * how budget is distributed across categories
+ * how balance is distributed across categories
  *
  * This behavior must remain unchanged after the fix.
  */
@@ -180,10 +185,10 @@ describe('Preservation 2 — Category percentage calculation (MUST PASS on unfix
   it('should preserve percentage field when updating categories', async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
-        SavingFundsService,
+        FundsService,
         {
-          provide: getRepositoryToken(SavingFund),
-          useValue: createMockRepository<SavingFund>(),
+          provide: getRepositoryToken(Fund),
+          useValue: createMockRepository<Fund>(),
         },
         {
           provide: getRepositoryToken(User),
@@ -193,12 +198,16 @@ describe('Preservation 2 — Category percentage calculation (MUST PASS on unfix
           provide: getRepositoryToken(Category),
           useValue: createMockRepository<Category>(),
         },
+        {
+          provide: getRepositoryToken(Transaction),
+          useValue: createMockRepository<Transaction>(),
+        },
       ],
     }).compile();
 
-    const service = module.get<SavingFundsService>(SavingFundsService);
-    const savingFundRepo = module.get<jest.Mocked<Repository<SavingFund>>>(
-      getRepositoryToken(SavingFund),
+    const service = module.get<FundsService>(FundsService);
+    const fundRepo = module.get<jest.Mocked<Repository<Fund>>>(
+      getRepositoryToken(Fund),
     );
     const categoryRepo = module.get<jest.Mocked<Repository<Category>>>(
       getRepositoryToken(Category),
@@ -207,12 +216,12 @@ describe('Preservation 2 — Category percentage calculation (MUST PASS on unfix
     const mockFund = {
       id: 1,
       name: 'Test Fund',
-      budget: 1000000,
+      balance: 1000000,
       target: null,
       categories: [],
-    } as SavingFund;
+    } as Fund;
 
-    savingFundRepo.findOne.mockResolvedValue(mockFund);
+    fundRepo.findOne.mockResolvedValue(mockFund);
     categoryRepo.update.mockResolvedValue({ affected: 1 } as any);
     categoryRepo.find.mockResolvedValue([
       {
@@ -222,9 +231,9 @@ describe('Preservation 2 — Category percentage calculation (MUST PASS on unfix
         icon: 'food-icon',
       } as Category,
     ]);
-    savingFundRepo.save.mockResolvedValue(mockFund);
+    fundRepo.save.mockResolvedValue(mockFund);
 
-    const dto: UpdateSavingFundDto = {
+    const dto: UpdateFundDto = {
       categories: [
         {
           id: 1,
@@ -257,16 +266,16 @@ describe('Preservation 2 — Category percentage calculation (MUST PASS on unfix
  * This behavior must remain unchanged after the fix.
  */
 describe('Preservation 3 — Delete fund works correctly (MUST PASS on unfixed code)', () => {
-  let service: SavingFundsService;
-  let savingFundRepo: jest.Mocked<Repository<SavingFund>>;
+  let service: FundsService;
+  let fundRepo: jest.Mocked<Repository<Fund>>;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
-        SavingFundsService,
+        FundsService,
         {
-          provide: getRepositoryToken(SavingFund),
-          useValue: createMockRepository<SavingFund>(),
+          provide: getRepositoryToken(Fund),
+          useValue: createMockRepository<Fund>(),
         },
         {
           provide: getRepositoryToken(User),
@@ -276,28 +285,32 @@ describe('Preservation 3 — Delete fund works correctly (MUST PASS on unfixed c
           provide: getRepositoryToken(Category),
           useValue: createMockRepository<Category>(),
         },
+        {
+          provide: getRepositoryToken(Transaction),
+          useValue: createMockRepository<Transaction>(),
+        },
       ],
     }).compile();
 
-    service = module.get<SavingFundsService>(SavingFundsService);
-    savingFundRepo = module.get(getRepositoryToken(SavingFund));
+    service = module.get<FundsService>(FundsService);
+    fundRepo = module.get(getRepositoryToken(Fund));
   });
 
   it('should remove fund when delete is called', async () => {
     const mockFund = {
       id: 1,
       name: 'Test Fund',
-      budget: 1000000,
+      balance: 1000000,
       target: null,
-    } as SavingFund;
+    } as Fund;
 
-    savingFundRepo.findOne.mockResolvedValue(mockFund);
-    savingFundRepo.remove.mockResolvedValue(mockFund);
+    fundRepo.findOne.mockResolvedValue(mockFund);
+    fundRepo.remove.mockResolvedValue(mockFund);
 
     const result = await service.remove(1);
 
     expect(result.data).toBe('Deleted successfully');
-    expect(savingFundRepo.remove).toHaveBeenCalledWith(mockFund);
+    expect(fundRepo.remove).toHaveBeenCalledWith(mockFund);
   });
 });
 
@@ -312,16 +325,16 @@ describe('Preservation 3 — Delete fund works correctly (MUST PASS on unfixed c
  * This behavior must remain unchanged after the fix.
  */
 describe('Preservation 4 — Select fund works correctly (MUST PASS on unfixed code)', () => {
-  let service: SavingFundsService;
-  let savingFundRepo: jest.Mocked<Repository<SavingFund>>;
+  let service: FundsService;
+  let fundRepo: jest.Mocked<Repository<Fund>>;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
-        SavingFundsService,
+        FundsService,
         {
-          provide: getRepositoryToken(SavingFund),
-          useValue: createMockRepository<SavingFund>(),
+          provide: getRepositoryToken(Fund),
+          useValue: createMockRepository<Fund>(),
         },
         {
           provide: getRepositoryToken(User),
@@ -331,37 +344,41 @@ describe('Preservation 4 — Select fund works correctly (MUST PASS on unfixed c
           provide: getRepositoryToken(Category),
           useValue: createMockRepository<Category>(),
         },
+        {
+          provide: getRepositoryToken(Transaction),
+          useValue: createMockRepository<Transaction>(),
+        },
       ],
     }).compile();
 
-    service = module.get<SavingFundsService>(SavingFundsService);
-    savingFundRepo = module.get(getRepositoryToken(SavingFund));
+    service = module.get<FundsService>(FundsService);
+    fundRepo = module.get(getRepositoryToken(Fund));
   });
 
   it('should set is_selected to true for selected fund and false for others', async () => {
     const mockFund = {
       id: 1,
       name: 'Test Fund',
-      budget: 1000000,
+      balance: 1000000,
       target: null,
       is_selected: false,
       user: { id: 1 },
-    } as SavingFund;
+    } as Fund;
 
-    savingFundRepo.findOne.mockResolvedValue(mockFund);
-    savingFundRepo.update.mockResolvedValue({ affected: 1 } as any);
-    savingFundRepo.save.mockResolvedValue({
+    fundRepo.findOne.mockResolvedValue(mockFund);
+    fundRepo.update.mockResolvedValue({ affected: 1 } as any);
+    fundRepo.save.mockResolvedValue({
       ...mockFund,
       is_selected: true,
     });
 
-    await service.selectSavingFund(1, 1);
+    await service.selectFund(1, 1);
 
-    expect(savingFundRepo.update).toHaveBeenCalledWith(
-      { user: { id: 1 } },
+    expect(fundRepo.update).toHaveBeenCalledWith(
+      { user: { id: 1 }, type: 'SPENDING' },
       { is_selected: false },
     );
-    expect(savingFundRepo.save).toHaveBeenCalledWith(
+    expect(fundRepo.save).toHaveBeenCalledWith(
       expect.objectContaining({
         is_selected: true,
       }),
@@ -381,18 +398,18 @@ describe('Preservation 4 — Select fund works correctly (MUST PASS on unfixed c
  * **Validates: Requirements 3.1**
  */
 describe('PBT Preservation — Create fund with random valid data', () => {
-  let service: SavingFundsService;
-  let savingFundRepo: jest.Mocked<Repository<SavingFund>>;
+  let service: FundsService;
+  let fundRepo: jest.Mocked<Repository<Fund>>;
   let userRepo: jest.Mocked<Repository<User>>;
   let categoryRepo: jest.Mocked<Repository<Category>>;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
-        SavingFundsService,
+        FundsService,
         {
-          provide: getRepositoryToken(SavingFund),
-          useValue: createMockRepository<SavingFund>(),
+          provide: getRepositoryToken(Fund),
+          useValue: createMockRepository<Fund>(),
         },
         {
           provide: getRepositoryToken(User),
@@ -402,11 +419,15 @@ describe('PBT Preservation — Create fund with random valid data', () => {
           provide: getRepositoryToken(Category),
           useValue: createMockRepository<Category>(),
         },
+        {
+          provide: getRepositoryToken(Transaction),
+          useValue: createMockRepository<Transaction>(),
+        },
       ],
     }).compile();
 
-    service = module.get<SavingFundsService>(SavingFundsService);
-    savingFundRepo = module.get(getRepositoryToken(SavingFund));
+    service = module.get<FundsService>(FundsService);
+    fundRepo = module.get(getRepositoryToken(Fund));
     userRepo = module.get(getRepositoryToken(User));
     categoryRepo = module.get(getRepositoryToken(Category));
   });
@@ -416,7 +437,7 @@ describe('PBT Preservation — Create fund with random valid data', () => {
       fc.asyncProperty(
         fc.record({
           name: fc.string({ minLength: 1, maxLength: 100 }),
-          budget: fc.integer({ min: 0, max: 1000000000 }),
+          balance: fc.integer({ min: 0, max: 1000000000 }),
           target: fc.option(fc.integer({ min: 0, max: 1000000000 }), { nil: null }),
           start_date: fc.date(),
           end_date: fc.date(),
@@ -435,16 +456,16 @@ describe('PBT Preservation — Create fund with random valid data', () => {
             id: 1,
             ...fundData,
             user: mockUser,
-          } as SavingFund;
+          } as Fund;
 
           userRepo.findOne.mockResolvedValue(mockUser);
-          savingFundRepo.create.mockReturnValue(mockFund);
-          savingFundRepo.save.mockResolvedValue(mockFund);
+          fundRepo.create.mockReturnValue(mockFund);
+          fundRepo.save.mockResolvedValue(mockFund);
           categoryRepo.create.mockImplementation((cat) => cat as Category);
           categoryRepo.save.mockResolvedValue([]);
-          savingFundRepo.findOne.mockResolvedValue(mockFund);
+          fundRepo.findOne.mockResolvedValue(mockFund);
 
-          const dto: CreateSavingFundDto = {
+          const dto: CreateFundDto = {
             userId: 1,
             ...fundData,
           };
@@ -452,7 +473,7 @@ describe('PBT Preservation — Create fund with random valid data', () => {
           await service.create(dto);
 
           // Verify that name, dates are preserved
-          expect(savingFundRepo.create).toHaveBeenCalledWith(
+          expect(fundRepo.create).toHaveBeenCalledWith(
             expect.objectContaining({
               name: fundData.name,
               start_date: fundData.start_date,
@@ -497,10 +518,10 @@ describe('PBT Preservation — Category percentage calculation', () => {
         async (categories) => {
           const module: TestingModule = await Test.createTestingModule({
             providers: [
-              SavingFundsService,
+              FundsService,
               {
-                provide: getRepositoryToken(SavingFund),
-                useValue: createMockRepository<SavingFund>(),
+                provide: getRepositoryToken(Fund),
+                useValue: createMockRepository<Fund>(),
               },
               {
                 provide: getRepositoryToken(User),
@@ -510,12 +531,16 @@ describe('PBT Preservation — Category percentage calculation', () => {
                 provide: getRepositoryToken(Category),
                 useValue: createMockRepository<Category>(),
               },
+              {
+                provide: getRepositoryToken(Transaction),
+                useValue: createMockRepository<Transaction>(),
+              },
             ],
           }).compile();
 
-          const service = module.get<SavingFundsService>(SavingFundsService);
-          const savingFundRepo = module.get<jest.Mocked<Repository<SavingFund>>>(
-            getRepositoryToken(SavingFund),
+          const service = module.get<FundsService>(FundsService);
+          const fundRepo = module.get<jest.Mocked<Repository<Fund>>>(
+            getRepositoryToken(Fund),
           );
           const categoryRepo = module.get<jest.Mocked<Repository<Category>>>(
             getRepositoryToken(Category),
@@ -524,17 +549,17 @@ describe('PBT Preservation — Category percentage calculation', () => {
           const mockFund = {
             id: 1,
             name: 'Test Fund',
-            budget: 1000000,
+            balance: 1000000,
             target: null,
             categories: [],
-          } as SavingFund;
+          } as Fund;
 
-          savingFundRepo.findOne.mockResolvedValue(mockFund);
+          fundRepo.findOne.mockResolvedValue(mockFund);
           categoryRepo.update.mockResolvedValue({ affected: 1 } as any);
           categoryRepo.find.mockResolvedValue(categories as Category[]);
-          savingFundRepo.save.mockResolvedValue(mockFund);
+          fundRepo.save.mockResolvedValue(mockFund);
 
-          const dto: UpdateSavingFundDto = {
+          const dto: UpdateFundDto = {
             categories: categories,
           };
 
