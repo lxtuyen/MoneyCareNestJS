@@ -5,7 +5,6 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './modules/auth/auth.module';
 import { UserProfileModule } from './modules/user-profile/user-profile.module';
-import { SavingFundsModule } from './modules/saving-funds/saving-funds.module';
 import { CategoriesModule } from './modules/categories/categories.module';
 import { TransactionsModule } from './modules/transactions/transactions.module';
 import { UserModule } from './modules/user/user.module';
@@ -16,6 +15,10 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { ChatbotModule } from './modules/chatbot/chatbot.module';
 import { PaymentsModule } from './modules/payment/payment.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
+import { StudentProfileModule } from './modules/student-profile/student-profile.module';
+import { FinanceModeModule } from './modules/finance-mode/finance-mode.module';
+import { GamificationModule } from './modules/gamification/gamification.module';
+import { FundsModule } from './modules/saving-funds/funds.module';
 
 @Module({
   imports: [
@@ -46,7 +49,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
 
     UserProfileModule,
 
-    SavingFundsModule,
+    FundsModule,
 
     CategoriesModule,
 
@@ -63,6 +66,12 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
     ChatbotModule,
 
     NotificationsModule,
+
+    StudentProfileModule,
+
+    FinanceModeModule,
+
+    GamificationModule,
   ],
   controllers: [AppController],
   providers: [AppService],

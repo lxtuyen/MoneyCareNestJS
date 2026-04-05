@@ -1,6 +1,7 @@
 import { OTP } from 'src/modules/otp/entities/otp.entity';
-import { SavingFund } from 'src/modules/saving-funds/entities/saving-fund.entity';
+import { Fund } from 'src/modules/saving-funds/entities/fund.entity';
 import { Transaction } from 'src/modules/transactions/entities/transaction.entity';
+import { Category } from 'src/modules/categories/entities/category.entity';
 import { UserProfile } from 'src/modules/user-profile/entities/user-profile.entity';
 import { DeviceToken } from 'src/modules/notifications/entities/device-token.entity';
 import { Notification } from 'src/modules/notifications/entities/notification.entity';
@@ -47,8 +48,11 @@ export class User {
   @OneToMany(() => OTP, (otp) => otp.user)
   otps: OTP[];
 
-  @OneToMany(() => SavingFund, (fund) => fund.user)
-  savingFunds: SavingFund[];
+  @OneToMany(() => Fund, (fund) => fund.user)
+  funds: Fund[];
+
+  @OneToMany(() => Category, (category) => category.user)
+  categories: Category[];
 
   @OneToMany(() => Transaction, (trans) => trans.user)
   transactions: Transaction[];
