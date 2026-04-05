@@ -1,29 +1,25 @@
-import {
-  BadRequestException,
-  Controller,
-  Post,
-  UploadedFile,
-  UseInterceptors,
-} from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
-import type { Express } from 'express';
+import { Test, TestingModule } from '@nestjs/testing';
+import { ReceiptController } from './receipt.controller';
 import { ReceiptService } from './receipt.service';
 
-@Controller('receipt')
-export class ReceiptController {
-  constructor(private readonly receiptService: ReceiptService) {}
+describe('ReceiptController', () => {
+  let controller: ReceiptController;
 
-  @Post('scan')
-  @UseInterceptors(FileInterceptor('file'))
-  async scanReceipt(@UploadedFile() file: Express.Multer.File) {
-    if (!file) {
-      throw new BadRequestException('Không nhận được file ảnh');
-    }
-    if (!file.buffer) {
-      throw new BadRequestException('File không hợp lệ');
-    }
+  beforeEach(async () => {
+    const module: TestingModule = await Test.createTestingModule({
+      controllers: [ReceiptController],
+      providers: [
+        {
+          provide: ReceiptService,
+          useValue: { scan: jest.fn() },
+        },
+      ],
+    }).compile();
 
-    const result = await this.receiptService.scan(file.buffer);
-    return result;
-  }
-}
+    controller = module.get<ReceiptController>(ReceiptController);
+  });
+
+  it('should be defined', () => {
+    expect(controller).toBeDefined();
+  });
+});
