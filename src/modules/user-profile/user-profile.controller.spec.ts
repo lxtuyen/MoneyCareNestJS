@@ -8,7 +8,12 @@ describe('UserProfileController', () => {
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [UserProfileController],
-      providers: [UserProfileService],
+      providers: [
+        {
+          provide: UserProfileService,
+          useValue: { updateProfile: jest.fn() },
+        },
+      ],
     }).compile();
 
     controller = module.get<UserProfileController>(UserProfileController);

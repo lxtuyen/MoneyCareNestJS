@@ -1,4 +1,5 @@
-import { IsString, IsOptional, IsNumber, Min, Max } from 'class-validator';
+import { IsString, IsOptional, IsNumber, Min, Max, IsEnum } from 'class-validator';
+import { CategoryType } from '../entities/category.entity';
 
 export class UpdateCategoryDto {
   @IsOptional()
@@ -20,5 +21,12 @@ export class UpdateCategoryDto {
 
   @IsOptional()
   @IsNumber()
-  savingFundId?: number;
+  fundId?: number;
+
+  @IsOptional()
+  @IsEnum(CategoryType)
+  type?: CategoryType;
+
+  @IsOptional()
+  isEssential?: boolean;
 }

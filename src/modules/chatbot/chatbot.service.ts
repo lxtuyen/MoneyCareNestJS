@@ -4,7 +4,7 @@ import { Repository } from 'typeorm';
 import { CatOption } from './chatbot.types';
 import { CreateTransactionDto } from 'src/modules/transactions/dto/create-transaction.dto';
 import { Category } from 'src/modules/categories/entities/category.entity';
-import { SavingFund } from 'src/modules/saving-funds/entities/saving-fund.entity';
+import { Fund } from 'src/modules/saving-funds/entities/fund.entity';
 import { AiGeminiChatbotService } from './ai-chatbot-gemini.service';
 import { TransactionService } from 'src/modules/transactions/transactions.service';
 import { ApiResponse } from 'src/common/dto/api-response.dto';
@@ -29,14 +29,14 @@ export class ChatbotService {
     private readonly gemini: AiGeminiChatbotService,
     private readonly transactionService: TransactionService,
 
-    @InjectRepository(SavingFund)
-    private readonly savingFundRepo: Repository<SavingFund>,
+    @InjectRepository(Fund)
+    private readonly fundRepo: Repository<Fund>,
 
     @InjectRepository(Category)
     private readonly categoryRepo: Repository<Category>,
   ) {}
-  private async getSelectedFund(userId: number): Promise<SavingFund | null> {
-    const fund = await this.savingFundRepo.findOne({
+  private async getSelectedFund(userId: number): Promise<Fund | null> {
+    const fund = await this.fundRepo.findOne({
       where: {
         user: { id: userId },
         is_selected: true,
@@ -51,7 +51,7 @@ export class ChatbotService {
     fundId: number,
   ): Promise<Category[] | null> {
     return this.categoryRepo.find({
-      where: { savingFund: { id: fundId } },
+      where: { fund: { id: fundId } },
       order: { id: 'ASC' },
     });
   }

@@ -1,4 +1,5 @@
 import { Expose } from 'class-transformer';
+import { CategoryType } from '../entities/category.entity';
 
 export class CategoryResponseDto {
   @Expose()
@@ -12,6 +13,12 @@ export class CategoryResponseDto {
 
   @Expose()
   percentage: number;
+
+  @Expose()
+  type: CategoryType;
+
+  @Expose()
+  isEssential: boolean;
 
   @Expose()
   created_at: Date;
