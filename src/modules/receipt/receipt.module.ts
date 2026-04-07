@@ -1,12 +1,12 @@
 import { Module } from '@nestjs/common';
 import { ReceiptController } from './receipt.controller';
 import { ReceiptService } from './receipt.service';
-import { AiGeminiReceiptService } from 'src/modules/receipt/ai-gemini-receipt.service';
+import { AiModule } from 'src/modules/ai/ai.module';
 
 @Module({
-  imports: [],
+  imports: [AiModule],
   controllers: [ReceiptController],
-  providers: [ReceiptService, AiGeminiReceiptService],
+  providers: [ReceiptService],
   exports: [ReceiptService],
 })
 export class ReceiptModule {}

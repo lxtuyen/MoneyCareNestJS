@@ -6,7 +6,6 @@ import { Fund } from 'src/modules/saving-funds/entities/fund.entity';
 import { Category } from 'src/modules/categories/entities/category.entity';
 import { Transaction } from 'src/modules/transactions/entities/transaction.entity';
 import { User } from 'src/modules/user/entities/user.entity';
-import { AiGeminiChatbotService } from './ai-chatbot-gemini.service';
 import { TransactionsModule } from 'src/modules/transactions/transactions.module';
 
 @Module({
@@ -15,6 +14,6 @@ import { TransactionsModule } from 'src/modules/transactions/transactions.module
     TransactionsModule,
   ],
   controllers: [ChatbotController],
-  providers: [ChatbotService, AiGeminiChatbotService],
+  providers: [ChatbotService],
 })
 export class ChatbotModule {}

@@ -8,8 +8,9 @@ export class TransactionFilterDto {
   @IsNumber()
   categoryId?: number;
 
+  @IsOptional()
   @IsNumber()
-  fundId: number;
+  fundId?: number;
 
   @IsOptional()
   @IsDateString()

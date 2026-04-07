@@ -2,6 +2,7 @@ export interface ReceiptItem {
   name: string;
   amount: number;
   category: string;
+  categoryId: number | null;
 }
 
 export interface ReceiptScanResult {

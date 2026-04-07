@@ -1,10 +1,15 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { GoogleGenAI } from '@google/genai';
 import JSON5 from 'json5';
-import { CatOption, ChatExpenseResult } from './chatbot.types';
+import { AiProvider } from './interfaces/ai-provider.interface';
+import {
+  ChatExpenseResult,
+  CatOption,
+  FinancialAnalysisResult,
+} from './types/chatbot.types';
 
 @Injectable()
-export class AiGeminiChatbotService {
+export class AiGeminiChatbotService implements AiProvider {
   private readonly logger = new Logger(AiGeminiChatbotService.name);
   private readonly ai: GoogleGenAI;
 
@@ -16,13 +21,16 @@ export class AiGeminiChatbotService {
 
   private buildExpensePrompt(categories: CatOption[]): string {
     const list = categories.map((c) => `- ${c.name}`).join('\n');
-    this.logger.log('Categories list: ' + list);
     return `
-      Bạn là API xử lý câu lệnh "thêm chi tiêu" tiếng Việt cho app quản lý chi tiêu.
+      Bạn là API xử lý câu lệnh "ghi chép chi tiêu" tiếng Việt cho app quản lý chi tiêu Money Care.
+
+      NHIỆM VỤ:
+      Trích xuất thông tin chi tiêu từ tin nhắn của người dùng.
 
       OUTPUT FORMAT (BẮT BUỘC):
       - Trả về DUY NHẤT 1 JSON hợp lệ (không markdown, không \`\`\`, không giải thích).
-      - JSON phải có ĐỦ các key đúng thứ tự sau:
+      - Nếu tin nhắn KHÔNG phải là ghi chép chi tiêu: trả về JSON với amount=null, confidence=0.
+      - JSON phải có cấu trúc sau:
       {
         "time": string | null,
         "amount": number | null,
@@ -32,57 +40,69 @@ export class AiGeminiChatbotService {
         "confidence": number
       }
 
-    QUY TẮC NHẬN DIỆN:
-    - Chỉ xử lý nếu câu bắt đầu bằng đúng "thêm chi tiêu".
-    - Nếu KHÔNG bắt đầu bằng "thêm chi tiêu": trả về JSON với amount=null, category_name=null, confidence=0 (các field khác null).
+    QUY TẮC NHẬN DIỆN & TRÍCH XUẤT:
+    - Nhận diện các cụm từ như "ăn cơm 30k", "đổ xăng 50", "trả tiền điện 500k hôm qua",...
+    - QUY TẮC CHUẨN HÓA SỐ TIỀN:
+      - "20k" => 20000; "20" => 20000 (ngầm 20k nếu ngữ cảnh hợp lý)
+      - "1tr" => 1000000; "1.2tr" => 1200000
+      - "50.000" / "50,000" => 50000
+      - Currency mặc định là "VND" nếu không rõ.
 
-    QUY TẮC CHUẨN HÓA SỐ TIỀN:
-    - "20k" => 20000; "20" => 20000 (ngầm 20k)
-    - "1tr" => 1000000; "1tr2" => 1200000; "1.2tr" => 1200000; "1tr 200" => 1200000
-    - "50.000" / "50,000" => 50000
-    - Nếu có "đ", "vnd" => currency="VND"
-    - Nếu không thấy currency => currency="VND"
-    - Nếu không xác định được số tiền => amount=null và confidence giảm.
+    - QUY TẮC THỜI GIAN:
+      - "hôm nay"/"nay" => time="today"
+      - "hôm qua"/"qua" => time="yesterday"
+      - "dd/mm" => time="dd/mm"
+      - Nếu không có => time=null
 
-    QUY TẮC THỜI GIAN:
-    - Nếu có "hôm nay"/"nay" => time="today"
-    - "hôm qua"/"qua" => time="yesterday"
-    - Nếu có dạng "dd/mm" hoặc "dd-mm" => time = đúng chuỗi ngày đó (giữ nguyên như user viết)
-    - Nếu không có thông tin => time=null
-
-    GỢI Ý PHÂN LOẠI (match theo từ khóa, ưu tiên theo thứ tự ở phần ƯU TIÊN):
-    - Ăn uống: bánh mì, cơm, phở, bún, mì, cháo, đồ ăn, ăn, quán ăn, nhà hàng,
-      cafe/cà phê, trà sữa, trà, nước, nước ngọt, ăn vặt, snack, bánh kẹo,
-      đặt đồ ăn: grabfood, shopeefood/now, befood.
-      "đi chợ" chỉ là Ăn uống nếu có dấu hiệu thực phẩm: rau củ, thịt, cá, trứng, sữa, gạo, mì...
-
-    - Mua sắm: siêu thị, tạp hoá, cửa hàng tiện lợi (circle k, familymart, winmart, coopmart...),
-      mua đồ, shopping, quần áo, giày dép, mỹ phẩm, dầu gội, sữa tắm, đồ gia dụng,
-      mua hàng online: shopee, lazada, tiki (nếu không nói rõ là đồ ăn).
-
-    - Di chuyển: grab, be, gojek, taxi, xe ôm, bus, vé xe, vé tàu,
-      xăng/đổ xăng, gửi xe, rửa xe, sửa xe, bảo dưỡng.
-
-    - Hóa đơn: điện, nước, internet, wifi, 4g/5g, data, cước/thuê bao,
-      thanh toán định kỳ (nếu không có category riêng).
-
-    - Giáo dục: học phí, tiền học, sách, giáo trình, in/ấn, photo, tài liệu, khóa học, lệ phí thi.
-
-    - Khác: không khớp rõ ràng với các nhóm trên.
-
-    ƯU TIÊN CHỐNG NHẦM (rất quan trọng):
-    1) Nếu có từ khóa rõ ràng (grabfood/shopeefood/now/cafe/trà sữa...) => ưu tiên Ăn uống.
-    2) Nếu có "đi chợ" + đồ dùng (dầu gội, sữa tắm, đồ gia dụng...) => ưu tiên Mua sắm.
-    3) Nếu vừa có "grab" vừa có "ăn/đồ ăn/grabfood" => ưu tiên Ăn uống (grabfood).
-    4) Nếu mơ hồ/không chắc => chọn "Khác" nếu có trong DANH SÁCH CATEGORY, và confidence thấp.
-
-    DANH SÁCH CATEGORY (category_name CHỈ ĐƯỢC CHỌN TRONG NÀY, phải khớp đúng 100%):
+    DANH SÁCH CATEGORY (CHỈ CHỌN TRONG DANH SÁCH NÀY):
     ${list}
 
-    YÊU CẦU CUỐI:
-    - category_name: nếu có thể, MUST chọn 1 giá trị trong danh sách. Nếu không chắc và có "Khác" trong danh sách => chọn "Khác".
-    - description: ghi ngắn gọn nội dung chi tiêu (vd: "cafe", "đổ xăng", "mua dầu gội"...). Nếu user không nói gì => null.
-    - confidence: 0..1 (chắc thì cao, mơ hồ thì thấp).
+    YÊU CẦU:
+    - category_name: Phải khớp 100% với tên trong danh sách trên.
+    - description: Nội dung chi tiết (vd: "ăn trưa", "đổ xăng ninja lead").
+    - confidence: 0..1 (Độ tin cậy của việc đây là một lệnh ghi chép chi tiêu).
+`.trim();
+  }
+
+  private buildAnalysisPrompt(
+    categories: CatOption[],
+    userName: string,
+  ): string {
+    const list = categories.map((c) => `- ${c.name}`).join('\n');
+    return `
+      Bạn là chuyên gia tài chính cá nhân cho ứng dụng "Money Care".
+      Tên người dùng: ${userName}.
+
+      NHIỆM VỤ:
+      Dựa trên danh sách giao dịch và số dư các quỹ của người dùng, hãy đưa ra:
+      1. Nhận xét về tình hình chi tiêu gần đây.
+      2. Cảnh báo nếu có hạng mục nào chi tiêu vượt quá mức bình thường.
+      3. Đưa ra 3 lời khuyên cụ thể để tiết kiệm hoặc quản lý tiền tốt hơn.
+      4. Gợi ý một kế hoạch ngân sách sơ bộ cho tháng tới.
+
+      PHONG CÁCH:
+      - Thân thiện, chuyên nghiệp, truyền cảm hứng.
+      - Trả lời bằng tiếng Việt.
+      - Sử dụng emoji để sinh động.
+      - Ngắn gọn, súc tích (khoảng 300-500 từ).
+
+      OUTPUT FORMAT (BẮT BUỘC):
+      - Trả về DUY NHẤT 1 JSON (không markdown, không \`\`\`, không giải thích).
+      - JSON cấu trúc:
+      {
+        "summary": "Lời chào và tóm tắt ngắn gọn",
+        "budget_plan": [
+          {
+            "group_name": "Tên nhóm (vd: Nhu yếu phẩm)",
+            "items": [
+              { "name": "Tên mục", "amount": number, "description": "Lý do/Lời khuyên ngắn" }
+            ]
+          }
+        ]
+      }
+
+      DANH SÁCH HẠNG MỤC CHI TIÊU CỦA APP (HÃY GỢI Ý DỰA TRÊN CÁC HẠNG MỤC NÀY):
+      ${list}
 `.trim();
   }
 
@@ -91,21 +111,77 @@ export class AiGeminiChatbotService {
     return text.length > max ? text.slice(0, max) + '...' : text;
   }
 
-  async parseExpense(
+  async parseExpense(message: string, options: CatOption[]): Promise<any> {
+    const prompt = `
+Bạn là trợ lý ghi chép chi tiêu. Hãy trích xuất dữ liệu từ câu: "${message}"
+
+OUTPUT FORMAT (JSON DUY NHẤT):
+{
+  "amount": number | null,
+  "category_name": string | null,
+  "description": string | null,
+  "time": string | null
+}
+
+DANH SÁCH HẠNG MỤC HỢP LỆ:
+${options.map((o) => `- ${o.name}`).join('\n')}
+
+QUY TẮC:
+- "amount": số tiền (number).
+- "category_name": chọn 1 tên từ danh sách trên gần nhất, không có thì "Khác".
+- "description": ghi chú ngắn gọn về khoản chi.
+- "time": thời gian (ISO 8601) nếu người dùng nhắc đến, không thì null.
+- Chỉ trả JSON.
+`.trim();
+
+    try {
+      const result = await this.ai.models.generateContent({
+        model: 'gemini-1.5-flash',
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      });
+      const output = result.text || '';
+      const cleaned = output.replace(/```json|```/g, '').trim();
+      const parsed = JSON5.parse(cleaned);
+
+      return {
+        amount: parsed.amount ?? null,
+        category_name: parsed.category_name ?? 'Khác',
+        description: parsed.description ?? message,
+        time: parsed.time ?? null,
+        confidence: parsed.amount ? 1.0 : 0.0,
+      };
+    } catch (error) {
+      this.logger.error('Lỗi parse chi tiêu:', error);
+      return { confidence: 0 };
+    }
+  }
+
+  async analyzeFinancialHealth(
     text: string,
     categories: CatOption[],
-  ): Promise<ChatExpenseResult> {
-    const prompt = this.buildExpensePrompt(categories);
+    historyData: string,
+    userName: string,
+  ): Promise<FinancialAnalysisResult | string> {
+    const prompt = this.buildAnalysisPrompt(categories, userName);
 
     const res = await this.ai.models.generateContent({
-      model: 'gemini-2.5-flash-preview-09-2025',
-      contents: [{ role: 'user', parts: [{ text: prompt }, { text }] }],
-      config: { temperature: 0.1, maxOutputTokens: 5000 },
+      model: 'gemini-1.5-flash',
+      contents: [
+        {
+          role: 'user',
+          parts: [
+            { text: prompt },
+            {
+              text: `Dữ liệu lịch sử giao dịch & Quỹ hiện tại: \n${historyData}`,
+            },
+            { text: `Câu hỏi/Yêu cầu của người dùng: ${text}` },
+          ],
+        },
+      ],
+      config: { temperature: 0.7, maxOutputTokens: 2000 },
     });
 
     let raw = (res.text || '').trim();
-    this.logger.log('📥 [EXPENSE] RAW=' + this.preview(raw));
-
     if (raw.startsWith('```')) {
       raw = raw
         .replace(/```[\w]*\n?/g, '')
@@ -114,38 +190,28 @@ export class AiGeminiChatbotService {
     }
 
     try {
-      // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
-      const parsed = JSON5.parse(raw) as ChatExpenseResult;
-
-      if (!parsed.currency) parsed.currency = 'VND';
-      if (typeof parsed.confidence !== 'number') parsed.confidence = 0;
-      if (typeof parsed.amount !== 'number') parsed.amount = null;
-      if (typeof parsed.category_name !== 'string') parsed.category_name = null;
-      if (typeof parsed.description !== 'string') parsed.description = null;
-
-      return parsed;
+      return JSON5.parse(raw) as FinancialAnalysisResult;
     } catch (e) {
-      this.logger.error(' Parse JSON failed', e);
-      this.logger.error('JSON full=' + raw);
-      throw new Error('Gemini trả JSON không hợp lệ');
+      this.logger.error('Parse Analysis JSON failed: ' + raw, e);
+      return raw;
     }
   }
 
   async chatAnswer(text: string): Promise<string> {
     const res = await this.ai.models.generateContent({
-      model: 'gemini-2.5-flash-preview-09-2025',
+      model: 'gemini-1.5-flash',
       contents: [
         {
           role: 'user',
           parts: [
             {
-              text: 'Bạn là trợ lý tài chính cá nhân. Trả lời tiếng Việt ngắn gọn.',
+              text: 'Bạn là trợ lý tài chính cá nhân của ứng dụng Money Care. Trả lời tiếng Việt thân thiện, ngắn gọn. Hãy giúp người dùng quản lý tiền bạc thông minh hơn.',
             },
             { text },
           ],
         },
       ],
-      config: { temperature: 0.7, maxOutputTokens: 700 },
+      config: { temperature: 0.7, maxOutputTokens: 1000 },
     });
 
     return (res.text || '').trim();

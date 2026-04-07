@@ -1,12 +1,11 @@
-/* eslint-disable @typescript-eslint/no-unsafe-member-access */
-/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import { Injectable, Logger } from '@nestjs/common';
 import { GoogleGenAI } from '@google/genai';
 import JSON5 from 'json5';
-import { ReceiptScanResult } from 'src/common/interfaces/receipt.interface';
+import { ReceiptScanResult } from './types/receipt.types';
+import { ReceiptProvider } from './interfaces/receipt-provider.interface';
 
 @Injectable()
-export class AiGeminiReceiptService {
+export class AiGeminiReceiptService implements ReceiptProvider {
   private readonly logger = new Logger(AiGeminiReceiptService.name);
   private readonly ai: GoogleGenAI;
 
@@ -18,48 +17,27 @@ export class AiGeminiReceiptService {
 
   private buildPrompt(): string {
     return `
-Bạn là API phân tích hoá đơn.
+Bạn là chuyên gia OCR phân tích hóa đơn cho ứng dụng "Money Care".
 
-Nhận 1 ẢNH HÓA ĐƠN và trả về DUY NHẤT MỘT JSON hợp lệ với schema:
+NHIỆM VỤ:
+Trích xuất thông tin chi tiết từ ẢNH HÓA ĐƠN.
 
+OUTPUT FORMAT (DUY NHẤT 1 JSON):
 {
-  "raw_text": string,
   "merchant_name": string | null,
-  "address": string | null,
-  "date": string | null,
+  "date": string | null, // YYYY-MM-DD
   "total_amount": number | null,
-  "currency": string | null,
-  "category_key": string,
-  "category_name": string,
+  "items": [
+    { "name": string, "amount": number, "category": string }
+  ]
 }
 
-Ý NGHĨA:
-- "raw_text": toàn bộ nội dung text bạn đọc được từ hoá đơn (text thuần, có thể giữ xuống dòng).
-- "merchant_name": tên cửa hàng/quán.
-- "address": địa chỉ nếu đọc được, không có thì null.
-- "date": ngày hoá đơn, format YYYY-MM-DD.
-- "total_amount": tổng tiền cuối cùng (đã gồm thuế/phí nếu có).
-- "currency": mã tiền tệ, ví dụ "VND", "USD", nếu không rõ thì "VND" nếu ngữ cảnh ở Việt Nam.
-- "category_key": 1 trong các key: "FOOD", "SHOPPING", "TRANSPORT", "BILL", "HEALTH", "EDU", "OTHER".
-- "category_name": tên tiếng Việt tương ứng (Ăn uống, Mua sắm, Di chuyển, Hóa đơn, Sức khỏe, Giáo dục, Khác).
-- "confidence": số từ 0 đến 1 thể hiện độ tự tin.
-
-QUY TẮC PHÂN LOẠI:
-- Cafe, trà sữa, đồ uống, nhà hàng, món ăn → FOOD (Ăn uống)
-- Cửa hàng tiện lợi, siêu thị, tạp hoá → SHOPPING (Mua sắm)
-- Taxi, Grab, bus, vé xe, xăng, gửi xe → TRANSPORT (Di chuyển)
-- Điện, nước, internet, mobile, truyền hình → BILL (Hóa đơn)
-- Học phí, sách vở, trung tâm, trường học → EDU (Giáo dục)
-- Thuốc, phòng khám, bệnh viện hoặc Không khớp → OTHER (Khác)
-
-YÊU CẦU:
-- CHỈ TRẢ JSON — không được trả bất cứ văn bản nào ngoài JSON.
-- KHÔNG dùng markdown, KHÔNG dùng \`\`\`.
-- KHÔNG giải thích, KHÔNG mô tả thêm.
-- Nếu thiếu dữ liệu → dùng null nhưng vẫn phải giữ field.
-- "total_amount" phải là number thật, KHÔNG dùng dấu . hoặc , để phân tách hàng nghìn.
-  Ví dụ: 947.100₫ → total_amount = 947100
-- "date" phải ở định dạng YYYY-MM-DD. Nếu đọc được nhiều ngày, chọn ngày gần với “ngày in/transaction” nhất.
+QUY TẮC:
+- "merchant_name": Tên thương hiệu/cửa hàng.
+- "total_amount": Tổng tiền thanh toán cuối cùng (number).
+- "items": Danh sách các mặt hàng/dịch vụ trong hóa đơn.
+- Gợi ý "category" cho từng item dưa trên tên của nó (vd: "Ăn uống", "Mua sắm", "Di chuyển", "Hóa đơn", "Sức khỏe", "Giáo dục", "Khác").
+- Chỉ trả JSON, không giải thích gì thêm.
 `.trim();
   }
 
@@ -91,14 +69,14 @@ YÊU CẦU:
       const parsed = JSON5.parse(raw);
 
       return {
-        raw_text: parsed.raw_text ?? '',
         merchant_name: parsed.merchant_name ?? null,
-        address: parsed.address ?? null,
         date: parsed.date ?? null,
         total_amount: parsed.total_amount ?? null,
-        currency: parsed.currency ?? null,
-        category_key: parsed.category_key ?? 'OTHER',
-        category_name: parsed.category_name ?? 'Khác',
+        items: (parsed.items || []).map((i: any) => ({
+          name: i.name || 'Không rõ',
+          amount: Number(i.amount) || 0,
+          category: i.category || 'Khác',
+        })),
       };
     } catch (err) {
       this.logger.error('JSON parse lỗi:', err);
@@ -106,25 +84,35 @@ YÊU CẦU:
     }
   }
 
+  private getMimeType(buffer: Buffer): string {
+    const signature = buffer.slice(0, 4).toString('hex').toLowerCase();
+    if (signature.startsWith('89504e47')) return 'image/png';
+    if (signature.startsWith('ffd8ff')) return 'image/jpeg';
+    if (signature.startsWith('52494646') && buffer.includes(Buffer.from('WEBP')))
+      return 'image/webp';
+    return 'image/jpeg';
+  }
+
   async scan(imageBuffer: Buffer): Promise<ReceiptScanResult> {
     this.logger.log(`[SCAN] Start, buffer = ${imageBuffer.length} bytes`);
 
     const base64 = imageBuffer.toString('base64');
+    const mimeType = this.getMimeType(imageBuffer);
 
     const res = await this.ai.models.generateContent({
-      model: 'gemini-2.5-flash-preview-09-2025',
+      model: 'gemini-1.5-flash',
       contents: [
         {
           role: 'user',
           parts: [
             { text: this.buildPrompt() },
-            { inlineData: { data: base64, mimeType: 'image/jpeg' } },
+            { inlineData: { data: base64, mimeType } },
           ],
         },
       ],
       config: {
         temperature: 0.1,
-        maxOutputTokens: 5000,
+        maxOutputTokens: 2000,
       },
     });
 

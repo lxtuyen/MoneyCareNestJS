@@ -8,8 +8,6 @@ import { JwtAuthGuard } from 'src/modules/auth/jwt-auth.guard';
 export class CategoriesController {
   constructor(private readonly categoriesService: CategoriesService) {}
 
-  /// POST /categories/user/:userId
-  /// Tạo danh sách categories cho user (dùng khi onboarding, không cần quỹ)
   @Post('user/:userId')
   createForUser(
     @Param('userId', ParseIntPipe) userId: number,
@@ -23,8 +21,6 @@ export class CategoriesController {
     return this.categoriesService.findByUser(userId);
   }
 
-  /// POST /categories/user/:userId/single
-  /// Tạo một category cho user
   @Post('user/:userId/single')
   createOne(
     @Param('userId', ParseIntPipe) userId: number,
@@ -33,7 +29,6 @@ export class CategoriesController {
     return this.categoriesService.createForUser(userId, [dto]);
   }
 
-  /// PATCH /categories/:id
   @Patch(':id')
   update(
     @Param('id', ParseIntPipe) id: number,
@@ -42,7 +37,6 @@ export class CategoriesController {
     return this.categoriesService.update(id, dto);
   }
 
-  /// DELETE /categories/:id
   @Delete(':id')
   remove(@Param('id', ParseIntPipe) id: number) {
     return this.categoriesService.remove(id);

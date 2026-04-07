@@ -1,16 +1,16 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
-import { AiGeminiReceiptService } from './ai-gemini-receipt.service';
-import { ReceiptScanResult } from 'src/common/interfaces/receipt.interface';
+import { ReceiptAiService } from '../ai/receipt-ai.service';
+import { ReceiptScanResult } from './types/receipt.types';
 import { ApiResponse } from 'src/common/dto/api-response.dto';
 
 @Injectable()
 export class ReceiptService {
   constructor(
-    private readonly aiGeminiReceiptService: AiGeminiReceiptService,
+    private readonly receiptAi: ReceiptAiService,
   ) {}
 
   async scan(imageBuffer: Buffer): Promise<ApiResponse<ReceiptScanResult>> {
-    const data = await this.aiGeminiReceiptService.scan(imageBuffer);
+    const data = await this.receiptAi.scan(imageBuffer);
     return new ApiResponse({
       success: true,
       statusCode: HttpStatus.OK,

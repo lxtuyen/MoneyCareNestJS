@@ -10,7 +10,7 @@ import { TransactionsModule } from './modules/transactions/transactions.module';
 import { UserModule } from './modules/user/user.module';
 import { OtpModule } from './modules/otp/otp.module';
 import { MailModule } from './modules/mailer/mail.module';
-import { ReceiptModule } from './modules/receipt/receipt.module';;
+import { ReceiptModule } from './modules/receipt/receipt.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ChatbotModule } from './modules/chatbot/chatbot.module';
 import { PaymentsModule } from './modules/payment/payment.module';
@@ -19,6 +19,7 @@ import { StudentProfileModule } from './modules/student-profile/student-profile.
 import { FinanceModeModule } from './modules/finance-mode/finance-mode.module';
 import { GamificationModule } from './modules/gamification/gamification.module';
 import { FundsModule } from './modules/saving-funds/funds.module';
+import { AiModule } from './modules/ai/ai.module';
 
 @Module({
   imports: [
@@ -46,32 +47,20 @@ import { FundsModule } from './modules/saving-funds/funds.module';
 
     AuthModule,
     ReceiptModule,
-
     UserProfileModule,
-
     FundsModule,
-
     CategoriesModule,
-
     TransactionsModule,
-
     UserModule,
-
     OtpModule,
-
     MailModule,
-
     PaymentsModule,
-
     ChatbotModule,
-
     NotificationsModule,
-
     StudentProfileModule,
-
     FinanceModeModule,
-
     GamificationModule,
+    AiModule,
   ],
   controllers: [AppController],
   providers: [AppService],
