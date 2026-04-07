@@ -8,4 +8,11 @@ export class UpdateProfileDto {
   @IsOptional()
   @IsString()
   last_name?: string;
+
+  @IsOptional()
+  monthlyIncome?: number;
+
+  @IsOptional()
+  @IsString()
+  incomeDate?: string;
 }

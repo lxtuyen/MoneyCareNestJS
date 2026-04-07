@@ -15,7 +15,6 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { ChatbotModule } from './modules/chatbot/chatbot.module';
 import { PaymentsModule } from './modules/payment/payment.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
-import { StudentProfileModule } from './modules/student-profile/student-profile.module';
 import { FinanceModeModule } from './modules/finance-mode/finance-mode.module';
 import { GamificationModule } from './modules/gamification/gamification.module';
 import { FundsModule } from './modules/saving-funds/funds.module';
@@ -57,7 +56,6 @@ import { AiModule } from './modules/ai/ai.module';
     PaymentsModule,
     ChatbotModule,
     NotificationsModule,
-    StudentProfileModule,
     FinanceModeModule,
     GamificationModule,
     AiModule,

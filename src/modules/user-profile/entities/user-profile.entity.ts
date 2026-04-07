@@ -24,6 +24,12 @@ export class UserProfile {
   @JoinColumn()
   user: User;
 
+  @Column({ type: 'bigint', nullable: true })
+  monthlyIncome: number;
+
+  @Column({ type: 'date', nullable: true })
+  incomeDate: string;
+
   @CreateDateColumn()
   created_at: Date;
 

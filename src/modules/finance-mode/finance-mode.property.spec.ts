@@ -1,4 +1,4 @@
-// Feature: student-finance-modes, Property 10: Finance mode switch round-trip
+// Feature: finance-modes, Property 10: Finance mode switch round-trip
 //
 // For any FinanceMode value ∈ {NORMAL, SAVING, SURVIVAL}, after switching to
 // that mode and reading back currentMode, the value must equal the mode that
