@@ -30,6 +30,9 @@ export class UserProfile {
   @Column({ type: 'date', nullable: true })
   incomeDate: string;
 
+  @Column({ nullable: true })
+  avatar: string;
+
   @CreateDateColumn()
   created_at: Date;
 

@@ -42,6 +42,7 @@ export class AuthService {
     const profile = this.profileRepo.create({
       first_name: dto.firstName,
       last_name: dto.lastName,
+      avatar: 'https://i.pinimg.com/736x/0d/64/98/0d64989794b1a4c9d89bff571d3d5842.jpg',
     });
     await this.profileRepo.save(profile);
 
@@ -128,6 +129,7 @@ export class AuthService {
         const profile = this.profileRepo.create({
           first_name: firstName ?? '',
           last_name: '',
+          avatar: payload?.picture || 'https://i.pinimg.com/736x/0d/64/98/0d64989794b1a4c9d89bff571d3d5842.jpg',
         });
         await this.profileRepo.save(profile);
 

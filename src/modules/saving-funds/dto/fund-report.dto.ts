@@ -13,26 +13,21 @@ export class FundReportDto {
   end_date: Date;
   status: string;
 
-  // Budget & Target
   balance: number;
   target: number;
   total_spent: number;
   remaining_balance: number;
 
-  // Completion metrics
   balance_usage_percentage: number;
   target_completion_percentage: number;
   is_over_balance: boolean;
   is_target_achieved: boolean;
 
-  // Category breakdown
   category_breakdown: CategorySpendingDto[];
 
-  // Transaction stats
   total_transactions: number;
   average_transaction_amount: number;
 
-  // Time metrics
   duration_days: number;
   daily_average_spending: number;
 }

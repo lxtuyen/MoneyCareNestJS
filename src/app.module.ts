@@ -10,9 +10,7 @@ import { TransactionsModule } from './modules/transactions/transactions.module';
 import { UserModule } from './modules/user/user.module';
 import { OtpModule } from './modules/otp/otp.module';
 import { MailModule } from './modules/mailer/mail.module';
-import { ReceiptModule } from './modules/receipt/receipt.module';
 import { ScheduleModule } from '@nestjs/schedule';
-import { ChatbotModule } from './modules/chatbot/chatbot.module';
 import { PaymentsModule } from './modules/payment/payment.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { FinanceModeModule } from './modules/finance-mode/finance-mode.module';
@@ -45,7 +43,6 @@ import { AiModule } from './modules/ai/ai.module';
     }),
 
     AuthModule,
-    ReceiptModule,
     UserProfileModule,
     FundsModule,
     CategoriesModule,
@@ -54,7 +51,6 @@ import { AiModule } from './modules/ai/ai.module';
     OtpModule,
     MailModule,
     PaymentsModule,
-    ChatbotModule,
     NotificationsModule,
     FinanceModeModule,
     GamificationModule,

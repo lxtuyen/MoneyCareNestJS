@@ -27,10 +27,6 @@ export class FundsService {
     private transactionRepo: Repository<Transaction>,
   ) {}
 
-  // ────────────────────────────────────────────────────────────────────────────
-  // CRUD
-  // ────────────────────────────────────────────────────────────────────────────
-
   async create(
     dto: CreateFundDto,
     userId?: number,
@@ -90,7 +86,6 @@ export class FundsService {
     });
   }
 
-  /** List only SPENDING funds for a user. */
   async findSpendingFunds(
     userId: number,
   ): Promise<ApiResponse<Fund[]>> {
@@ -102,7 +97,6 @@ export class FundsService {
     return new ApiResponse({ success: true, statusCode: HttpStatus.OK, data: funds });
   }
 
-  /** List only SAVING_GOAL funds for a user. */
   async findGoalFunds(userId: number): Promise<ApiResponse<Fund[]>> {
     const funds = await this.fundRepo.find({
       where: { user: { id: userId }, type: FundType.SAVING_GOAL },
@@ -110,7 +104,6 @@ export class FundsService {
       order: { created_at: 'DESC' },
     });
 
-    // Attach computed fields for each goal
     const enriched = funds.map((f) => this.enrichGoal(f));
     return new ApiResponse({ success: true, statusCode: HttpStatus.OK, data: enriched });
   }
@@ -135,7 +128,6 @@ export class FundsService {
     });
     if (!fund) throw new NotFoundException('Saving fund not found');
 
-    // Apply all optional fields
     if (dto.name !== undefined) fund.name = dto.name;
     if (dto.type !== undefined) fund.type = dto.type;
     if (dto.is_selected !== undefined) fund.is_selected = dto.is_selected;
@@ -150,11 +142,10 @@ export class FundsService {
     if (dto.start_date !== undefined) fund.start_date = dto.start_date;
     if (dto.end_date !== undefined) fund.end_date = dto.end_date;
 
-    // Auto-detect goal completion
     if (fund.type === FundType.SAVING_GOAL) {
       fund.is_completed = this.detectGoalCompletion(fund);
     }
-    // Manual override
+
     if (dto.is_completed !== undefined) fund.is_completed = dto.is_completed;
 
     if (dto.categories) {
@@ -218,19 +209,12 @@ export class FundsService {
     return new ApiResponse({ success: true, statusCode: HttpStatus.OK, data: updated });
   }
 
-  // ────────────────────────────────────────────────────────────────────────────
-  // SAVINGS GOAL helpers (replaces GoalFundService)
-  // ────────────────────────────────────────────────────────────────────────────
-
-  /** Calculate progress % for a SAVING_GOAL fund (0–100). */
   calculateProgress(fund: Fund): number {
     const target = Number(fund.target);
     if (target <= 0) return 0;
     const percent = (Number(fund.saved_amount) / target) * 100;
     return Math.min(Math.round(percent * 100) / 100, 100);
   }
-
-  /** Monthly savings needed to hit the target on time. */
   calculateMonthlySavingsNeeded(fund: Fund): number {
     if (!fund.end_date || !fund.target) return 0;
     const today = new Date();
@@ -248,7 +232,7 @@ export class FundsService {
     return Number(fund.saved_amount) >= Number(fund.target ?? 0);
   }
 
-  /** Enrich a SAVING_GOAL fund with computed fields. */
+
   private enrichGoal(fund: Fund): Fund & {
     progress_percent: number;
     monthly_savings_needed: number;
@@ -260,14 +244,6 @@ export class FundsService {
     };
   }
 
-  // ────────────────────────────────────────────────────────────────────────────
-  // BUDGET helpers (replaces BudgetService)
-  // ────────────────────────────────────────────────────────────────────────────
-
-  /**
-   * Called after each EXPENSE transaction.
-   * Updates spent_current_month and fires notification flags if thresholds exceeded.
-   */
   async updateMonthlySpending(
     fundId: number,
     newSpentAmount: number,
@@ -286,7 +262,6 @@ export class FundsService {
     await this.fundRepo.save(fund);
   }
 
-  /** Reset monthly counters — called by the scheduler on the 1st of each month. */
   async resetMonthlyCounters(): Promise<void> {
     await this.fundRepo
       .createQueryBuilder()
@@ -296,9 +271,6 @@ export class FundsService {
       .execute();
   }
 
-  // ────────────────────────────────────────────────────────────────────────────
-  // EXPIRED FUND HANDLING (unchanged)
-  // ────────────────────────────────────────────────────────────────────────────
 
   async checkExpiredFund(userId: number) {
     const expiredFund = await this.fundRepo

@@ -15,4 +15,8 @@ export class UpdateProfileDto {
   @IsOptional()
   @IsString()
   incomeDate?: string;
+
+  @IsOptional()
+  @IsString()
+  avatar?: string;
 }
