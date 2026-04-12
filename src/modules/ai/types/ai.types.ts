@@ -27,6 +27,30 @@ export type FinancialAnalysisResult = {
   budget_plan: BudgetPlanGroup[];
 };
 
+export type InsightCategorySummary = {
+  name: string;
+  amount: number;
+  changePct: number;
+  percentageOfExpenses: number;
+  icon: string | null;
+};
+
+export type FinancialInsightSnapshot = {
+  period: 'this_month' | 'last_30_days';
+  generatedAt: string;
+  incomeTotal: number;
+  expenseTotal: number;
+  netBalance: number;
+  dailyAverage: number;
+  topCategories: InsightCategorySummary[];
+  alerts: string[];
+  comparisonPrevMonth: {
+    incomeChangePct: number;
+    expenseChangePct: number;
+    netBalanceChangePct: number;
+  };
+};
+
 export interface ReceiptItem {
   name: string;
   amount: number;

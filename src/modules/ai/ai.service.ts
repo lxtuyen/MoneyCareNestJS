@@ -1,7 +1,13 @@
-import { BadRequestException, HttpStatus, Injectable, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  HttpStatus,
+  Injectable,
+  Logger,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import JSON5 from 'json5';
+import { createHash } from 'crypto';
 import { GoogleGenAI, Type } from '@google/genai';
 import { ApiResponse } from 'src/common/dto/api-response.dto';
 import { Category } from 'src/modules/categories/entities/category.entity';
@@ -13,10 +19,15 @@ import {
   CatOption,
   ChatExpenseResult,
   FinancialAnalysisResult,
+  FinancialInsightSnapshot,
   ReceiptScanResult,
 } from './types/ai.types';
+import { FinancialInsightsService } from './financial-insights.service';
+import { CacheService } from 'src/common/cache/cache.service';
+import { buildAiAnalysisCacheKey } from 'src/common/cache/financial-cache.util';
 
 const MODEL = 'gemma-4-31b-it';
+const AI_ANALYSIS_TTL_SECONDS = 300; // 5 phút
 
 function normalizeAmount(amount: number | null): number | null {
   if (!amount || amount <= 0) return null;
@@ -24,8 +35,12 @@ function normalizeAmount(amount: number | null): number | null {
   return Math.round(amount);
 }
 
-function norm(s: string) {
-  return (s || '').trim().toLowerCase();
+function norm(value: string) {
+  return (value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase();
 }
 
 @Injectable()
@@ -35,30 +50,36 @@ export class AiService {
 
   constructor(
     private readonly transactionService: TransactionService,
-
+    private readonly financialInsightsService: FinancialInsightsService,
+    private readonly cacheService: CacheService,
     @InjectRepository(Fund)
     private readonly fundRepo: Repository<Fund>,
-
     @InjectRepository(Category)
     private readonly categoryRepo: Repository<Category>,
-
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
   ) {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
-      throw new Error('Thiếu GEMINI_API_KEY trong biến môi trường');
+      throw new Error('Missing GEMINI_API_KEY in environment variables');
     }
     this.genAI = new GoogleGenAI({ apiKey });
   }
 
-  // ─── Helpers ─────────────────────────────────────────────────────────────────
+  private async generateContent(
+    prompt: string,
+    image?: Buffer,
+    mimeType?: string,
+  ) {
+    const parts: Array<{
+      text?: string;
+      inlineData?: { data: string; mimeType: string };
+    }> = [{ text: prompt }];
 
-  private async generateContent(prompt: string, image?: Buffer, mimeType?: string) {
-    const parts: any[] = [{ text: prompt }];
     if (image && mimeType) {
       parts.push({ inlineData: { data: image.toString('base64'), mimeType } });
     }
+
     return this.genAI.models.generateContent({
       model: MODEL,
       contents: [{ role: 'user', parts }],
@@ -66,14 +87,12 @@ export class AiService {
   }
 
   private async getSelectedFund(userId: number): Promise<Fund | null> {
-    // Ưu tiên quỹ đang được chọn
     const selected = await this.fundRepo.findOne({
       where: { user: { id: userId }, is_selected: true },
       order: { updated_at: 'DESC' },
     });
     if (selected) return selected;
 
-    // Fallback: lấy quỹ SPENDING đầu tiên của user
     return this.fundRepo.findOne({
       where: { user: { id: userId }, type: FundType.SPENDING },
       order: { updated_at: 'DESC' },
@@ -94,50 +113,60 @@ export class AiService {
     });
   }
 
-  private async getCategories(userId: number, fundId?: number): Promise<Category[]> {
-    // Ưu tiên fundId được truyền lên từ App
+  private async getCategories(
+    userId: number,
+    fundId?: number,
+  ): Promise<Category[]> {
     if (fundId && fundId > 0) {
-      const fundCats = await this.getCategoriesByFundId(fundId);
-      if (fundCats.length > 0) return fundCats;
+      const fundCategories = await this.getCategoriesByFundId(fundId);
+      if (fundCategories.length > 0) return fundCategories;
     }
 
-    // Nếu không có fundId truyền lên, tìm quỹ đang được chọn trong DB
-    const fund = await this.getSelectedFund(userId);
-    if (fund) {
-      const fundCats = await this.getCategoriesByFundId(fund.id);
-      if (fundCats.length > 0) return fundCats;
+    const selectedFund = await this.getSelectedFund(userId);
+    if (selectedFund) {
+      const fundCategories = await this.getCategoriesByFundId(selectedFund.id);
+      if (fundCategories.length > 0) return fundCategories;
     }
-    // Fallback: category gắn thẳng với user
+
     return this.getCategoriesByUserId(userId);
   }
 
-  private pickCategoryByName(cats: Category[], name: string | null): Category {
-    const g = norm(name || '');
+  private pickCategoryByName(
+    categories: Category[],
+    name: string | null,
+  ): Category {
+    const normalized = norm(name || '');
     return (
-      cats.find((c) => norm(c.name) === g) ||
-      cats.find((c) => norm(c.name).includes(g) || g.includes(norm(c.name))) ||
-      cats.find((c) => norm(c.name).includes('khác')) ||
-      cats[0]
+      categories.find((category) => norm(category.name) === normalized) ||
+      categories.find(
+        (category) =>
+          norm(category.name).includes(normalized) ||
+          normalized.includes(norm(category.name)),
+      ) ||
+      categories.find((category) => norm(category.name).includes('khac')) ||
+      categories[0]
     );
   }
 
-  // ─── Chat ─────────────────────────────────────────────────────────────────────
-
   async handle(
     message: string | undefined,
-    userIdRaw: any,
+    userIdRaw: unknown,
     file?: Express.Multer.File,
     fundId?: number,
   ): Promise<ApiResponse<string>> {
-    const userId: number = Number(userIdRaw);
+    const userId = Number(userIdRaw);
     if (!Number.isFinite(userId)) {
-      throw new BadRequestException('userId phải là number');
+      throw new BadRequestException('userId must be a number');
     }
 
     if (file) {
-      const cats = await this.getCategories(userId, fundId);
-      const categories: CatOption[] = cats.map((c) => ({ id: c.id, name: c.name }));
-      const scanResult = await this.scanReceipt(file.buffer, categories);
+      const categories = await this.getCategories(userId, fundId);
+      const categoryOptions: CatOption[] = categories.map((category) => ({
+        id: category.id,
+        name: category.name,
+      }));
+      const scanResult = await this.scanReceipt(file.buffer, categoryOptions);
+
       return {
         success: true,
         statusCode: 200,
@@ -145,50 +174,57 @@ export class AiService {
       };
     }
 
-    const lowerMsg = (message || '').toLowerCase();
+    const lowerMessage = norm(message || '');
     const isAnalysisRequest =
-      lowerMsg.includes('phân tích') ||
-      lowerMsg.includes('kế hoạch') ||
-      lowerMsg.includes('ngân sách') ||
-      lowerMsg.includes('khuyên');
+      lowerMessage.includes('phan tich') ||
+      lowerMessage.includes('ke hoach') ||
+      lowerMessage.includes('ngan sach') ||
+      lowerMessage.includes('khuyen');
 
     if (isAnalysisRequest) {
       return this.handleAnalysis(message ?? '', userId, fundId);
     }
-    
-    const cats = await this.getCategories(userId, fundId);
-    if (cats.length === 0) {
+
+    const categories = await this.getCategories(userId, fundId);
+    if (categories.length === 0) {
       const answer = await this.chatAnswer(message ?? '');
       return { success: true, statusCode: 200, message: answer };
     }
 
-    const options: CatOption[] = cats.map((c) => ({ id: c.id, name: c.name }));
-    const out = await this.parseExpense(message ?? '', options);
+    const options: CatOption[] = categories.map((category) => ({
+      id: category.id,
+      name: category.name,
+    }));
+    const parsedExpense = await this.parseExpense(message ?? '', options);
 
-    if (out.confidence > 0.6 && out.amount) {
-      const amount = normalizeAmount(out.amount);
-      const picked = this.pickCategoryByName(cats, out.category_name);
-      if (amount && picked) {
+    if (parsedExpense.confidence > 0.6 && parsedExpense.amount) {
+      const amount = normalizeAmount(parsedExpense.amount);
+      const pickedCategory = this.pickCategoryByName(
+        categories,
+        parsedExpense.category_name,
+      );
+
+      if (amount && pickedCategory) {
         const dto: CreateTransactionDto = {
           userId,
           type: 'expense',
           amount,
-          note: out.description ?? 'Chi tiêu từ Chatbot',
-          transactionDate: out.time || new Date().toISOString(),
-          categoryId: picked.id,
+          note: parsedExpense.description ?? 'Chi tieu tu chatbot',
+          transactionDate: parsedExpense.time || new Date().toISOString(),
+          categoryId: pickedCategory.id,
         };
         await this.transactionService.create(dto);
-        const savedData = {
-          amount,
-          category: picked.name,
-          categoryIcon: picked.icon ?? '💰',
-          note: out.description ?? message ?? '',
-          date: dto.transactionDate,
-        };
+
         return {
           success: true,
           statusCode: 200,
-          message: `__TRANSACTION_SAVED__${JSON.stringify(savedData)}`,
+          message: `__TRANSACTION_SAVED__${JSON.stringify({
+            amount,
+            category: pickedCategory.name,
+            categoryIcon: pickedCategory.icon ?? 'money',
+            note: parsedExpense.description ?? message ?? '',
+            date: dto.transactionDate,
+          })}`,
         };
       }
     }
@@ -197,66 +233,63 @@ export class AiService {
     return { success: true, statusCode: 200, message: answer };
   }
 
+  private buildIntentHash(message: string): string {
+    // Normalize & hash the user's intent so similar messages share a cache key.
+    const normalized = (message || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .replace(/\s+/g, ' ')
+      .trim();
+    return createHash('md5').update(normalized).digest('hex').slice(0, 8);
+  }
+
   private async handleAnalysis(
     message: string,
     userId: number,
     fundId?: number,
   ): Promise<ApiResponse<string>> {
-    const user = await this.userRepo.findOne({
-      where: { id: userId },
-      relations: ['profile'],
-    });
-    const fund = fundId ? await this.fundRepo.findOne({ where: { id: fundId } }) : await this.getSelectedFund(userId);
+    // Resolve fundId once — reuse for both insights and cache key
+    const resolvedFundId =
+      fundId ??
+      (await this.financialInsightsService.getSelectedFundId(userId)) ??
+      0;
 
-    const now = new Date();
-    const lastMonth = new Date();
-    lastMonth.setDate(now.getDate() - 30);
-
-    const transactionsRes = await this.transactionService.findAllByFilter({
+    // --- Check AI analysis cache first ---
+    const intentHash = this.buildIntentHash(message);
+    const analysisCacheKey = buildAiAnalysisCacheKey(
       userId,
-      startDate: lastMonth.toISOString(),
-      endDate: now.toISOString(),
-      fundId: fund?.id,
-    });
+      resolvedFundId,
+      intentHash,
+    );
+    const cachedResult =
+      await this.cacheService.get<string>(analysisCacheKey);
+    if (cachedResult !== null) {
+      this.logger.log(`[AI Cache HIT] key=${analysisCacheKey}`);
+      return { success: true, statusCode: 200, message: cachedResult };
+    }
 
-    const expenses = transactionsRes.data?.expense || [];
-    const income = transactionsRes.data?.income || [];
+    // Cache miss — fetch data and call AI
+    const [user, insights] = await Promise.all([
+      this.userRepo.findOne({
+        where: { id: userId },
+        relations: ['profile'],
+      }),
+      this.financialInsightsService.getInsights(
+        userId,
+        resolvedFundId || undefined,
+        'last_30_days',
+      ),
+    ]);
 
-    const categoryTotals: Record<string, number> = {};
-    expenses.forEach((t) => {
-      const catName = t.category?.name || 'Khác';
-      categoryTotals[catName] = (categoryTotals[catName] || 0) + Number(t.amount);
-    });
-
-    const aggregatedData = Object.entries(categoryTotals)
-      .map(([name, total]) => `- ${name}: ${total.toLocaleString('vi-VN')} VND`)
-      .join('\n');
-
-    const funds = await this.fundRepo.find({ where: { user: { id: userId } } });
-    const cats = fund ? await this.getCategoriesByFundId(fund.id) : [];
-
-    const historySummary = `
-KHOẢNG THỜI GIAN: 30 ngày qua
-TỔNG CHI TIÊU THEO HẠNG MỤC:
-${aggregatedData || 'Chưa có chi tiêu.'}
-
-TỔNG THU NHẬP: ${income.reduce((sum, t) => sum + Number(t.amount || 0), 0).toLocaleString('vi-VN')} VND
-
-DANH SÁCH QUỸ:
-${funds.map((f) => `- ${f.name}: Số dư ${f.balance.toLocaleString('vi-VN')} VND (Mục tiêu: ${(f.target || 0).toLocaleString('vi-VN')} VND)`).join('\n')}
-    `.trim();
-
-    const options = cats.map((c) => ({ id: c.id, name: c.name }));
-    const userName =
-      user?.profile
-        ? `${user.profile.first_name || ''} ${user.profile.last_name || ''}`.trim()
-        : 'Người dùng';
+    const userName = user?.profile
+      ? `${user.profile.first_name || ''} ${user.profile.last_name || ''}`.trim()
+      : 'Nguoi dung';
 
     const analysis = await this.analyzeFinancialHealth(
       message,
-      options,
-      historySummary,
-      userName || 'Người dùng',
+      insights,
+      userName || 'Nguoi dung',
     );
 
     const resultString =
@@ -264,34 +297,46 @@ ${funds.map((f) => `- ${f.name}: Số dư ${f.balance.toLocaleString('vi-VN')} V
         ? `__STRUCTURED_ANALYSIS__${JSON.stringify(analysis)}`
         : analysis;
 
+    // Cache the final string (not the object) so deserialization is trivial
+    await this.cacheService.set(analysisCacheKey, resultString, AI_ANALYSIS_TTL_SECONDS);
+
     return { success: true, statusCode: 200, message: resultString };
   }
 
-  async bulkCreateTransactions(userId: number, items: any[], fundId?: number): Promise<void> {
-    const cats = await this.getCategories(userId, fundId);
-    if (!cats.length) throw new BadRequestException('Người dùng chưa có hạng mục chi tiêu');
+  async bulkCreateTransactions(
+    userId: number,
+    items: any[],
+    fundId?: number,
+  ): Promise<void> {
+    const categories = await this.getCategories(userId, fundId);
+    if (!categories.length) {
+      throw new BadRequestException('Nguoi dung chua co hang muc chi tieu');
+    }
 
     const now = new Date().toISOString();
     for (const item of items) {
       const amount = normalizeAmount(item.amount);
       if (!amount || amount <= 0) continue;
 
-      const categoryId = item.categoryId ?? this.pickCategoryByName(cats, item.category)?.id;
-      const dto: CreateTransactionDto = {
+      const categoryId =
+        item.categoryId ??
+        this.pickCategoryByName(categories, item.category)?.id;
+
+      await this.transactionService.create({
         userId,
         type: 'expense',
         amount,
-        note: item.name || 'Giao dịch từ hóa đơn',
+        note: item.name || 'Giao dich tu hoa don',
         transactionDate: now,
         categoryId,
-      };
-      await this.transactionService.create(dto);
+      });
     }
   }
 
-  // ─── AI: Parse Expense ────────────────────────────────────────────────────────
-
-  async parseExpense(message: string, options: CatOption[]): Promise<ChatExpenseResult> {
+  async parseExpense(
+    message: string,
+    options: CatOption[],
+  ): Promise<ChatExpenseResult> {
     try {
       const response = await this.genAI.models.generateContent({
         model: MODEL,
@@ -300,7 +345,7 @@ ${funds.map((f) => `- ${f.name}: Số dư ${f.balance.toLocaleString('vi-VN')} V
             role: 'user',
             parts: [
               {
-                text: `Hôm nay là: ${new Date().toISOString()}. Trích xuất thông tin chi tiêu từ câu sau (nếu câu không chứa thông tin về thời gian, BẮT BUỘC trả về null cho trường time): "${message}"`,
+                text: `Hom nay la: ${new Date().toISOString()}. Trich xuat thong tin chi tieu tu cau sau. Neu khong co thoi gian, bat buoc tra ve null cho truong time: "${message}"`,
               },
             ],
           },
@@ -311,27 +356,29 @@ ${funds.map((f) => `- ${f.name}: Số dư ${f.balance.toLocaleString('vi-VN')} V
               functionDeclarations: [
                 {
                   name: 'record_expense',
-                  description: 'Ghi lại thông tin chi tiêu từ tin nhắn người dùng',
+                  description:
+                    'Ghi lai thong tin chi tieu tu tin nhan nguoi dung',
                   parameters: {
                     type: Type.OBJECT,
                     properties: {
                       amount: {
                         type: Type.NUMBER,
-                        description: 'Số tiền chi tiêu',
+                        description: 'So tien chi tieu',
                         nullable: true,
                       },
                       category_name: {
                         type: Type.STRING,
-                        description: 'Tên hạng mục chi tiêu',
-                        enum: [...options.map((o) => o.name), 'Khác'],
+                        description: 'Ten hang muc chi tieu',
+                        enum: [...options.map((option) => option.name), 'Khac'],
                       },
                       description: {
                         type: Type.STRING,
-                        description: 'Ghi chú ngắn gọn về khoản chi',
+                        description: 'Ghi chu ngan gon ve khoan chi',
                       },
                       time: {
                         type: Type.STRING,
-                        description: 'Thời gian giao dịch theo ISO 8601, null nếu không đề cập',
+                        description:
+                          'Thoi gian giao dich theo ISO 8601, null neu khong de cap',
                         nullable: true,
                       },
                     },
@@ -347,81 +394,76 @@ ${funds.map((f) => `- ${f.name}: Số dư ${f.balance.toLocaleString('vi-VN')} V
 
       const calls = (response as any).functionCalls as any[] | undefined;
       const args = calls?.[0]?.args;
-      if (!args) throw new Error('Không nhận được function call');
+      if (!args) {
+        throw new Error('Khong nhan duoc function call');
+      }
 
       return {
         amount: args.amount ?? null,
-        category_name: args.category_name ?? 'Khác',
+        category_name: args.category_name ?? 'Khac',
         description: args.description ?? message,
         time: args.time ?? null,
         confidence: args.amount ? 1.0 : 0.0,
       };
     } catch (error) {
-      this.logger.error('Lỗi parse chi tiêu:', error);
-      return { amount: null, category_name: null, description: null, time: null, confidence: 0 };
+      this.logger.error('Parse expense failed', error);
+      return {
+        amount: null,
+        category_name: null,
+        description: null,
+        time: null,
+        confidence: 0,
+      };
     }
   }
 
-  // ─── AI: Financial Analysis ───────────────────────────────────────────────────
-
   async analyzeFinancialHealth(
     text: string,
-    categories: CatOption[],
-    historyData: string,
+    insightData: FinancialInsightSnapshot,
     userName: string,
   ): Promise<FinancialAnalysisResult | string> {
-    const list = categories.map((c) => `- ${c.name}`).join('\n');
+    // Use compact JSON (no indent) to reduce token count
     const prompt = `
-Bạn là chuyên gia tài chính cá nhân cho ứng dụng "Money Care".
-Tên người dùng: ${userName}.
+Ban la chuyen gia tai chinh ca nhan cho ung dung "Money Care".
+Ten nguoi dung: ${userName}.
 
-NHIỆM VỤ:
-Dựa trên danh sách giao dịch và số dư các quỹ của người dùng, hãy đưa ra:
-1. Nhận xét về tình hình chi tiêu gần đây.
-2. Cảnh báo nếu có hạng mục nào chi tiêu vượt quá mức bình thường.
-3. Đưa ra 3 lời khuyên cụ thể để tiết kiệm hoặc quản lý tiền tốt hơn.
-4. Gợi ý một kế hoạch ngân sách sơ bộ cho tháng tới.
+NHIEM VU: Dua tren JSON insight, hay:
+1. Nhan xet tinh hinh chi tieu gan day.
+2. Canh bao hang muc tang nhanh hoac gay rui ro.
+3. Dua ra 3 loi khuyen cu the de tiet kiem.
+4. Goi y ke hoach ngan sach thang toi.
 
-PHONG CÁCH: Thân thiện, chuyên nghiệp, truyền cảm hứng. Trả lời bằng tiếng Việt. Dùng emoji.
+QUY TAC: Chi dung so lieu trong JSON. Khong bịa them giao dich hay danh muc.
 
-OUTPUT FORMAT (JSON DUY NHẤT):
-{
-  "summary": string,
-  "budget_plan": [{ "group_name": string, "items": [{ "name": string, "amount": number, "description": string }] }]
-}
+OUTPUT (JSON DUY NHAT):
+{"summary":string,"budget_plan":[{"group_name":string,"items":[{"name":string,"amount":number,"description":string}]}]}
 
-HẠNG MỤC APP:
-${list}
-
-DỮ LIỆU:
-${historyData}
-
-YÊU CẦU: ${text}
+INSIGHT:${JSON.stringify(insightData)}
+YEU CAU:${text}
 `.trim();
 
     try {
       const result = await this.generateContent(prompt);
       let raw = (result.text || '').trim();
       if (raw.startsWith('```')) {
-        raw = raw.replace(/```[\w]*\n?/g, '').replace(/```$/, '').trim();
+        raw = raw
+          .replace(/```[\w]*\n?/g, '')
+          .replace(/```$/, '')
+          .trim();
       }
       return JSON5.parse(raw) as FinancialAnalysisResult;
-    } catch (e) {
-      this.logger.error('Parse Analysis JSON failed', e);
-      return 'Tôi gặp lỗi khi chuẩn bị kế hoạch tài chính cho bạn. Hãy thử lại nhé!';
+    } catch (error) {
+      this.logger.error('Parse analysis JSON failed', error);
+      return 'Toi gap loi khi chuan bi ke hoach tai chinh cho ban. Hay thu lai.';
     }
   }
 
-  // ─── AI: Chat ─────────────────────────────────────────────────────────────────
-
   async chatAnswer(text: string): Promise<string> {
     const result = await this.generateContent(
-      `Bạn là trợ lý tài chính Money Care. Hãy trả lời thân thiện bằng tiếng Việt: ${text}`,
+      `Ban la tro ly tai chinh Money Care. Hay tra loi than thien bang tieng Viet: ${text}`,
     );
     return (result.text || '').trim();
   }
-
-  // ─── AI: Receipt Scan ─────────────────────────────────────────────────────────
 
   private getMimeType(buffer: Buffer): string {
     const signature = buffer.toString('hex', 0, 4);
@@ -431,7 +473,10 @@ YÊU CẦU: ${text}
     return 'image/jpeg';
   }
 
-  async scanReceipt(imageBuffer: Buffer, categories?: CatOption[]): Promise<ReceiptScanResult> {
+  async scanReceipt(
+    imageBuffer: Buffer,
+    categories?: CatOption[],
+  ): Promise<ReceiptScanResult> {
     const mimeType = this.getMimeType(imageBuffer);
 
     try {
@@ -441,8 +486,12 @@ YÊU CẦU: ${text}
           {
             role: 'user',
             parts: [
-              { inlineData: { data: imageBuffer.toString('base64'), mimeType } },
-              { text: 'Trích xuất toàn bộ thông tin từ hóa đơn trong ảnh này.' },
+              {
+                inlineData: { data: imageBuffer.toString('base64'), mimeType },
+              },
+              {
+                text: 'Trich xuat toan bo thong tin tu hoa don trong anh nay.',
+              },
             ],
           },
         ],
@@ -452,43 +501,55 @@ YÊU CẦU: ${text}
               functionDeclarations: [
                 {
                   name: 'extract_receipt',
-                  description: 'Trích xuất thông tin từ ảnh hóa đơn',
+                  description: 'Trich xuat thong tin tu anh hoa don',
                   parameters: {
                     type: Type.OBJECT,
                     properties: {
                       merchant_name: {
                         type: Type.STRING,
-                        description: 'Tên thương hiệu hoặc cửa hàng',
+                        description: 'Ten thuong hieu hoac cua hang',
                         nullable: true,
                       },
                       date: {
                         type: Type.STRING,
-                        description: 'Ngày trên hóa đơn (ISO 8601)',
+                        description: 'Ngay tren hoa don theo ISO 8601',
                         nullable: true,
                       },
                       total_amount: {
                         type: Type.NUMBER,
-                        description: 'Tổng tiền thanh toán cuối cùng',
+                        description: 'Tong tien thanh toan cuoi cung',
                         nullable: true,
                       },
                       items: {
                         type: Type.ARRAY,
-                        description: 'Danh sách các mặt hàng trên hóa đơn',
+                        description: 'Danh sach cac mat hang tren hoa don',
                         items: {
                           type: Type.OBJECT,
                           properties: {
-                            name: { type: Type.STRING, description: 'Tên mặt hàng' },
-                            amount: { type: Type.NUMBER, description: 'Giá tiền' },
+                            name: {
+                              type: Type.STRING,
+                              description: 'Ten mat hang',
+                            },
+                            amount: {
+                              type: Type.NUMBER,
+                              description: 'Gia tien',
+                            },
                             category: {
                               type: Type.STRING,
-                              description: 'Tên hạng mục phù hợp nhất',
+                              description: 'Ten hang muc phu hop nhat',
                               ...(categories?.length
-                                ? { enum: [...categories.map((c) => c.name), 'Khác'] }
+                                ? {
+                                    enum: [
+                                      ...categories.map((item) => item.name),
+                                      'Khac',
+                                    ],
+                                  }
                                 : {}),
                             },
                             categoryId: {
                               type: Type.NUMBER,
-                              description: 'ID hạng mục tương ứng, null nếu không khớp',
+                              description:
+                                'ID hang muc tuong ung, null neu khong khop',
                               nullable: true,
                             },
                           },
@@ -508,34 +569,36 @@ YÊU CẦU: ${text}
 
       const calls = (response as any).functionCalls as any[] | undefined;
       const args = calls?.[0]?.args;
-      if (!args) throw new Error('Không nhận được function call');
+      if (!args) {
+        throw new Error('Khong nhan duoc function call');
+      }
 
       return {
         merchant_name: args.merchant_name ?? null,
         date: args.date ?? null,
         total_amount: args.total_amount ?? null,
-        items: (args.items || []).map((i: any) => ({
-          name: i.name || 'Không rõ',
-          amount: Number(i.amount) || 0,
-          category: i.category || 'Khác',
-          categoryId: i.categoryId ?? null,
+        items: (args.items || []).map((item: any) => ({
+          name: item.name || 'Khong ro',
+          amount: Number(item.amount) || 0,
+          category: item.category || 'Khac',
+          categoryId: item.categoryId ?? null,
         })),
       };
-    } catch (err) {
-      this.logger.error('Lỗi quét hóa đơn:', err);
+    } catch (error) {
+      this.logger.error('Receipt scan failed', error);
       return { merchant_name: null, date: null, total_amount: null, items: [] };
     }
   }
 
-  // ─── Receipt: scan (standalone, không cần userId) ────────────────────────────
-
-  async scanReceiptStandalone(imageBuffer: Buffer): Promise<ApiResponse<ReceiptScanResult>> {
+  async scanReceiptStandalone(
+    imageBuffer: Buffer,
+  ): Promise<ApiResponse<ReceiptScanResult>> {
     const data = await this.scanReceipt(imageBuffer);
     return new ApiResponse({
       success: true,
       statusCode: HttpStatus.OK,
       data,
-      message: 'Quét hóa đơn thành công',
+      message: 'Quet hoa don thanh cong',
     });
   }
 }

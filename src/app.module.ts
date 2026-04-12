@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { AppCacheModule } from './common/cache/cache.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { UserProfileModule } from './modules/user-profile/user-profile.module';
 import { CategoriesModule } from './modules/categories/categories.module';
@@ -20,6 +21,8 @@ import { AiModule } from './modules/ai/ai.module';
 
 @Module({
   imports: [
+    AppCacheModule,
+
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: '.env',

@@ -23,6 +23,12 @@ import { GetTransactionDto } from './dto/get-transaction.dto';
 import { NotificationsService } from 'src/modules/notifications/notifications.service';
 import { NotificationType } from 'src/modules/notifications/entities/notification.entity';
 import { StatisticsSummaryResponseDto } from './dto/statistics-summary-response.dto';
+import { CacheService } from 'src/common/cache/cache.service';
+import {
+  buildStatisticsSummaryCacheKey,
+  getFinancialCacheKeys,
+  CACHE_KEY_VERSION,
+} from 'src/common/cache/financial-cache.util';
 
 @Injectable()
 export class TransactionService {
@@ -36,6 +42,7 @@ export class TransactionService {
     @InjectRepository(Fund)
     private fundRepo: Repository<Fund>,
     private notificationsService: NotificationsService,
+    private cacheService: CacheService,
   ) {}
 
   async create(dto: CreateTransactionDto): Promise<ApiResponse<Transaction>> {
@@ -58,7 +65,9 @@ export class TransactionService {
       amount: dto.amount,
       type: dto.type,
       note: dto.note,
-      transaction_date: dto.transactionDate ? new Date(dto.transactionDate) : new Date(),
+      transaction_date: dto.transactionDate
+        ? new Date(dto.transactionDate)
+        : new Date(),
       user,
       category,
     });
@@ -71,16 +80,18 @@ export class TransactionService {
         .andWhere('t.type = :type', { type: 'expense' })
         .select('SUM(t.amount)', 'total')
         .getRawOne<{ total: string }>();
-        
+
       currentExpenseTotal = Number(currentExpenseRes?.total || 0);
     }
 
     await this.transactionRepo.save(transaction);
+    await this.invalidateFinancialCache(user.id, [category?.fund?.id ?? 0]);
 
     if (dto.type === 'expense' && category?.fund) {
-      const balance = (Number(category.fund.balance) * Number(category.percentage)) / 100;
+      const balance =
+        (Number(category.fund.balance) * Number(category.percentage)) / 100;
       const sumExpensesAfter = currentExpenseTotal + Number(dto.amount);
-      
+
       if (currentExpenseTotal <= balance && sumExpensesAfter > balance) {
         await this.notificationsService.sendPushNotification(
           user,
@@ -88,7 +99,7 @@ export class TransactionService {
           `Khoản chi vừa rồi đã khiến mục "${category.name}" vượt quá ngân sách dự kiến (${balance.toLocaleString('vi-VN')} đ)!`,
           undefined,
           NotificationType.ALERT,
-        );  
+        );
       }
     }
 
@@ -105,13 +116,15 @@ export class TransactionService {
   ): Promise<ApiResponse<Transaction>> {
     const transaction = await this.transactionRepo.findOne({
       where: { id },
-      relations: ['category'],
+      relations: ['category', 'category.fund', 'user'],
     });
     if (!transaction) throw new NotFoundException('Transaction not found');
+    const previousFundId = transaction.category?.fund?.id ?? 0;
 
     if (dto.categoryId) {
       const category = await this.categoryRepo.findOne({
         where: { id: dto.categoryId },
+        relations: ['fund'],
       });
       if (!category) throw new NotFoundException('Category not found');
       transaction.category = category;
@@ -127,6 +140,10 @@ export class TransactionService {
     }
 
     await this.transactionRepo.save(transaction);
+    await this.invalidateFinancialCache(transaction.user.id, [
+      previousFundId,
+      transaction.category?.fund?.id ?? 0,
+    ]);
 
     return new ApiResponse({
       success: true,
@@ -138,8 +155,6 @@ export class TransactionService {
   async sumByCategory(
     dto: GetTransactionDto,
   ): Promise<ApiResponse<TotalByCategory[]>> {
-    // Khi có fundId: lấy categories từ quỹ (có balance để tính limit)
-    // Khi không có fundId: lấy categories thuộc user trực tiếp (user categories)
     const categoryQuery = this.categoryRepo
       .createQueryBuilder('category')
       .select('category.id', 'categoryId')
@@ -162,10 +177,13 @@ export class TransactionService {
     }
 
     if (dto.type) {
-      categoryQuery.andWhere('(category.type = :type OR category.type = :others)', { 
-        type: dto.type, 
-        others: 'others' 
-      });
+      categoryQuery.andWhere(
+        '(category.type = :type OR category.type = :others)',
+        {
+          type: dto.type,
+          others: 'others',
+        },
+      );
     }
 
     const transactionQuery =
@@ -211,14 +229,16 @@ export class TransactionService {
     );
 
     let categorizedTotal = 0;
-    if (categories.length > 0) {
-      console.log('DEBUG_CATEGORY:', categories[0]);
-    }
     const formatted: TotalByCategory[] = categories.map((cat) => {
       const spent = totalMap.get(Number(cat.categoryId)) ?? 0;
       categorizedTotal += spent;
       return {
-        category_id: Number((cat as any).categoryId || (cat as any).category_id || (cat as any).categoryid || (cat as any).id),
+        category_id: Number(
+          (cat as any).categoryId ||
+            (cat as any).category_id ||
+            (cat as any).categoryid ||
+            (cat as any).id,
+        ),
         categoryName: cat.categoryName,
         categoryIcon: cat.categoryIcon,
         percentage: Number(cat.percentage),
@@ -272,14 +292,14 @@ export class TransactionService {
     });
   }
 
-  async getTotalsByType(
-    dto: GetTransactionDto,
-  ): Promise<ApiResponse<{ 
-    income_total: number; 
-    expense_total: number; 
-    current_saving: number;
-    target_saving: number;
-  }>> {
+  async getTotalsByType(dto: GetTransactionDto): Promise<
+    ApiResponse<{
+      income_total: number;
+      expense_total: number;
+      current_saving: number;
+      target_saving: number;
+    }>
+  > {
     const incomeQuery = this.getBaseIncomeQuery(
       dto.userId,
       dto.startDate,
@@ -295,9 +315,15 @@ export class TransactionService {
     );
 
     const [incomeTotalRes, expenseTotalRes, fund] = await Promise.all([
-      incomeQuery.select('SUM(transaction.amount)', 'total').getRawOne<{ total: string }>(),
-      expenseQuery.select('SUM(transaction.amount)', 'total').getRawOne<{ total: string }>(),
-      dto.fundId ? this.fundRepo.findOne({ where: { id: dto.fundId } }) : Promise.resolve(null),
+      incomeQuery
+        .select('SUM(transaction.amount)', 'total')
+        .getRawOne<{ total: string }>(),
+      expenseQuery
+        .select('SUM(transaction.amount)', 'total')
+        .getRawOne<{ total: string }>(),
+      dto.fundId
+        ? this.fundRepo.findOne({ where: { id: dto.fundId } })
+        : Promise.resolve(null),
     ]);
 
     const incomeTotal = Number(incomeTotalRes?.total ?? 0);
@@ -308,8 +334,8 @@ export class TransactionService {
     return new ApiResponse({
       success: true,
       statusCode: HttpStatus.OK,
-      data: { 
-        income_total: incomeTotal, 
+      data: {
+        income_total: incomeTotal,
         expense_total: expenseTotal,
         current_saving: currentSaving,
         target_saving: targetSaving,
@@ -321,6 +347,18 @@ export class TransactionService {
     userId: number,
     fundId?: number,
   ): Promise<ApiResponse<StatisticsSummaryResponseDto>> {
+    const resolvedFundId = Number(fundId) || 0;
+    const cacheKey = buildStatisticsSummaryCacheKey(userId, resolvedFundId);
+    const cached =
+      await this.cacheService.get<StatisticsSummaryResponseDto>(cacheKey);
+    if (cached) {
+      return new ApiResponse({
+        success: true,
+        statusCode: HttpStatus.OK,
+        data: cached,
+      });
+    }
+
     const now = new Date();
     const currentYear = now.getFullYear();
     const currentMonth = now.getMonth();
@@ -332,17 +370,24 @@ export class TransactionService {
     const prevMonthEnd = new Date(currentYear, currentMonth, 0);
 
     const [currentMonthTotals, prevMonthTotals] = await Promise.all([
-      this.getTotalsForRange(userId, currentMonthStart, currentMonthEnd, fundId),
+      this.getTotalsForRange(
+        userId,
+        currentMonthStart,
+        currentMonthEnd,
+        fundId,
+      ),
       this.getTotalsForRange(userId, prevMonthStart, prevMonthEnd, fundId),
     ]);
 
     const daysPassedInCurrentMonth = now.getDate();
     const daysInPrevMonth = prevMonthEnd.getDate();
 
-    const currentDailyAverage = currentMonthTotals.expense / daysPassedInCurrentMonth;
+    const currentDailyAverage =
+      currentMonthTotals.expense / daysPassedInCurrentMonth;
     const prevDailyAverage = prevMonthTotals.expense / daysInPrevMonth;
 
-    const currentDailyIncomeAverage = currentMonthTotals.income / daysPassedInCurrentMonth;
+    const currentDailyIncomeAverage =
+      currentMonthTotals.income / daysPassedInCurrentMonth;
     const prevDailyIncomeAverage = prevMonthTotals.income / daysInPrevMonth;
 
     const dailyAverageChange = this.calculatePercentageChange(
@@ -354,15 +399,19 @@ export class TransactionService {
       prevDailyIncomeAverage,
     );
 
+    const summary: StatisticsSummaryResponseDto = {
+      dailyAverage: currentDailyAverage,
+      dailyAverageChange,
+      dailyIncomeChange,
+      monthlyBalance: currentMonthTotals.income - currentMonthTotals.expense,
+    };
+
+    await this.cacheService.set(cacheKey, summary, 300);
+
     return new ApiResponse({
       success: true,
       statusCode: HttpStatus.OK,
-      data: {
-        dailyAverage: currentDailyAverage,
-        dailyAverageChange,
-        dailyIncomeChange,
-        monthlyBalance: currentMonthTotals.income - currentMonthTotals.expense,
-      },
+      data: summary,
     });
   }
 
@@ -405,10 +454,36 @@ export class TransactionService {
     return ((current - previous) / previous) * 100;
   }
 
+  private async invalidateFinancialCache(
+    userId: number,
+    fundIds: number[],
+  ): Promise<void> {
+    const keys = getFinancialCacheKeys(userId, [0, ...fundIds]);
+    await this.cacheService.delMany(keys);
+
+    // Also purge cached AI analysis results for all affected funds
+    const uniqueFundIds = Array.from(
+      new Set([0, ...fundIds].map((id) => Number(id) || 0)),
+    );
+    await Promise.all(
+      uniqueFundIds.map((fundId) =>
+        this.cacheService.delByPrefix(
+          `${CACHE_KEY_VERSION}:ai_analysis:user:${userId}:fund:${fundId}:`,
+        ),
+      ),
+    );
+  }
+
   async remove(id: number): Promise<ApiResponse<string>> {
-    const transaction = await this.transactionRepo.findOne({ where: { id } });
+    const transaction = await this.transactionRepo.findOne({
+      where: { id },
+      relations: ['category', 'category.fund', 'user'],
+    });
     if (!transaction) throw new NotFoundException('Transaction not found');
     await this.transactionRepo.remove(transaction);
+    await this.invalidateFinancialCache(transaction.user.id, [
+      transaction.category?.fund?.id ?? 0,
+    ]);
     return new ApiResponse({
       success: true,
       statusCode: HttpStatus.OK,
@@ -480,7 +555,9 @@ export class TransactionService {
     }
 
     if (startDate) {
-      query.andWhere('transaction.transaction_date >= :start', { start: startDate });
+      query.andWhere('transaction.transaction_date >= :start', {
+        start: startDate,
+      });
     }
     if (endDate) {
       query.andWhere('transaction.transaction_date <= :end', { end: endDate });
@@ -517,7 +594,9 @@ export class TransactionService {
       query.andWhere('fund.id = :fundId', { fundId });
     }
     if (startDate) {
-      query.andWhere('transaction.transaction_date >= :start', { start: startDate });
+      query.andWhere('transaction.transaction_date >= :start', {
+        start: startDate,
+      });
     }
     if (endDate) {
       query.andWhere('transaction.transaction_date <= :end', { end: endDate });
