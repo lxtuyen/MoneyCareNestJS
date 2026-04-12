@@ -211,11 +211,14 @@ export class TransactionService {
     );
 
     let categorizedTotal = 0;
+    if (categories.length > 0) {
+      console.log('DEBUG_CATEGORY:', categories[0]);
+    }
     const formatted: TotalByCategory[] = categories.map((cat) => {
       const spent = totalMap.get(Number(cat.categoryId)) ?? 0;
       categorizedTotal += spent;
       return {
-        categoryId: Number(cat.categoryId),
+        category_id: Number((cat as any).categoryId || (cat as any).category_id || (cat as any).categoryid || (cat as any).id),
         categoryName: cat.categoryName,
         categoryIcon: cat.categoryIcon,
         percentage: Number(cat.percentage),
