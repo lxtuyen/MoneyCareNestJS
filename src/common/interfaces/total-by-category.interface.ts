@@ -1,4 +1,5 @@
 interface TotalByCategory {
+  categoryId?: number;
   categoryIcon: string;
   categoryName: string;
   percentage: number;

@@ -26,15 +26,15 @@ export class AiController {
     if (dto?.userId == null) {
       throw new BadRequestException('userId là bắt buộc.');
     }
-    return this.aiService.handle(dto.message, dto.userId, file);
+    return this.aiService.handle(dto.message, dto.userId, file, dto.fundId);
   }
 
   @Post('chat/bulk-save')
-  async bulkSave(@Body() body: { userId: number; items: any[] }) {
+  async bulkSave(@Body() body: { userId: number; items: any[]; fundId?: number }) {
     if (!body.userId || !body.items || !Array.isArray(body.items)) {
       throw new BadRequestException('userId và danh sách items là bắt buộc.');
     }
-    await this.aiService.bulkCreateTransactions(body.userId, body.items);
+    await this.aiService.bulkCreateTransactions(body.userId, body.items, body.fundId);
     return { success: true, message: 'Đã lưu tất cả giao dịch thành công.' };
   }
 

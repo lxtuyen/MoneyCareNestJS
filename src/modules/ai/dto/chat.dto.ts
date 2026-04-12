@@ -7,4 +7,8 @@ export class ChatDto {
 
   @IsNumber()
   userId: number;
+
+  @IsOptional()
+  @IsNumber()
+  fundId?: number;
 }

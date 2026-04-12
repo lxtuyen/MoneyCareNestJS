@@ -94,14 +94,20 @@ export class AiService {
     });
   }
 
-  private async getCategories(userId: number): Promise<Category[]> {
-    // Ưu tiên category gắn với quỹ đang được chọn (nếu có)
+  private async getCategories(userId: number, fundId?: number): Promise<Category[]> {
+    // Ưu tiên fundId được truyền lên từ App
+    if (fundId && fundId > 0) {
+      const fundCats = await this.getCategoriesByFundId(fundId);
+      if (fundCats.length > 0) return fundCats;
+    }
+
+    // Nếu không có fundId truyền lên, tìm quỹ đang được chọn trong DB
     const fund = await this.getSelectedFund(userId);
     if (fund) {
       const fundCats = await this.getCategoriesByFundId(fund.id);
       if (fundCats.length > 0) return fundCats;
     }
-    // Fallback: category gắn thẳng với user (flow onboarding bình thường)
+    // Fallback: category gắn thẳng với user
     return this.getCategoriesByUserId(userId);
   }
 
@@ -121,6 +127,7 @@ export class AiService {
     message: string | undefined,
     userIdRaw: any,
     file?: Express.Multer.File,
+    fundId?: number,
   ): Promise<ApiResponse<string>> {
     const userId: number = Number(userIdRaw);
     if (!Number.isFinite(userId)) {
@@ -128,7 +135,7 @@ export class AiService {
     }
 
     if (file) {
-      const cats = await this.getCategories(userId);
+      const cats = await this.getCategories(userId, fundId);
       const categories: CatOption[] = cats.map((c) => ({ id: c.id, name: c.name }));
       const scanResult = await this.scanReceipt(file.buffer, categories);
       return {
@@ -146,10 +153,10 @@ export class AiService {
       lowerMsg.includes('khuyên');
 
     if (isAnalysisRequest) {
-      return this.handleAnalysis(message ?? '', userId);
+      return this.handleAnalysis(message ?? '', userId, fundId);
     }
-
-    const cats = await this.getCategories(userId);
+    
+    const cats = await this.getCategories(userId, fundId);
     if (cats.length === 0) {
       const answer = await this.chatAnswer(message ?? '');
       return { success: true, statusCode: 200, message: answer };
@@ -193,12 +200,13 @@ export class AiService {
   private async handleAnalysis(
     message: string,
     userId: number,
+    fundId?: number,
   ): Promise<ApiResponse<string>> {
     const user = await this.userRepo.findOne({
       where: { id: userId },
       relations: ['profile'],
     });
-    const fund = await this.getSelectedFund(userId);
+    const fund = fundId ? await this.fundRepo.findOne({ where: { id: fundId } }) : await this.getSelectedFund(userId);
 
     const now = new Date();
     const lastMonth = new Date();
@@ -259,8 +267,8 @@ ${funds.map((f) => `- ${f.name}: Số dư ${f.balance.toLocaleString('vi-VN')} V
     return { success: true, statusCode: 200, message: resultString };
   }
 
-  async bulkCreateTransactions(userId: number, items: any[]): Promise<void> {
-    const cats = await this.getCategories(userId);
+  async bulkCreateTransactions(userId: number, items: any[], fundId?: number): Promise<void> {
+    const cats = await this.getCategories(userId, fundId);
     if (!cats.length) throw new BadRequestException('Người dùng chưa có hạng mục chi tiêu');
 
     const now = new Date().toISOString();
@@ -290,7 +298,11 @@ ${funds.map((f) => `- ${f.name}: Số dư ${f.balance.toLocaleString('vi-VN')} V
         contents: [
           {
             role: 'user',
-            parts: [{ text: `Trích xuất thông tin chi tiêu từ câu sau: "${message}"` }],
+            parts: [
+              {
+                text: `Hôm nay là: ${new Date().toISOString()}. Trích xuất thông tin chi tiêu từ câu sau (nếu câu không chứa thông tin về thời gian, BẮT BUỘC trả về null cho trường time): "${message}"`,
+              },
+            ],
           },
         ],
         config: {

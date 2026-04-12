@@ -58,7 +58,7 @@ export class TransactionService {
       amount: dto.amount,
       type: dto.type,
       note: dto.note,
-      transaction_date: dto.transactionDate,
+      transaction_date: dto.transactionDate ? new Date(dto.transactionDate) : new Date(),
       user,
       category,
     });
@@ -215,6 +215,7 @@ export class TransactionService {
       const spent = totalMap.get(Number(cat.categoryId)) ?? 0;
       categorizedTotal += spent;
       return {
+        categoryId: Number(cat.categoryId),
         categoryName: cat.categoryName,
         categoryIcon: cat.categoryIcon,
         percentage: Number(cat.percentage),
