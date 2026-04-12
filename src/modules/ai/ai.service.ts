@@ -140,17 +140,45 @@ export class AiService {
   private pickCategoryByName(
     categories: Category[],
     name: string | null,
-  ): Category {
-    const normalized = norm(name || '');
+    type: 'income' | 'expense',
+  ): Category | undefined {
+    const typeCategories = categories.filter(
+      (c) => c.type === type || c.type === ('others' as any),
+    );
+
+    if (name) {
+      const normalized = norm(name);
+      const match =
+        typeCategories.find((category) => norm(category.name) === normalized) ||
+        typeCategories.find(
+          (category) =>
+            norm(category.name).includes(normalized) ||
+            normalized.includes(norm(category.name)),
+        );
+      if (match) return match;
+    }
+
+    return typeCategories.find(
+      (category) =>
+        norm(category.name).includes('khac') ||
+        norm(category.name).includes('chua phan loai'),
+    );
+  }
+
+  private async getFallbackCategoryFromDB(
+    userId: number,
+    type: 'income' | 'expense',
+  ): Promise<Category | null> {
+    const allCategories = await this.categoryRepo.find({
+      where: [
+        { user: { id: userId }, type: type as any },
+        { user: { id: userId }, type: 'others' as any },
+      ],
+    });
     return (
-      categories.find((category) => norm(category.name) === normalized) ||
-      categories.find(
-        (category) =>
-          norm(category.name).includes(normalized) ||
-          normalized.includes(norm(category.name)),
-      ) ||
-      categories.find((category) => norm(category.name).includes('khac')) ||
-      categories[0]
+      allCategories.find(
+        (c) => norm(c.name).includes('khac') || norm(c.name).includes('chua phan loai'),
+      ) || null
     );
   }
 
@@ -208,25 +236,36 @@ export class AiService {
     // but lower the threshold if amount is detected.
     if (parsedTrans.amount) {
       const amount = normalizeAmount(parsedTrans.amount);
-      const pickedCategory = this.pickCategoryByName(
+      let pickedCategory = this.pickCategoryByName(
         categories,
         parsedTrans.category_name,
+        parsedTrans.type as 'income' | 'expense'
       );
 
-      if (amount && pickedCategory) {
+      // Explicit DB query to guarantee we don't return null if 'Chưa phân loại'
+      // is outside the current fund filter
+      if (!pickedCategory) {
+        const fallback = await this.getFallbackCategoryFromDB(
+          userId,
+          parsedTrans.type as 'income' | 'expense',
+        );
+        if (fallback) pickedCategory = fallback;
+      }
+
+      if (amount) {
         this.logger.log(
-          `[Chatbot Transaction] Saving ${parsedTrans.type}: amount=${amount}, category=${pickedCategory.name}, time=${parsedTrans.time}`,
+          `[Chatbot Transaction] Saving ${parsedTrans.type}: amount=${amount}, category=${pickedCategory?.name || 'None'}, time=${parsedTrans.time}`,
         );
 
         const dto: CreateTransactionDto = {
           userId,
-          type: parsedTrans.type,
+          type: parsedTrans.type as 'income' | 'expense',
           amount,
           note: parsedTrans.description ?? 'Giao dich tu chatbot',
           transactionDate: isValidDate(parsedTrans.time)
             ? new Date(parsedTrans.time!).toISOString()
             : new Date().toISOString(),
-          categoryId: pickedCategory.id,
+          categoryId: pickedCategory?.id,
         };
         await this.transactionService.create(dto);
 
@@ -236,8 +275,8 @@ export class AiService {
           message: `__TRANSACTION_SAVED__${JSON.stringify({
             amount,
             type: parsedTrans.type,
-            category: pickedCategory.name,
-            categoryIcon: pickedCategory.icon ?? 'money',
+            category: pickedCategory?.name || 'Chưa phân loại',
+            categoryIcon: pickedCategory?.icon ?? '💰',
             note: parsedTrans.description ?? message ?? '',
             date: dto.transactionDate,
           })}`,
@@ -250,7 +289,6 @@ export class AiService {
   }
 
   private buildIntentHash(message: string): string {
-    // Normalize & hash the user's intent so similar messages share a cache key.
     const normalized = (message || '')
       .normalize('NFD')
       .replace(/[\u0300-\u036f]/g, '')
@@ -265,27 +303,23 @@ export class AiService {
     userId: number,
     fundId?: number,
   ): Promise<ApiResponse<string>> {
-    // Resolve fundId once — reuse for both insights and cache key
     const resolvedFundId =
       fundId ??
       (await this.financialInsightsService.getSelectedFundId(userId)) ??
       0;
 
-    // --- Check AI analysis cache first ---
     const intentHash = this.buildIntentHash(message);
     const analysisCacheKey = buildAiAnalysisCacheKey(
       userId,
       resolvedFundId,
       intentHash,
     );
-    const cachedResult =
-      await this.cacheService.get<string>(analysisCacheKey);
+    const cachedResult = await this.cacheService.get<string>(analysisCacheKey);
     if (cachedResult !== null) {
       this.logger.log(`[AI Cache HIT] key=${analysisCacheKey}`);
       return { success: true, statusCode: 200, message: cachedResult };
     }
 
-    // Cache miss — fetch data and call AI
     const [user, insights] = await Promise.all([
       this.userRepo.findOne({
         where: { id: userId },
@@ -313,8 +347,11 @@ export class AiService {
         ? `__STRUCTURED_ANALYSIS__${JSON.stringify(analysis)}`
         : analysis;
 
-    // Cache the final string (not the object) so deserialization is trivial
-    await this.cacheService.set(analysisCacheKey, resultString, AI_ANALYSIS_TTL_SECONDS);
+    await this.cacheService.set(
+      analysisCacheKey,
+      resultString,
+      AI_ANALYSIS_TTL_SECONDS,
+    );
 
     return { success: true, statusCode: 200, message: resultString };
   }
@@ -334,9 +371,16 @@ export class AiService {
       const amount = normalizeAmount(item.amount);
       if (!amount || amount <= 0) continue;
 
-      const categoryId =
-        item.categoryId ??
-        this.pickCategoryByName(categories, item.category)?.id;
+      let categoryId = item.categoryId;
+      if (!categoryId) {
+        const picked = this.pickCategoryByName(categories, item.category, 'expense');
+        if (picked) {
+          categoryId = picked.id;
+        } else {
+          const fallback = await this.getFallbackCategoryFromDB(userId, 'expense');
+          categoryId = fallback?.id;
+        }
+      }
 
       await this.transactionService.create({
         userId,
@@ -366,8 +410,11 @@ NHIEM VU: Bat buoc dung cong cu 'record_transaction' de ghi lai moi thong tin th
 QUY TAC:
 1. KHONG duoc tra loi bang van ban thong thuong. Chi duoc goi function call.
 2. Bat buoc lay CHINH XAC so tien, khong tu y tinh toan.
-3. Loai giao dich (type) phai chinh xac: 'income' cho thu nhap/luong, 'expense' cho chi tieu.
+3. Loai giao dich (type) phai chinh xac: 'income' cho thu nhap/luong, 'expense' cho chi tiêu.
 4. Neu khong co thoi gian, tra ve null cho time.
+5. Ghi chú (description) phải ngắn gọn, tập trung vào nội dung chính (Ví dụ: "Ăn sáng", "Tiền phòng tháng 10"). TUYỆT ĐỐI KHÔNG lặp lại số tiền trong phần ghi chú này.
+6. Ghi chú KHÔNG bao gồm các từ mô tả thời gian mang tính tương đối (như "hôm nay", "sáng nay", "vừa xong") vì thời gian đã được lưu riêng.
+7. category_name: CHỈ BẮT BUỘC chọn từ danh sách. Nếu KHÔNG CÓ hạng mục nào thực sự khớp 100% với mục đích chi tiêu, phải chọn "Khac" (tuyệt đối không gượng ép gán vào các hạng mục không liên quan như "Mua sắm" khi đi ăn).
 
 Hom nay la: ${new Date().toISOString()}. 
 Tin nhan nguoi dung: "${message}"`,
@@ -403,7 +450,8 @@ Tin nhan nguoi dung: "${message}"`,
                       },
                       description: {
                         type: Type.STRING,
-                        description: 'Ghi chu ngan gon ve giao dich',
+                        description:
+                          'Ghi chú ngắn gọn về nội dung giao dịch (Ví dụ: "Ăn trưa", "Lương tháng 4"). TUYỆT ĐỐI KHÔNG bao gồm số tiền trong ghi chú này.',
                       },
                       time: {
                         type: Type.STRING,
@@ -454,7 +502,6 @@ Tin nhan nguoi dung: "${message}"`,
     insightData: FinancialInsightSnapshot,
     userName: string,
   ): Promise<FinancialAnalysisResult | string> {
-    // Use compact JSON (no indent) to reduce token count
     const prompt = `
 Ban la chuyen gia tai chinh ca nhan cho ung dung "Money Care".
 Ten nguoi dung: ${userName}.
