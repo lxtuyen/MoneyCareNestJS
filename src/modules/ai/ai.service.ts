@@ -17,7 +17,7 @@ import { TransactionService } from 'src/modules/transactions/transactions.servic
 import { CreateTransactionDto } from 'src/modules/transactions/dto/create-transaction.dto';
 import {
   CatOption,
-  ChatExpenseResult,
+  ChatTransactionResult,
   FinancialAnalysisResult,
   FinancialInsightSnapshot,
   ReceiptScanResult,
@@ -26,8 +26,8 @@ import { FinancialInsightsService } from './financial-insights.service';
 import { CacheService } from 'src/common/cache/cache.service';
 import { buildAiAnalysisCacheKey } from 'src/common/cache/financial-cache.util';
 
-const MODEL = 'gemma-4-31b-it';
-const AI_ANALYSIS_TTL_SECONDS = 300; // 5 phút
+const MODEL = 'gemma-4-26b-a4b-it';
+const AI_ANALYSIS_TTL_SECONDS = 300;
 
 function normalizeAmount(amount: number | null): number | null {
   if (!amount || amount <= 0) return null;
@@ -41,6 +41,12 @@ function norm(value: string) {
     .replace(/[\u0300-\u036f]/g, '')
     .trim()
     .toLowerCase();
+}
+
+function isValidDate(dateStr: string | null | undefined): boolean {
+  if (!dateStr) return false;
+  const d = new Date(dateStr);
+  return d instanceof Date && !isNaN(d.getTime());
 }
 
 @Injectable()
@@ -195,22 +201,31 @@ export class AiService {
       id: category.id,
       name: category.name,
     }));
-    const parsedExpense = await this.parseExpense(message ?? '', options);
+    const parsedTrans = await this.parseTransaction(message ?? '', options);
 
-    if (parsedExpense.confidence > 0.6 && parsedExpense.amount) {
-      const amount = normalizeAmount(parsedExpense.amount);
+    // Better fallback: if AI fails but message has strong financial keywords,
+    // we could retry or log. For now, let's keep it strictly confidence-based
+    // but lower the threshold if amount is detected.
+    if (parsedTrans.amount) {
+      const amount = normalizeAmount(parsedTrans.amount);
       const pickedCategory = this.pickCategoryByName(
         categories,
-        parsedExpense.category_name,
+        parsedTrans.category_name,
       );
 
       if (amount && pickedCategory) {
+        this.logger.log(
+          `[Chatbot Transaction] Saving ${parsedTrans.type}: amount=${amount}, category=${pickedCategory.name}, time=${parsedTrans.time}`,
+        );
+
         const dto: CreateTransactionDto = {
           userId,
-          type: 'expense',
+          type: parsedTrans.type,
           amount,
-          note: parsedExpense.description ?? 'Chi tieu tu chatbot',
-          transactionDate: parsedExpense.time || new Date().toISOString(),
+          note: parsedTrans.description ?? 'Giao dich tu chatbot',
+          transactionDate: isValidDate(parsedTrans.time)
+            ? new Date(parsedTrans.time!).toISOString()
+            : new Date().toISOString(),
           categoryId: pickedCategory.id,
         };
         await this.transactionService.create(dto);
@@ -220,9 +235,10 @@ export class AiService {
           statusCode: 200,
           message: `__TRANSACTION_SAVED__${JSON.stringify({
             amount,
+            type: parsedTrans.type,
             category: pickedCategory.name,
             categoryIcon: pickedCategory.icon ?? 'money',
-            note: parsedExpense.description ?? message ?? '',
+            note: parsedTrans.description ?? message ?? '',
             date: dto.transactionDate,
           })}`,
         };
@@ -333,10 +349,10 @@ export class AiService {
     }
   }
 
-  async parseExpense(
+  async parseTransaction(
     message: string,
     options: CatOption[],
-  ): Promise<ChatExpenseResult> {
+  ): Promise<ChatTransactionResult> {
     try {
       const response = await this.genAI.models.generateContent({
         model: MODEL,
@@ -345,7 +361,16 @@ export class AiService {
             role: 'user',
             parts: [
               {
-                text: `Hom nay la: ${new Date().toISOString()}. Trich xuat thong tin chi tieu tu cau sau. Neu khong co thoi gian, bat buoc tra ve null cho truong time: "${message}"`,
+                text: `Ban la mot may trich xuat du lieu tai chinh. 
+NHIEM VU: Bat buoc dung cong cu 'record_transaction' de ghi lai moi thong tin thu nhap hoac chi tieu trong tin nhan.
+QUY TAC:
+1. KHONG duoc tra loi bang van ban thong thuong. Chi duoc goi function call.
+2. Bat buoc lay CHINH XAC so tien, khong tu y tinh toan.
+3. Loai giao dich (type) phai chinh xac: 'income' cho thu nhap/luong, 'expense' cho chi tieu.
+4. Neu khong co thoi gian, tra ve null cho time.
+
+Hom nay la: ${new Date().toISOString()}. 
+Tin nhan nguoi dung: "${message}"`,
               },
             ],
           },
@@ -355,25 +380,30 @@ export class AiService {
             {
               functionDeclarations: [
                 {
-                  name: 'record_expense',
+                  name: 'record_transaction',
                   description:
-                    'Ghi lai thong tin chi tieu tu tin nhan nguoi dung',
+                    'Ghi lai thong tin chi tieu hoac thu nhap tu tin nhan nguoi dung',
                   parameters: {
                     type: Type.OBJECT,
                     properties: {
                       amount: {
                         type: Type.NUMBER,
-                        description: 'So tien chi tieu',
+                        description: 'So tien giao dich',
                         nullable: true,
+                      },
+                      type: {
+                        type: Type.STRING,
+                        description: 'Loai giao dich (thu nhap hay chi tieu)',
+                        enum: ['income', 'expense'],
                       },
                       category_name: {
                         type: Type.STRING,
-                        description: 'Ten hang muc chi tieu',
+                        description: 'Ten hang muc giao dich',
                         enum: [...options.map((option) => option.name), 'Khac'],
                       },
                       description: {
                         type: Type.STRING,
-                        description: 'Ghi chu ngan gon ve khoan chi',
+                        description: 'Ghi chu ngan gon ve giao dich',
                       },
                       time: {
                         type: Type.STRING,
@@ -382,7 +412,7 @@ export class AiService {
                         nullable: true,
                       },
                     },
-                    required: ['category_name', 'description'],
+                    required: ['type', 'category_name', 'description'],
                   },
                 },
               ],
@@ -400,15 +430,17 @@ export class AiService {
 
       return {
         amount: args.amount ?? null,
+        type: args.type ?? 'expense',
         category_name: args.category_name ?? 'Khac',
         description: args.description ?? message,
         time: args.time ?? null,
         confidence: args.amount ? 1.0 : 0.0,
       };
     } catch (error) {
-      this.logger.error('Parse expense failed', error);
+      this.logger.error('Parse transaction failed', error);
       return {
         amount: null,
+        type: 'expense',
         category_name: null,
         description: null,
         time: null,

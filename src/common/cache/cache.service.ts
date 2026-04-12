@@ -121,10 +121,6 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
     uniqueKeys.forEach((key) => this.memoryCache.delete(key));
   }
 
-  /**
-   * Deletes all keys that start with the given prefix.
-   * Uses Redis SCAN for Redis mode; iterates the Map for in-memory mode.
-   */
   async delByPrefix(prefix: string): Promise<void> {
     if (!prefix) return;
 

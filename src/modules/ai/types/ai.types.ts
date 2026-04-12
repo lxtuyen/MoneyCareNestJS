@@ -3,11 +3,12 @@ export type CatOption = {
   name: string;
 };
 
-export type ChatExpenseResult = {
+export type ChatTransactionResult = {
   amount: number | null;
   category_name: string | null;
   description: string | null;
   time: string | null;
+  type: 'income' | 'expense';
   confidence: number;
 };
 
