@@ -24,10 +24,16 @@ import {
 } from './types/ai.types';
 import { FinancialInsightsService } from './financial-insights.service';
 import { CacheService } from 'src/common/cache/cache.service';
-import { buildAiAnalysisCacheKey } from 'src/common/cache/financial-cache.util';
+import {
+  buildAiAnalysisCacheKey,
+  buildAiAnalysisRegistryKey,
+} from 'src/common/cache/financial-cache.util';
 
-const MODEL = 'gemma-4-26b-a4b-it';
+//const DEFAULT_MODEL = 'gemma-4-26b-a4b-it';
+const DEFAULT_MODEL = 'gemini-2.5-flash-lite';
 const AI_ANALYSIS_TTL_SECONDS = 300;
+const AI_ANALYSIS_REGISTRY_TTL_SECONDS = 300;
+const CHAT_TTL_SECONDS = 60;
 
 function normalizeAmount(amount: number | null): number | null {
   if (!amount || amount <= 0) return null;
@@ -53,6 +59,10 @@ function isValidDate(dateStr: string | null | undefined): boolean {
 export class AiService {
   private readonly logger = new Logger(AiService.name);
   private readonly genAI: GoogleGenAI;
+  private readonly chatModel: string;
+  private readonly parseModel: string;
+  private readonly analysisModel: string;
+  private readonly receiptModel: string;
 
   constructor(
     private readonly transactionService: TransactionService,
@@ -70,12 +80,17 @@ export class AiService {
       throw new Error('Missing GEMINI_API_KEY in environment variables');
     }
     this.genAI = new GoogleGenAI({ apiKey });
+    this.chatModel = process.env.GEMINI_CHAT_MODEL || DEFAULT_MODEL;
+    this.parseModel = process.env.GEMINI_PARSE_MODEL || this.chatModel;
+    this.analysisModel = process.env.GEMINI_ANALYSIS_MODEL || this.chatModel;
+    this.receiptModel = process.env.GEMINI_RECEIPT_MODEL || this.parseModel;
   }
 
   private async generateContent(
     prompt: string,
     image?: Buffer,
     mimeType?: string,
+    model = this.chatModel,
   ) {
     const parts: Array<{
       text?: string;
@@ -87,9 +102,61 @@ export class AiService {
     }
 
     return this.genAI.models.generateContent({
-      model: MODEL,
+      model,
       contents: [{ role: 'user', parts }],
     });
+  }
+
+  private buildChatCacheKey(message: string): string {
+    return `v1:ai_chat:${this.buildIntentHash(message)}`;
+  }
+
+  private async registerAnalysisCacheKey(
+    userId: number,
+    fundId: number,
+    analysisCacheKey: string,
+  ): Promise<void> {
+    const registryKey = buildAiAnalysisRegistryKey(userId, fundId);
+    const existingKeys =
+      (await this.cacheService.get<string[]>(registryKey)) ?? [];
+    const dedupedKeys = Array.from(new Set([...existingKeys, analysisCacheKey]));
+    await this.cacheService.set(
+      registryKey,
+      dedupedKeys,
+      Math.max(AI_ANALYSIS_REGISTRY_TTL_SECONDS, AI_ANALYSIS_TTL_SECONDS),
+    );
+  }
+
+  private isLikelyTransactionMessage(message: string): boolean {
+    const normalized = norm(message || '');
+    if (!normalized) return false;
+
+    const hasAmount =
+      /\d/.test(normalized) ||
+      /\b(k|nghin|ngan|tr|trieu|cu|dong|vnd)\b/.test(normalized);
+
+    if (!hasAmount) {
+      return false;
+    }
+
+    return [
+      'chi',
+      'mua',
+      'tra',
+      'an',
+      'uong',
+      'nap',
+      'dong tien',
+      'luong',
+      'thu',
+      'nhan',
+      'ban duoc',
+      'kiem duoc',
+      'mat',
+      'ton',
+      'hoa don',
+      'giao dich',
+    ].some((keyword) => normalized.includes(keyword));
   }
 
   private async getSelectedFund(userId: number): Promise<Fund | null> {
@@ -177,7 +244,9 @@ export class AiService {
     });
     return (
       allCategories.find(
-        (c) => norm(c.name).includes('khac') || norm(c.name).includes('chua phan loai'),
+        (c) =>
+          norm(c.name).includes('khac') ||
+          norm(c.name).includes('chua phan loai'),
       ) || null
     );
   }
@@ -229,21 +298,21 @@ export class AiService {
       id: category.id,
       name: category.name,
     }));
+    if (!this.isLikelyTransactionMessage(message ?? '')) {
+      const answer = await this.chatAnswer(message ?? '');
+      return { success: true, statusCode: 200, message: answer };
+    }
+
     const parsedTrans = await this.parseTransaction(message ?? '', options);
 
-    // Better fallback: if AI fails but message has strong financial keywords,
-    // we could retry or log. For now, let's keep it strictly confidence-based
-    // but lower the threshold if amount is detected.
     if (parsedTrans.amount) {
       const amount = normalizeAmount(parsedTrans.amount);
       let pickedCategory = this.pickCategoryByName(
         categories,
         parsedTrans.category_name,
-        parsedTrans.type as 'income' | 'expense'
+        parsedTrans.type as 'income' | 'expense',
       );
 
-      // Explicit DB query to guarantee we don't return null if 'Chưa phân loại'
-      // is outside the current fund filter
       if (!pickedCategory) {
         const fallback = await this.getFallbackCategoryFromDB(
           userId,
@@ -352,6 +421,11 @@ export class AiService {
       resultString,
       AI_ANALYSIS_TTL_SECONDS,
     );
+    await this.registerAnalysisCacheKey(
+      userId,
+      resolvedFundId,
+      analysisCacheKey,
+    );
 
     return { success: true, statusCode: 200, message: resultString };
   }
@@ -373,11 +447,18 @@ export class AiService {
 
       let categoryId = item.categoryId;
       if (!categoryId) {
-        const picked = this.pickCategoryByName(categories, item.category, 'expense');
+        const picked = this.pickCategoryByName(
+          categories,
+          item.category,
+          'expense',
+        );
         if (picked) {
           categoryId = picked.id;
         } else {
-          const fallback = await this.getFallbackCategoryFromDB(userId, 'expense');
+          const fallback = await this.getFallbackCategoryFromDB(
+            userId,
+            'expense',
+          );
           categoryId = fallback?.id;
         }
       }
@@ -399,7 +480,7 @@ export class AiService {
   ): Promise<ChatTransactionResult> {
     try {
       const response = await this.genAI.models.generateContent({
-        model: MODEL,
+        model: this.parseModel,
         contents: [
           {
             role: 'user',
@@ -522,7 +603,12 @@ YEU CAU:${text}
 `.trim();
 
     try {
-      const result = await this.generateContent(prompt);
+      const result = await this.generateContent(
+        prompt,
+        undefined,
+        undefined,
+        this.analysisModel,
+      );
       let raw = (result.text || '').trim();
       if (raw.startsWith('```')) {
         raw = raw
@@ -538,10 +624,21 @@ YEU CAU:${text}
   }
 
   async chatAnswer(text: string): Promise<string> {
+    const cacheKey = this.buildChatCacheKey(text);
+    const cached = await this.cacheService.get<string>(cacheKey);
+    if (cached !== null) {
+      return cached;
+    }
+
     const result = await this.generateContent(
       `Ban la tro ly tai chinh Money Care. Hay tra loi than thien bang tieng Viet: ${text}`,
+      undefined,
+      undefined,
+      this.chatModel,
     );
-    return (result.text || '').trim();
+    const answer = (result.text || '').trim();
+    await this.cacheService.set(cacheKey, answer, CHAT_TTL_SECONDS);
+    return answer;
   }
 
   private getMimeType(buffer: Buffer): string {
@@ -560,7 +657,7 @@ YEU CAU:${text}
 
     try {
       const response = await this.genAI.models.generateContent({
-        model: MODEL,
+        model: this.receiptModel,
         contents: [
           {
             role: 'user',

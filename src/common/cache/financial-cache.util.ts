@@ -30,15 +30,19 @@ export function buildAiAnalysisCacheKey(
   return `${CACHE_KEY_VERSION}:ai_analysis:user:${userId}:fund:${fundId}:intent:${intentHash}`;
 }
 
-export function getAiAnalysisCacheKeys(
+export function buildAiAnalysisRegistryKey(
+  userId: number,
+  fundId: number,
+): string {
+  return `${CACHE_KEY_VERSION}:ai_analysis:user:${userId}:fund:${fundId}:__registry__`;
+}
+
+export function getAiAnalysisRegistryKeys(
   userId: number,
   fundIds: number[],
 ): string[] {
-  // We store a registry key that lists all AI analysis cache keys for this user+fund
-  // so we can bulk-delete them on invalidation without wildcard support.
   return Array.from(new Set(fundIds.map((fundId) => Number(fundId) || 0))).map(
-    (fundId) =>
-      `${CACHE_KEY_VERSION}:ai_analysis:user:${userId}:fund:${fundId}:__registry__`,
+    (fundId) => buildAiAnalysisRegistryKey(userId, fundId),
   );
 }
 

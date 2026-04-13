@@ -27,7 +27,7 @@ import { CacheService } from 'src/common/cache/cache.service';
 import {
   buildStatisticsSummaryCacheKey,
   getFinancialCacheKeys,
-  CACHE_KEY_VERSION,
+  getAiAnalysisRegistryKeys,
 } from 'src/common/cache/financial-cache.util';
 
 @Injectable()
@@ -461,17 +461,18 @@ export class TransactionService {
     const keys = getFinancialCacheKeys(userId, [0, ...fundIds]);
     await this.cacheService.delMany(keys);
 
-    // Also purge cached AI analysis results for all affected funds
-    const uniqueFundIds = Array.from(
-      new Set([0, ...fundIds].map((id) => Number(id) || 0)),
-    );
-    await Promise.all(
-      uniqueFundIds.map((fundId) =>
-        this.cacheService.delByPrefix(
-          `${CACHE_KEY_VERSION}:ai_analysis:user:${userId}:fund:${fundId}:`,
-        ),
+    const registryKeys = getAiAnalysisRegistryKeys(userId, [0, ...fundIds]);
+    const registryEntries = await Promise.all(
+      registryKeys.map((registryKey) =>
+        this.cacheService.get<string[]>(registryKey),
       ),
     );
+
+    const analysisKeys = Array.from(
+      new Set(registryEntries.flatMap((entry) => entry ?? [])),
+    );
+
+    await this.cacheService.delMany([...analysisKeys, ...registryKeys]);
   }
 
   async remove(id: number): Promise<ApiResponse<string>> {
