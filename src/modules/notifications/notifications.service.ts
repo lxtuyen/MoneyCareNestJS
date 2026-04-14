@@ -42,6 +42,7 @@ export class NotificationsService implements OnModuleInit {
   }
 
   async saveDeviceToken(user: User, token: string) {
+    this.logger.log(`Saving device token for user ID: ${user.id}`);
     let deviceToken = await this.deviceTokenRepo.findOne({ where: { token }, relations: ['user'] });
     if (!deviceToken) {
       deviceToken = this.deviceTokenRepo.create({ token, user });
@@ -70,6 +71,7 @@ export class NotificationsService implements OnModuleInit {
   }
 
   async sendPushNotification(user: User, title: string, body: string, data?: any, type: NotificationType = NotificationType.SYSTEM) {
+    this.logger.log(`Searching tokens for user ID: ${user.id}`);
     const notification = this.notificationRepo.create({
       title,
       body,
@@ -79,9 +81,11 @@ export class NotificationsService implements OnModuleInit {
     await this.notificationRepo.save(notification);
 
     const tokens = await this.deviceTokenRepo.find({ where: { user: { id: user.id } } });
+    this.logger.log(`Found ${tokens.length} tokens for user ID: ${user.id}`);
+
     if (tokens.length === 0) {
-      this.logger.log(`User ${user.id} has no registered device tokens.`);
-      return;
+      this.logger.warn(`User ${user.id} has no registered device tokens. Check if syncToken() was called successfully on the app.`);
+      return { success: false, error: 'No device tokens found for this user', tokenCount: 0 };
     }
 
     const tokenStrings = tokens.map((t) => t.token);
@@ -102,14 +106,37 @@ export class NotificationsService implements OnModuleInit {
         response.responses.forEach((resp, idx) => {
           if (!resp.success) {
             failedTokens.push(tokenStrings[idx]);
+            this.logger.error(`FCM error for token ${tokenStrings[idx]}: ${resp.error?.message || 'Unknown error'}`);
           }
         });
         if (failedTokens.length > 0) {
           await this.deviceTokenRepo.delete({ token: In(failedTokens) });
         }
       }
+      return {
+        success: true,
+        tokenCount: tokens.length,
+        successCount: response.successCount,
+        failureCount: response.failureCount,
+      };
     } catch (error) {
       this.logger.error('Error sending default FCM message:', error);
+      return {
+        success: false,
+        error: error.message,
+        tokenCount: tokens.length,
+      };
     }
+  }
+
+  async sendTestNotification(user: User) {
+    this.logger.log(`Sending test notification to user ${user.id}`);
+    return this.sendPushNotification(
+      user,
+      '🔔 Kiểm tra kết nối',
+      'Chúc mừng! Bạn đã tích hợp thông báo từ Backend thành công. 🚀',
+      { type: 'TEST' },
+      NotificationType.SYSTEM,
+    );
   }
 }

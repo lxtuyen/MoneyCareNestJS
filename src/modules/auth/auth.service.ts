@@ -68,6 +68,7 @@ export class AuthService {
       .createQueryBuilder('user')
       .leftJoinAndSelect('user.funds', 'funds')
       .leftJoinAndSelect('user.profile', 'profile')
+      .leftJoinAndSelect('user.categories', 'categories')
       .addSelect('user.password')
       .where('user.email = :email', { email: dto.email })
       .getOne();
@@ -98,6 +99,7 @@ export class AuthService {
           isVip: user.isVip,
           profile: user.profile,
           fund: selectedFund || null,
+          hasCategories: user.categories?.length > 0,
           role: user.role,
         },
       },
@@ -122,14 +124,16 @@ export class AuthService {
 
       let user = await this.userRepo.findOne({
         where: { email },
-        relations: ['profile', 'funds'],
+        relations: ['profile', 'funds', 'categories'],
       });
 
       if (!user) {
         const profile = this.profileRepo.create({
           first_name: firstName ?? '',
           last_name: '',
-          avatar: payload?.picture || 'https://i.pinimg.com/736x/0d/64/98/0d64989794b1a4c9d89bff571d3d5842.jpg',
+          avatar:
+            payload?.picture ||
+            'https://i.pinimg.com/736x/0d/64/98/0d64989794b1a4c9d89bff571d3d5842.jpg',
         });
         await this.profileRepo.save(profile);
 
@@ -163,6 +167,7 @@ export class AuthService {
             isVip: user.isVip,
             profile: user.profile,
             fund: selectedFund,
+            hasCategories: user.categories?.length > 0,
             role: user.role,
           },
         },
