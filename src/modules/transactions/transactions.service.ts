@@ -263,6 +263,8 @@ export class TransactionService {
     const { userId, categoryId, startDate, endDate, fundId, categoryName, limit } = filter;
 
     const incomeQuery = this.createBaseQuery(userId, 'income', {
+      categoryId,
+      fundId,
       startDate,
       endDate,
       withRelations: true,

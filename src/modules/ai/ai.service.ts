@@ -1247,21 +1247,4 @@ Cau hoi: "${text}"`,
       message: 'Quet hoa don thanh cong',
     });
   }
-
-  async getFinancialInsights(
-    userId: number,
-    fundId?: number,
-    period?: 'this_month' | 'last_30_days',
-  ) {
-    const data = await this.financialInsightsService.getInsights(
-      userId,
-      fundId,
-      period,
-    );
-    return new ApiResponse({
-      success: true,
-      statusCode: HttpStatus.OK,
-      data,
-    });
-  }
 }
