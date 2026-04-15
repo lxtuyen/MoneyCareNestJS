@@ -17,9 +17,11 @@ import { TransactionService } from 'src/modules/transactions/transactions.servic
 import { CreateTransactionDto } from 'src/modules/transactions/dto/create-transaction.dto';
 import {
   CatOption,
+  CategoryQuery,
   ChatTransactionResult,
   FinancialAnalysisResult,
   FinancialInsightSnapshot,
+  GetTransactionQuery,
   ReceiptScanResult,
 } from './types/ai.types';
 import { FinancialInsightsService } from './financial-insights.service';
@@ -34,6 +36,15 @@ const DEFAULT_MODEL = 'gemini-2.5-flash-lite';
 const AI_ANALYSIS_TTL_SECONDS = 300;
 const AI_ANALYSIS_REGISTRY_TTL_SECONDS = 300;
 const CHAT_TTL_SECONDS = 60;
+
+const MSG_PREFIX = {
+  TRANSACTION_LIST: '__TRANSACTION_LIST__',
+  TRANSACTION_SAVED: '__TRANSACTION_SAVED__',
+  STRUCTURED_RECEIPT: '__STRUCTURED_RECEIPT__',
+  STRUCTURED_ANALYSIS: '__STRUCTURED_ANALYSIS__',
+  CATEGORY_LIST: '__CATEGORY_LIST__',
+  CATEGORY_CREATED: '__CATEGORY_CREATED__',
+};
 
 function normalizeAmount(amount: number | null): number | null {
   if (!amount || amount <= 0) return null;
@@ -86,6 +97,18 @@ export class AiService {
     this.receiptModel = process.env.GEMINI_RECEIPT_MODEL || this.parseModel;
   }
 
+  private mapToAiTransaction(t: any) {
+    return {
+      id: t.id,
+      amount: t.amount,
+      type: t.type,
+      note: t.note,
+      date: t.transaction_date,
+      category: t.category?.name ?? 'Chưa phân loại',
+      categoryIcon: t.category?.icon ?? '💰',
+    };
+  }
+
   private async generateContent(
     prompt: string,
     image?: Buffer,
@@ -119,7 +142,9 @@ export class AiService {
     const registryKey = buildAiAnalysisRegistryKey(userId, fundId);
     const existingKeys =
       (await this.cacheService.get<string[]>(registryKey)) ?? [];
-    const dedupedKeys = Array.from(new Set([...existingKeys, analysisCacheKey]));
+    const dedupedKeys = Array.from(
+      new Set([...existingKeys, analysisCacheKey]),
+    );
     await this.cacheService.set(
       registryKey,
       dedupedKeys,
@@ -127,7 +152,10 @@ export class AiService {
     );
   }
 
-  private isLikelyTransactionMessage(message: string): boolean {
+  private isLikelyTransactionMessage(
+    message: string,
+    categories: Category[] = [],
+  ): boolean {
     const normalized = norm(message || '');
     if (!normalized) return false;
 
@@ -139,7 +167,7 @@ export class AiService {
       return false;
     }
 
-    return [
+    const keywords = [
       'chi',
       'mua',
       'tra',
@@ -156,7 +184,38 @@ export class AiService {
       'ton',
       'hoa don',
       'giao dich',
-    ].some((keyword) => normalized.includes(keyword));
+      'xe',
+      'xang',
+      'dien',
+      'nuoc',
+      'hoc',
+      'choi',
+      'gym',
+      'thuoc',
+      'ga',
+      'sua',
+      'gao',
+    ];
+
+    const matchesKeyword = keywords.some((keyword) =>
+      normalized.includes(keyword),
+    );
+    if (matchesKeyword) return true;
+
+    // Check if message contains any category name
+    const matchesCategory = categories.some((cat) =>
+      normalized.includes(norm(cat.name)),
+    );
+    if (matchesCategory) return true;
+
+    // Fallback for short shorthand messages like "bún bò 40k", "rửa xe 50k"
+    // Usually these are <= 6 words
+    const words = normalized.split(/\s+/).filter((w) => w.length > 0);
+    if (words.length > 0 && words.length <= 6) {
+      return true;
+    }
+
+    return false;
   }
 
   private async getSelectedFund(userId: number): Promise<Fund | null> {
@@ -232,6 +291,399 @@ export class AiService {
     );
   }
 
+  private isGetTransactionRequest(message: string): boolean {
+    const normalized = norm(message || '');
+    if (!normalized) return false;
+
+    const getKeywords = [
+      'xem',
+      'lich su',
+      'danh sach',
+      'bao nhieu',
+      'tong cong',
+      'tong chi',
+      'tong thu',
+      'da chi',
+      'da thu',
+      'giao dich',
+      'chi tieu',
+      'thu nhap',
+      'hom nay chi',
+      'hom nay thu',
+      'tuan nay',
+      'thang nay',
+      'thang truoc',
+      'gan day',
+      'vua roi',
+      'nhung gi',
+      'nhung khoan',
+      'tat ca',
+      'bao gom',
+      'liet ke',
+    ];
+
+    return getKeywords.some((keyword) => normalized.includes(keyword));
+  }
+
+  private async parseGetTransactionQuery(
+    message: string,
+  ): Promise<GetTransactionQuery> {
+    try {
+      const response = await this.genAI.models.generateContent({
+        model: this.parseModel,
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              {
+                text: `Ban la tro ly tai chinh thong minh.
+NHIEM VU: Trich xuat thong tin truy van lich su giao dich tu tin nhan cua nguoi dung.
+
+QUY TAC TRICH XUAT:
+1. type: 
+   - 'income': neu nguoi dung hoi ve thu nhap, luong, tien nhan duoc.
+   - 'expense': neu hoi ve chi tieu, mua sam, tien da tra.
+   - 'all': neu hoi chung chung (vd: "cho xem giao dich", "lich su gan day").
+2. startDate / endDate: Dinh dang ISO 8601. Hom nay la ${new Date().toISOString()}.
+   - "hom nay": bat dau tu 00:00 hom nay den hien tai.
+   - "hom qua": tu 00:00 hom qua den 23:59 hom qua.
+   - "tuan nay": tu thu 2 dau tuan den hien tai.
+   - "thang nay": tu ngay 1 cua thang nay den hien tai.
+   - "thang truoc": tu ngay 1 den ngay cuoi cung cua thang truoc.
+   - "nam nay": tu ngay 1/1 den hien tai.
+   - Neu khong de cap thoi gian: tra ve null cho ca hai.
+3. category_name: Ten hang muc (vd: "an uong", "di lai"). Tra ve null neu khong co.
+4. limit: So luong giao dich (vd: "5 giao dich", "top 10"). Tra ve null neu khong gioi han.
+
+Tin nhan: "${message}"`,
+              },
+            ],
+          },
+        ],
+        config: {
+          tools: [
+            {
+              functionDeclarations: [
+                {
+                  name: 'query_transactions',
+                  description: 'Truy van danh sach giao dich theo dieu kien',
+                  parameters: {
+                    type: Type.OBJECT,
+                    properties: {
+                      type: {
+                        type: Type.STRING,
+                        description: 'Loai giao dich (income/expense/all)',
+                        enum: ['income', 'expense', 'all'],
+                      },
+                      startDate: {
+                        type: Type.STRING,
+                        description: 'Ngay bat dau (ISO 8601)',
+                        nullable: true,
+                      },
+                      endDate: {
+                        type: Type.STRING,
+                        description: 'Ngay ket thuc (ISO 8601)',
+                        nullable: true,
+                      },
+                      category_name: {
+                        type: Type.STRING,
+                        description: 'Ten hang muc muon loc',
+                        nullable: true,
+                      },
+                      limit: {
+                        type: Type.NUMBER,
+                        description: 'Gioi han so luong ket qua',
+                        nullable: true,
+                      },
+                    },
+                    required: ['type'],
+                  },
+                },
+              ],
+            },
+          ],
+          toolConfig: { functionCallingConfig: { mode: 'ANY' as any } },
+        },
+      });
+
+      const calls = (response as any).functionCalls as any[] | undefined;
+      const args = calls?.[0]?.args;
+      if (!args) throw new Error('Khong nhan duoc function call');
+
+      return {
+        type: args.type ?? 'all',
+        startDate: args.startDate ?? null,
+        endDate: args.endDate ?? null,
+        category_name: args.category_name ?? null,
+        limit: args.limit ?? null,
+      };
+    } catch (error) {
+      this.logger.error('Parse get transaction query failed', error);
+      return {
+        type: 'all',
+        startDate: null,
+        endDate: null,
+        category_name: null,
+        limit: null,
+      };
+    }
+  }
+
+  private isCategoryRequest(message: string): boolean {
+    const normalized = norm(message || '');
+    if (!normalized) return false;
+
+    const keywords = [
+      'danh muc',
+      'hang muc',
+      'loai chi tieu',
+      'loai thu nhap',
+      'them danh muc',
+      'tao danh muc',
+      'xem danh muc',
+      'liet ke danh muc',
+      'co nhung danh muc nao',
+      'co nhung hang muc nao',
+    ];
+
+    return keywords.some((kw) => normalized.includes(kw));
+  }
+
+  private async parseCategoryQuery(message: string): Promise<CategoryQuery> {
+    try {
+      const response = await this.genAI.models.generateContent({
+        model: this.parseModel,
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              {
+                text: `Ban la tro ly tai chinh thong minh.
+NHIEM VU: Trich xuat thong tin lien quan den danh muc (category) tu tin nhan cua nguoi dung.
+
+QUY TAC TRICH XUAT:
+1. action: 
+   - 'add_category': neu nguoi dung muon them moi hoac tao mot danh muc.
+   - 'get_categories': neu nguoi dung muon xem danh sach, liet ke cac danh muc dang co.
+2. name: Ten danh muc muon them. Tra ve null neu khong phai lenh add.
+3. type: 
+   - 'income': neu lien quan den thu nhap.
+   - 'expense': neu lien quan den chi tieu (mac dinh).
+   - 'others': neu khac.
+4. icon: Bieu tuong emoji phu hop (vd: 🍔 cho an uong, 🚗 cho di lai). Neu nguoi dung khong noi, hay TU DONG GOI Y icon phu hop theo ten danh muc.
+5. isEssential: true neu la nhu cau thiet yeu (an, o, di chuyen), false neu la huong thu/khac. Mac dinh true.
+6. percentage: null hoac con so % neu co de cap.
+
+Hom nay la ${new Date().toISOString()}.
+Tin nhan: "${message}"`,
+              },
+            ],
+          },
+        ],
+        config: {
+          tools: [
+            {
+              functionDeclarations: [
+                {
+                  name: 'manage_category',
+                  description: 'Quan ly danh muc cua nguoi dung',
+                  parameters: {
+                    type: Type.OBJECT,
+                    properties: {
+                      action: {
+                        type: Type.STRING,
+                        description: 'Hanh dong (get_categories/add_category)',
+                        enum: ['get_categories', 'add_category'],
+                      },
+                      name: {
+                        type: Type.STRING,
+                        description: 'Ten danh muc',
+                        nullable: true,
+                      },
+                      type: {
+                        type: Type.STRING,
+                        description: 'Loai (income/expense/others)',
+                        enum: ['income', 'expense', 'others'],
+                      },
+                      icon: {
+                        type: Type.STRING,
+                        description: 'Emoji dai dien',
+                        nullable: true,
+                      },
+                      isEssential: {
+                        type: Type.BOOLEAN,
+                        description: 'Co phai thiet yeu khong',
+                        nullable: true,
+                      },
+                      percentage: {
+                        type: Type.NUMBER,
+                        description: 'Phan tram ngan sach',
+                        nullable: true,
+                      },
+                    },
+                    required: ['action'],
+                  },
+                },
+              ],
+            },
+          ],
+          toolConfig: { functionCallingConfig: { mode: 'ANY' as any } },
+        },
+      });
+
+      const calls = (response as any).functionCalls as any[] | undefined;
+      const args = calls?.[0]?.args;
+      if (!args) throw new Error('Khong nhan duoc function call');
+
+      return {
+        action: args.action,
+        name: args.name ?? null,
+        type: args.type ?? 'expense',
+        icon: args.icon ?? null,
+        isEssential: args.isEssential ?? true,
+        percentage: args.percentage ?? null,
+      };
+    } catch (error) {
+      this.logger.error('Parse category query failed', error);
+      return {
+        action: 'get_categories',
+        name: null,
+        type: 'expense',
+        icon: null,
+        isEssential: true,
+        percentage: null,
+      };
+    }
+  }
+
+  private async handleCategoryRequest(
+    message: string,
+    userId: number,
+    fundId?: number,
+  ): Promise<ApiResponse<string>> {
+    const query = await this.parseCategoryQuery(message);
+
+    if (query.action === 'get_categories') {
+      const categories = await this.getCategories(userId, fundId);
+      return {
+        success: true,
+        statusCode: 200,
+        message: `${MSG_PREFIX.CATEGORY_LIST}${JSON.stringify({
+          action: 'get_categories',
+          categories: categories.map((c) => ({
+            id: c.id,
+            name: c.name,
+            icon: c.icon,
+            type: c.type,
+            isEssential: c.isEssential,
+          })),
+        })}`,
+      };
+    }
+
+    if (query.action === 'add_category') {
+      if (!query.name) {
+        return {
+          success: true,
+          statusCode: 200,
+          message: 'Vui lòng cung cấp tên danh mục bạn muốn thêm.',
+        };
+      }
+
+      const user = await this.userRepo.findOne({ where: { id: userId } });
+      if (!user) throw new BadRequestException('User not found');
+
+      let fund: Fund | null = null;
+      if (fundId && fundId > 0) {
+        fund = await this.fundRepo.findOne({ where: { id: fundId } });
+      }
+
+      const newCat = this.categoryRepo.create({
+        name: query.name,
+        icon: query.icon ?? '📁',
+        type: query.type as any,
+        isEssential: query.isEssential ?? true,
+        percentage: query.percentage ?? 0,
+        user,
+        fund,
+      });
+
+      const saved = await this.categoryRepo.save(newCat);
+
+      return {
+        success: true,
+        statusCode: 200,
+        message: `${MSG_PREFIX.CATEGORY_CREATED}${JSON.stringify({
+          action: 'add_category',
+          category: {
+            id: saved.id,
+            name: saved.name,
+            icon: saved.icon,
+            type: saved.type,
+          },
+        })}`,
+      };
+    }
+
+    return {
+      success: true,
+      statusCode: 200,
+      message: 'Tôi chưa hiểu yêu cầu về danh mục của bạn.',
+    };
+  }
+
+  private async handleGetTransactions(
+    message: string,
+    userId: number,
+    fundId?: number,
+  ): Promise<ApiResponse<string>> {
+    const query = await this.parseGetTransactionQuery(message);
+
+    const filter: any = {
+      userId,
+      fundId,
+      startDate: query.startDate ?? undefined,
+      endDate: query.endDate ?? undefined,
+      categoryName: query.category_name ?? undefined,
+      limit: query.limit ?? undefined,
+    };
+
+    const result = await this.transactionService.findAllByFilter(filter);
+    const { income, expense } = result.data ?? { income: [], expense: [] };
+
+    let transactions: any[] = [];
+    if (query.type === 'income') {
+      transactions = income;
+    } else if (query.type === 'expense') {
+      transactions = expense;
+    } else {
+      // Merge and sort if 'all'
+      transactions = [
+        ...income.map((t) => ({ ...t, type: 'income' })),
+        ...expense.map((t) => ({ ...t, type: 'expense' })),
+      ].sort(
+        (a, b) =>
+          new Date(b.transaction_date).getTime() -
+          new Date(a.transaction_date).getTime(),
+      );
+
+      // If 'all' and has limit, we need to re-limit after merging
+      if (query.limit && query.limit > 0) {
+        transactions = transactions.slice(0, query.limit);
+      }
+    }
+
+    return {
+      success: true,
+      statusCode: 200,
+      message: `${MSG_PREFIX.TRANSACTION_LIST}${JSON.stringify({
+        query,
+        transactions: transactions.map((t) => this.mapToAiTransaction(t)),
+        total: transactions.length,
+      })}`,
+    };
+  }
+
   private async getFallbackCategoryFromDB(
     userId: number,
     type: 'income' | 'expense',
@@ -273,7 +725,7 @@ export class AiService {
       return {
         success: true,
         statusCode: 200,
-        message: `__STRUCTURED_RECEIPT__${JSON.stringify(scanResult)}`,
+        message: `${MSG_PREFIX.STRUCTURED_RECEIPT}${JSON.stringify(scanResult)}`,
       };
     }
 
@@ -288,6 +740,14 @@ export class AiService {
       return this.handleAnalysis(message ?? '', userId, fundId);
     }
 
+    if (this.isCategoryRequest(message ?? '')) {
+      return this.handleCategoryRequest(message ?? '', userId, fundId);
+    }
+
+    if (this.isGetTransactionRequest(message ?? '')) {
+      return this.handleGetTransactions(message ?? '', userId, fundId);
+    }
+
     const categories = await this.getCategories(userId, fundId);
     if (categories.length === 0) {
       const answer = await this.chatAnswer(message ?? '');
@@ -298,7 +758,7 @@ export class AiService {
       id: category.id,
       name: category.name,
     }));
-    if (!this.isLikelyTransactionMessage(message ?? '')) {
+    if (!this.isLikelyTransactionMessage(message ?? '', categories)) {
       const answer = await this.chatAnswer(message ?? '');
       return { success: true, statusCode: 200, message: answer };
     }
@@ -341,13 +801,16 @@ export class AiService {
         return {
           success: true,
           statusCode: 200,
-          message: `__TRANSACTION_SAVED__${JSON.stringify({
-            amount,
-            type: parsedTrans.type,
-            category: pickedCategory?.name || 'Chưa phân loại',
-            categoryIcon: pickedCategory?.icon ?? '💰',
-            note: parsedTrans.description ?? message ?? '',
-            date: dto.transactionDate,
+          message: `${MSG_PREFIX.TRANSACTION_SAVED}${JSON.stringify({
+            ...this.mapToAiTransaction({
+              ...dto,
+              id: undefined,
+              category: {
+                name: pickedCategory?.name,
+                icon: pickedCategory?.icon,
+              },
+            }),
+            note: dto.note, // Override if needed
           })}`,
         };
       }
@@ -413,7 +876,7 @@ export class AiService {
 
     const resultString =
       typeof analysis === 'object'
-        ? `__STRUCTURED_ANALYSIS__${JSON.stringify(analysis)}`
+        ? `${MSG_PREFIX.STRUCTURED_ANALYSIS}${JSON.stringify(analysis)}`
         : analysis;
 
     await this.cacheService.set(
@@ -631,7 +1094,14 @@ YEU CAU:${text}
     }
 
     const result = await this.generateContent(
-      `Ban la tro ly tai chinh Money Care. Hay tra loi than thien bang tieng Viet: ${text}`,
+      `Ban la tro ly tai chinh thong minh cua ung dung Money Care.
+NHIEM VU: Ho tro nguoi dung ve cac chuyen de tai chinh, chi tieu, tiet kiem va cach su dung cac tinh nang cua app Money Care.
+QUY TAC:
+1. Neu nguoi dung hoi ve nhieu chuyen de khong lien quan den tai chinh (vi du: the thao, bong da, giai tri, thoi tiet, kien thuc tong hop khong lien quan...), hay lich su tu choi va giai thich rang ban la tro ly tai chinh cua Money Care nen chi tap trung vao ho tro quan ly tien bac.
+2. Tra loi ngan gon, than thien bang tieng Viet.
+3. Luon huong nguoi dung vao viec quan ly tai chinh tot hon.
+
+Cau hoi: "${text}"`,
       undefined,
       undefined,
       this.chatModel,
@@ -775,6 +1245,23 @@ YEU CAU:${text}
       statusCode: HttpStatus.OK,
       data,
       message: 'Quet hoa don thanh cong',
+    });
+  }
+
+  async getFinancialInsights(
+    userId: number,
+    fundId?: number,
+    period?: 'this_month' | 'last_30_days',
+  ) {
+    const data = await this.financialInsightsService.getInsights(
+      userId,
+      fundId,
+      period,
+    );
+    return new ApiResponse({
+      success: true,
+      statusCode: HttpStatus.OK,
+      data,
     });
   }
 }

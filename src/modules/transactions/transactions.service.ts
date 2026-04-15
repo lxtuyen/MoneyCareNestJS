@@ -188,14 +188,15 @@ export class TransactionService {
 
     const transactionQuery =
       dto.type === 'income'
-        ? this.getBaseIncomeQuery(dto.userId, dto.startDate, dto.endDate, false)
-        : this.getBaseExpenseQuery(
-            dto.userId,
-            undefined,
-            dto.fundId,
-            dto.startDate,
-            dto.endDate,
-          );
+        ? this.createBaseQuery(dto.userId, 'income', {
+            startDate: dto.startDate,
+            endDate: dto.endDate,
+          })
+        : this.createBaseQuery(dto.userId, 'expense', {
+            fundId: dto.fundId,
+            startDate: dto.startDate,
+            endDate: dto.endDate,
+          });
 
     transactionQuery
       .select('category.id', 'categoryId')
@@ -259,26 +260,31 @@ export class TransactionService {
   async findAllByFilter(
     filter: TransactionFilterDto,
   ): Promise<ApiResponse<{ income: Transaction[]; expense: Transaction[] }>> {
-    const { userId, categoryId, startDate, endDate, fundId } = filter;
+    const { userId, categoryId, startDate, endDate, fundId, categoryName, limit } = filter;
 
-    const incomeQuery = this.getBaseIncomeQuery(
-      userId,
+    const incomeQuery = this.createBaseQuery(userId, 'income', {
       startDate,
       endDate,
-      true,
-    );
+      withRelations: true,
+      categoryName,
+    });
 
-    const expenseQuery = this.getBaseExpenseQuery(
-      userId,
+    const expenseQuery = this.createBaseQuery(userId, 'expense', {
       categoryId,
       fundId,
       startDate,
       endDate,
-      true,
-    );
+      withRelations: true,
+      categoryName,
+    });
 
     incomeQuery.orderBy('transaction.transaction_date', 'DESC');
     expenseQuery.orderBy('transaction.transaction_date', 'DESC');
+
+    if (limit) {
+      incomeQuery.take(limit);
+      expenseQuery.take(limit);
+    }
 
     const [income, expense] = await Promise.all([
       incomeQuery.getMany(),
@@ -300,19 +306,16 @@ export class TransactionService {
       target_saving: number;
     }>
   > {
-    const incomeQuery = this.getBaseIncomeQuery(
-      dto.userId,
-      dto.startDate,
-      dto.endDate,
-    );
+    const incomeQuery = this.createBaseQuery(dto.userId, 'income', {
+      startDate: dto.startDate,
+      endDate: dto.endDate,
+    });
 
-    const expenseQuery = this.getBaseExpenseQuery(
-      dto.userId,
-      undefined,
-      dto.fundId,
-      dto.startDate,
-      dto.endDate,
-    );
+    const expenseQuery = this.createBaseQuery(dto.userId, 'expense', {
+      fundId: dto.fundId,
+      startDate: dto.startDate,
+      endDate: dto.endDate,
+    });
 
     const [incomeTotalRes, expenseTotalRes, fund] = await Promise.all([
       incomeQuery
@@ -421,18 +424,15 @@ export class TransactionService {
     end: Date,
     fundId?: number,
   ) {
-    const incomeQuery = this.getBaseIncomeQuery(
-      userId,
-      start.toISOString(),
-      end.toISOString(),
-    );
-    const expenseQuery = this.getBaseExpenseQuery(
-      userId,
-      undefined,
+    const incomeQuery = this.createBaseQuery(userId, 'income', {
+      startDate: start.toISOString(),
+      endDate: end.toISOString(),
+    });
+    const expenseQuery = this.createBaseQuery(userId, 'expense', {
       fundId,
-      start.toISOString(),
-      end.toISOString(),
-    );
+      startDate: start.toISOString(),
+      endDate: end.toISOString(),
+    });
 
     const [incomeRes, expenseRes] = await Promise.all([
       incomeQuery
@@ -493,19 +493,16 @@ export class TransactionService {
   }
 
   async sumByDay(dto: GetTransactionDto): Promise<ApiResponse<TotalsByDate>> {
-    const incomeQuery = this.getBaseIncomeQuery(
-      dto.userId,
-      dto.startDate,
-      dto.endDate,
-    );
+    const incomeQuery = this.createBaseQuery(dto.userId, 'income', {
+      startDate: dto.startDate,
+      endDate: dto.endDate,
+    });
 
-    const expenseQuery = this.getBaseExpenseQuery(
-      dto.userId,
-      undefined,
-      dto.fundId,
-      dto.startDate,
-      dto.endDate,
-    );
+    const expenseQuery = this.createBaseQuery(dto.userId, 'expense', {
+      fundId: dto.fundId,
+      startDate: dto.startDate,
+      endDate: dto.endDate,
+    });
 
     const [incomeRes, expenseRes] = await Promise.all([
       incomeQuery
@@ -536,48 +533,29 @@ export class TransactionService {
     });
   }
 
-  private getBaseIncomeQuery(
+  private createBaseQuery(
     userId: number,
-    startDate?: string,
-    endDate?: string,
-    withRelations = false,
+    type: 'income' | 'expense',
+    {
+      categoryId,
+      fundId,
+      startDate,
+      endDate,
+      withRelations = false,
+      categoryName,
+    }: {
+      categoryId?: number;
+      fundId?: number;
+      startDate?: string;
+      endDate?: string;
+      withRelations?: boolean;
+      categoryName?: string;
+    } = {},
   ) {
     const query = this.transactionRepo
       .createQueryBuilder('transaction')
       .where('user.id = :userId', { userId })
-      .andWhere('transaction.type = :type', { type: 'income' });
-
-    if (withRelations) {
-      query.leftJoinAndSelect('transaction.category', 'category');
-      query.leftJoinAndSelect('transaction.user', 'user');
-    } else {
-      query.leftJoin('transaction.category', 'category');
-      query.leftJoin('transaction.user', 'user');
-    }
-
-    if (startDate) {
-      query.andWhere('transaction.transaction_date >= :start', {
-        start: startDate,
-      });
-    }
-    if (endDate) {
-      query.andWhere('transaction.transaction_date <= :end', { end: endDate });
-    }
-    return query;
-  }
-
-  private getBaseExpenseQuery(
-    userId: number,
-    categoryId?: number,
-    fundId?: number,
-    startDate?: string,
-    endDate?: string,
-    withRelations = false,
-  ) {
-    const query = this.transactionRepo
-      .createQueryBuilder('transaction')
-      .where('user.id = :userId', { userId })
-      .andWhere('transaction.type = :type', { type: 'expense' });
+      .andWhere('transaction.type = :type', { type });
 
     if (withRelations) {
       query.leftJoinAndSelect('transaction.category', 'category');
@@ -601,6 +579,11 @@ export class TransactionService {
     }
     if (endDate) {
       query.andWhere('transaction.transaction_date <= :end', { end: endDate });
+    }
+    if (categoryName) {
+      query.andWhere('category.name LIKE :catName', {
+        catName: `%${categoryName}%`,
+      });
     }
     return query;
   }

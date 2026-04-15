@@ -2,7 +2,10 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Get,
+  ParseIntPipe,
   Post,
+  Query,
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common';
@@ -48,5 +51,14 @@ export class AiController {
       throw new BadRequestException('File không hợp lệ');
     }
     return this.aiService.scanReceiptStandalone(file.buffer);
+  }
+
+  @Get('insights')
+  async getInsights(
+    @Query('userId', ParseIntPipe) userId: number,
+    @Query('fundId') fundId?: number,
+    @Query('period') period?: 'this_month' | 'last_30_days',
+  ) {
+    return this.aiService.getFinancialInsights(userId, fundId, period);
   }
 }

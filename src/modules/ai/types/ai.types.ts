@@ -65,3 +65,27 @@ export interface ReceiptScanResult {
   total_amount: number | null;
   items: ReceiptItem[];
 }
+
+export type GetTransactionQuery = {
+  type: 'income' | 'expense' | 'all';
+  startDate: string | null;
+  endDate: string | null;
+  category_name: string | null;
+  limit: number | null;
+};
+
+export type CategoryQuery = {
+  action: 'get_categories' | 'add_category';
+  name: string | null;
+  type: 'income' | 'expense' | 'others';
+  icon: string | null;
+  isEssential: boolean | null;
+  percentage: number | null;
+};
+
+export type CategoryQueryResult = {
+  action: 'get_categories' | 'add_category';
+  categories?: any[];
+  category?: any;
+  message?: string;
+};

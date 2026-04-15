@@ -19,4 +19,11 @@ export class TransactionFilterDto {
   @IsOptional()
   @IsDateString()
   endDate?: string;
+
+  @IsOptional()
+  categoryName?: string;
+
+  @IsOptional()
+  @IsNumber()
+  limit?: number;
 }
