@@ -66,7 +66,7 @@ export class AuthService {
   ): Promise<ApiResponse<{ accessToken: string; user: any }>> {
     const user = await this.userRepo
       .createQueryBuilder('user')
-      .leftJoinAndSelect('user.funds', 'funds')
+      .leftJoinAndSelect('user.savingGoals', 'savingGoals')
       .leftJoinAndSelect('user.profile', 'profile')
       .leftJoinAndSelect('user.categories', 'categories')
       .addSelect('user.password')
@@ -82,7 +82,7 @@ export class AuthService {
       throw new UnauthorizedException('Email hoặc mật khẩu không hợp lệ');
     }
 
-    const selectedFund = user.funds.find((fund) => fund.is_selected);
+    const selectedGoal = user.savingGoals.find((goal) => goal.is_selected);
 
     const payload = { sub: user.id, email: user.email, role: user.role };
     const accessToken = this.jwtService.sign(payload);
@@ -98,7 +98,7 @@ export class AuthService {
           email: user.email,
           isVip: user.isVip,
           profile: user.profile,
-          fund: selectedFund || null,
+          savingGoal: selectedGoal || null,
           hasCategories: user.categories?.length > 0,
           role: user.role,
         },
@@ -124,7 +124,7 @@ export class AuthService {
 
       let user = await this.userRepo.findOne({
         where: { email },
-        relations: ['profile', 'funds', 'categories'],
+        relations: ['profile', 'savingGoals', 'categories'],
       });
 
       if (!user) {
@@ -153,7 +153,7 @@ export class AuthService {
       };
       const accessToken = this.jwtService.sign(jwtPayload);
 
-      const selectedFund = user.funds?.find((f) => f.is_selected) ?? null;
+      const selectedGoal = user.savingGoals?.find((f) => f.is_selected) ?? null;
 
       return new ApiResponse({
         success: true,
@@ -166,7 +166,7 @@ export class AuthService {
             email: user.email,
             isVip: user.isVip,
             profile: user.profile,
-            fund: selectedFund,
+            savingGoal: selectedGoal,
             hasCategories: user.categories?.length > 0,
             role: user.role,
           },

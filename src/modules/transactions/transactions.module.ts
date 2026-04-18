@@ -6,12 +6,12 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { Category } from 'src/modules/categories/entities/category.entity';
 import { Transaction } from './entities/transaction.entity';
 import { User } from 'src/modules/user/entities/user.entity';
-import { Fund } from 'src/modules/saving-funds/entities/fund.entity';
+import { SavingGoal } from 'src/modules/saving-goals/entities/saving-goal.entity';
 import { NotificationsModule } from 'src/modules/notifications/notifications.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Transaction, Category, User, Fund]),
+    TypeOrmModule.forFeature([Transaction, Category, User, SavingGoal]),
     forwardRef(() => UserModule),
     NotificationsModule,
   ],

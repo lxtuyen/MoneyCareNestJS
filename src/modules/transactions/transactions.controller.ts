@@ -32,7 +32,7 @@ export class TransactionController {
   @Get('filter/:userId')
   async findAllByFilter(
     @Param('userId', ParseIntPipe) userId: number,
-    @Query('fundId') fundId?: any,
+    @Query('savingGoalId') savingGoalId?: any,
     @Query('categoryId') categoryId?: any,
     @Query('start_date') startDate?: string,
     @Query('end_date') endDate?: string,
@@ -40,7 +40,7 @@ export class TransactionController {
     const dto: TransactionFilterDto = {
       userId,
       categoryId: (categoryId === 'null' || categoryId === 'undefined') ? undefined : (categoryId ? Number(categoryId) : undefined),
-      fundId: (fundId === 'null' || fundId === 'undefined') ? undefined : (fundId ? Number(fundId) : undefined),
+      savingGoalId: (savingGoalId === 'null' || savingGoalId === 'undefined') ? undefined : (savingGoalId ? Number(savingGoalId) : undefined),
       startDate,
       endDate,
     };
@@ -50,14 +50,14 @@ export class TransactionController {
   @Get(':userId/total-by-day')
   async getTotalsByDay(
     @Param('userId', ParseIntPipe) userId: number,
-    @Query('fundId') fundId?: any,
+    @Query('savingGoalId') savingGoalId?: any,
     @Query('start_date') startDate?: string,
     @Query('end_date') endDate?: string,
     @Query('type') type?: string,
   ) {
     const dto: GetTransactionDto = {
       userId,
-      fundId: (fundId === 'null' || fundId === 'undefined') ? undefined : (fundId ? Number(fundId) : undefined),
+      savingGoalId: (savingGoalId === 'null' || savingGoalId === 'undefined') ? undefined : (savingGoalId ? Number(savingGoalId) : undefined),
       startDate,
       endDate,
       type,
@@ -68,14 +68,14 @@ export class TransactionController {
   @Get(':userId/total-by-type')
   async getTotalsByType(
     @Param('userId', ParseIntPipe) userId: number,
-    @Query('fundId') fundId?: any,
+    @Query('savingGoalId') savingGoalId?: any,
     @Query('start_date') startDate?: string,
     @Query('end_date') endDate?: string,
     @Query('type') type?: string,
   ) {
     const dto: GetTransactionDto = {
       userId,
-      fundId: (fundId === 'null' || fundId === 'undefined') ? undefined : (fundId ? Number(fundId) : undefined),
+      savingGoalId: (savingGoalId === 'null' || savingGoalId === 'undefined') ? undefined : (savingGoalId ? Number(savingGoalId) : undefined),
       startDate,
       endDate,
       type,
@@ -87,14 +87,14 @@ export class TransactionController {
   @Get(':userId/total-by-category')
   async getTotalsByCate(
     @Param('userId', ParseIntPipe) userId: number,
-    @Query('fundId') fundId?: any,
+    @Query('savingGoalId') savingGoalId?: any,
     @Query('start_date') startDate?: string,
     @Query('end_date') endDate?: string,
     @Query('type') type?: string,
   ) {
     const dto: GetTransactionDto = {
       userId,
-      fundId: (fundId === 'null' || fundId === 'undefined') ? undefined : (fundId ? Number(fundId) : undefined),
+      savingGoalId: (savingGoalId === 'null' || savingGoalId === 'undefined') ? undefined : (savingGoalId ? Number(savingGoalId) : undefined),
       startDate,
       endDate,
       type,
@@ -105,10 +105,10 @@ export class TransactionController {
   @Get(':userId/statistics-summary')
   async getStatisticsSummary(
     @Param('userId', ParseIntPipe) userId: number,
-    @Query('fundId') fundId?: any,
+    @Query('savingGoalId') savingGoalId?: any,
   ) {
-    const resolvedFundId = (fundId === 'null' || fundId === 'undefined') ? undefined : (fundId ? Number(fundId) : undefined);
-    return this.transactionService.getStatisticsSummary(userId, resolvedFundId);
+    const resolvedSavingGoalId = (savingGoalId === 'null' || savingGoalId === 'undefined') ? undefined : (savingGoalId ? Number(savingGoalId) : undefined);
+    return this.transactionService.getStatisticsSummary(userId, resolvedSavingGoalId);
   }
 
   @Delete(':id')

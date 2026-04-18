@@ -6,7 +6,7 @@ export class GetTransactionDto {
 
   @IsOptional()
   @IsNumber()
-  fundId?: number;
+  savingGoalId?: number;
 
   @IsOptional()
   @IsDateString()

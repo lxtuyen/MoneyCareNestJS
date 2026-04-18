@@ -6,7 +6,7 @@ import {
   buildInsightsCacheKey,
   FinancialInsightPeriod,
 } from 'src/common/cache/financial-cache.util';
-import { Fund, FundType } from 'src/modules/saving-funds/entities/fund.entity';
+import { SavingGoal } from 'src/modules/saving-goals/entities/saving-goal.entity';
 import { Transaction } from 'src/modules/transactions/entities/transaction.entity';
 import {
   FinancialInsightSnapshot,
@@ -31,19 +31,19 @@ export class FinancialInsightsService {
   constructor(
     @InjectRepository(Transaction)
     private readonly transactionRepo: Repository<Transaction>,
-    @InjectRepository(Fund)
-    private readonly fundRepo: Repository<Fund>,
+    @InjectRepository(SavingGoal)
+    private readonly goalRepo: Repository<SavingGoal>,
     private readonly cacheService: CacheService,
   ) {}
 
   async getInsights(
     userId: number,
-    fundId?: number,
+    goalId?: number,
     period: FinancialInsightPeriod = 'last_30_days',
   ): Promise<FinancialInsightSnapshot> {
-    const resolvedFundId =
-      fundId ?? (await this.getSelectedFundId(userId)) ?? 0;
-    const cacheKey = buildInsightsCacheKey(userId, resolvedFundId, period);
+    const resolvedGoalId =
+      goalId ?? (await this.getSelectedGoalId(userId)) ?? 0;
+    const cacheKey = buildInsightsCacheKey(userId, resolvedGoalId, period);
     const cached =
       await this.cacheService.get<FinancialInsightSnapshot>(cacheKey);
     if (cached) {
@@ -54,13 +54,13 @@ export class FinancialInsightsService {
     const previousRange = this.getPreviousRange(period, currentRange);
 
     const [currentTotals, previousTotals] = await Promise.all([
-      this.getTotals(userId, resolvedFundId, currentRange),
-      this.getTotals(userId, resolvedFundId, previousRange),
+      this.getTotals(userId, resolvedGoalId, currentRange),
+      this.getTotals(userId, resolvedGoalId, previousRange),
     ]);
 
     const topCategories = await this.getTopCategories(
       userId,
-      resolvedFundId,
+      resolvedGoalId,
       currentRange,
       previousRange,
       currentTotals.expenseTotal,
@@ -101,15 +101,15 @@ export class FinancialInsightsService {
     return insights;
   }
 
-  async getSelectedFundId(userId: number): Promise<number | null> {
-    const selected = await this.fundRepo.findOne({
+  async getSelectedGoalId(userId: number): Promise<number | null> {
+    const selected = await this.goalRepo.findOne({
       where: { user: { id: userId }, is_selected: true },
       order: { updated_at: 'DESC' },
     });
     if (selected) return selected.id;
 
-    const fallback = await this.fundRepo.findOne({
-      where: { user: { id: userId }, type: FundType.SPENDING },
+    const fallback = await this.goalRepo.findOne({
+      where: { user: { id: userId } },
       order: { updated_at: 'DESC' },
     });
 
@@ -168,7 +168,7 @@ export class FinancialInsightsService {
 
   private async getTotals(
     userId: number,
-    fundId: number,
+    goalId: number,
     range: DateRange,
   ): Promise<{
     incomeTotal: number;
@@ -178,7 +178,7 @@ export class FinancialInsightsService {
   }> {
     const [incomeTotal, expenseTotal] = await Promise.all([
       this.sumTransactions(userId, 'income', range),
-      this.sumTransactions(userId, 'expense', range, fundId),
+      this.sumTransactions(userId, 'expense', range, goalId),
     ]);
 
     const days = this.countDays(range);
@@ -195,7 +195,7 @@ export class FinancialInsightsService {
     userId: number,
     type: 'income' | 'expense',
     range: DateRange,
-    fundId?: number,
+    goalId?: number,
   ): Promise<number> {
     const query = this.transactionRepo
       .createQueryBuilder('transaction')
@@ -208,9 +208,9 @@ export class FinancialInsightsService {
         end: range.end.toISOString(),
       });
 
-    if (type === 'expense' && (fundId ?? 0) > 0) {
-      query.leftJoin('category.fund', 'fund').andWhere('fund.id = :fundId', {
-        fundId,
+    if (type === 'expense' && (goalId ?? 0) > 0) {
+      query.leftJoin('category.savingGoal', 'savingGoal').andWhere('savingGoal.id = :goalId', {
+        goalId,
       });
     }
 
@@ -223,14 +223,14 @@ export class FinancialInsightsService {
 
   private async getTopCategories(
     userId: number,
-    fundId: number,
+    goalId: number,
     currentRange: DateRange,
     previousRange: DateRange,
     currentExpenseTotal: number,
   ): Promise<InsightCategorySummary[]> {
     const [currentRows, previousRows] = await Promise.all([
-      this.getCategorySpendRows(userId, fundId, currentRange),
-      this.getCategorySpendRows(userId, fundId, previousRange),
+      this.getCategorySpendRows(userId, goalId, currentRange),
+      this.getCategorySpendRows(userId, goalId, previousRange),
     ]);
 
     const previousMap = new Map(
@@ -259,7 +259,7 @@ export class FinancialInsightsService {
 
   private async getCategorySpendRows(
     userId: number,
-    fundId: number,
+    goalId: number,
     range: DateRange,
   ): Promise<CategorySpendRow[]> {
     const query = this.transactionRepo
@@ -273,9 +273,9 @@ export class FinancialInsightsService {
         end: range.end.toISOString(),
       });
 
-    if (fundId > 0) {
-      query.leftJoin('category.fund', 'fund').andWhere('fund.id = :fundId', {
-        fundId,
+    if (goalId > 0) {
+      query.leftJoin('category.savingGoal', 'savingGoal').andWhere('savingGoal.id = :goalId', {
+        goalId,
       });
     }
 

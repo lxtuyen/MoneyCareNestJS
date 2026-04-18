@@ -1,7 +1,7 @@
 import { Expose, Type } from 'class-transformer';
 import { CategoryResponseDto } from 'src/modules/categories/dto/category-response.dto';
 
-export class FundResponseDto {
+export class SavingGoalResponseDto {
   @Expose()
   id: number;
 
@@ -9,10 +9,10 @@ export class FundResponseDto {
   name: string;
 
   @Expose()
-  balance: number;
+  target: number;
 
   @Expose()
-  target: number;
+  saved_amount: number;
 
   @Expose()
   start_date: Date;
@@ -22,7 +22,7 @@ export class FundResponseDto {
 
   @Expose()
   @Type(() => CategoryResponseDto)
-  categories?: CategoryResponseDto[];
+  categories: CategoryResponseDto[] = [];
 
   @Expose()
   created_at: Date;

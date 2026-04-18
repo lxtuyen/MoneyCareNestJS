@@ -10,7 +10,7 @@ export class TransactionFilterDto {
 
   @IsOptional()
   @IsNumber()
-  fundId?: number;
+  savingGoalId?: number;
 
   @IsOptional()
   @IsDateString()

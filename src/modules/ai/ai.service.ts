@@ -11,7 +11,7 @@ import { createHash } from 'crypto';
 import { GoogleGenAI, Type } from '@google/genai';
 import { ApiResponse } from 'src/common/dto/api-response.dto';
 import { Category } from 'src/modules/categories/entities/category.entity';
-import { Fund, FundType } from 'src/modules/saving-funds/entities/fund.entity';
+import { SavingGoal } from 'src/modules/saving-goals/entities/saving-goal.entity';
 import { User } from 'src/modules/user/entities/user.entity';
 import { TransactionService } from 'src/modules/transactions/transactions.service';
 import { CreateTransactionDto } from 'src/modules/transactions/dto/create-transaction.dto';
@@ -79,8 +79,8 @@ export class AiService {
     private readonly transactionService: TransactionService,
     private readonly financialInsightsService: FinancialInsightsService,
     private readonly cacheService: CacheService,
-    @InjectRepository(Fund)
-    private readonly fundRepo: Repository<Fund>,
+    @InjectRepository(SavingGoal)
+    private readonly goalRepo: Repository<SavingGoal>,
     @InjectRepository(Category)
     private readonly categoryRepo: Repository<Category>,
     @InjectRepository(User)
@@ -218,15 +218,15 @@ export class AiService {
     return false;
   }
 
-  private async getSelectedFund(userId: number): Promise<Fund | null> {
-    const selected = await this.fundRepo.findOne({
+  private async getSelectedGoal(userId: number): Promise<SavingGoal | null> {
+    const selected = await this.goalRepo.findOne({
       where: { user: { id: userId }, is_selected: true },
       order: { updated_at: 'DESC' },
     });
     if (selected) return selected;
 
-    return this.fundRepo.findOne({
-      where: { user: { id: userId }, type: FundType.SPENDING },
+    return this.goalRepo.findOne({
+      where: { user: { id: userId } },
       order: { updated_at: 'DESC' },
     });
   }
@@ -238,26 +238,26 @@ export class AiService {
     });
   }
 
-  private async getCategoriesByFundId(fundId: number): Promise<Category[]> {
+  private async getCategoriesByGoalId(goalId: number): Promise<Category[]> {
     return this.categoryRepo.find({
-      where: { fund: { id: fundId } },
+      where: { savingGoal: { id: goalId } },
       order: { id: 'ASC' },
     });
   }
 
   private async getCategories(
     userId: number,
-    fundId?: number,
+    goalId?: number,
   ): Promise<Category[]> {
-    if (fundId && fundId > 0) {
-      const fundCategories = await this.getCategoriesByFundId(fundId);
-      if (fundCategories.length > 0) return fundCategories;
+    if (goalId && goalId > 0) {
+      const goalCategories = await this.getCategoriesByGoalId(goalId);
+      if (goalCategories.length > 0) return goalCategories;
     }
 
-    const selectedFund = await this.getSelectedFund(userId);
-    if (selectedFund) {
-      const fundCategories = await this.getCategoriesByFundId(selectedFund.id);
-      if (fundCategories.length > 0) return fundCategories;
+    const selectedGoal = await this.getSelectedGoal(userId);
+    if (selectedGoal) {
+      const goalCategories = await this.getCategoriesByGoalId(selectedGoal.id);
+      if (goalCategories.length > 0) return goalCategories;
     }
 
     return this.getCategoriesByUserId(userId);
@@ -559,12 +559,12 @@ Tin nhan: "${message}"`,
   private async handleCategoryRequest(
     message: string,
     userId: number,
-    fundId?: number,
+    goalId?: number,
   ): Promise<ApiResponse<string>> {
     const query = await this.parseCategoryQuery(message);
 
     if (query.action === 'get_categories') {
-      const categories = await this.getCategories(userId, fundId);
+      const categories = await this.getCategories(userId, goalId);
       return {
         success: true,
         statusCode: 200,
@@ -593,9 +593,9 @@ Tin nhan: "${message}"`,
       const user = await this.userRepo.findOne({ where: { id: userId } });
       if (!user) throw new BadRequestException('User not found');
 
-      let fund: Fund | null = null;
-      if (fundId && fundId > 0) {
-        fund = await this.fundRepo.findOne({ where: { id: fundId } });
+      let savingGoal: SavingGoal | null = null;
+      if (goalId && goalId > 0) {
+        savingGoal = await this.goalRepo.findOne({ where: { id: goalId } });
       }
 
       const newCat = this.categoryRepo.create({
@@ -605,7 +605,7 @@ Tin nhan: "${message}"`,
         isEssential: query.isEssential ?? true,
         percentage: query.percentage ?? 0,
         user,
-        fund,
+        savingGoal,
       });
 
       const saved = await this.categoryRepo.save(newCat);
@@ -635,13 +635,13 @@ Tin nhan: "${message}"`,
   private async handleGetTransactions(
     message: string,
     userId: number,
-    fundId?: number,
+    goalId?: number,
   ): Promise<ApiResponse<string>> {
     const query = await this.parseGetTransactionQuery(message);
 
     const filter: any = {
       userId,
-      fundId,
+      fundId: goalId,
       startDate: query.startDate ?? undefined,
       endDate: query.endDate ?? undefined,
       categoryName: query.category_name ?? undefined,
@@ -707,7 +707,7 @@ Tin nhan: "${message}"`,
     message: string | undefined,
     userIdRaw: unknown,
     file?: Express.Multer.File,
-    fundId?: number,
+    goalId?: number,
   ): Promise<ApiResponse<string>> {
     const userId = Number(userIdRaw);
     if (!Number.isFinite(userId)) {
@@ -715,7 +715,7 @@ Tin nhan: "${message}"`,
     }
 
     if (file) {
-      const categories = await this.getCategories(userId, fundId);
+      const categories = await this.getCategories(userId, goalId);
       const categoryOptions: CatOption[] = categories.map((category) => ({
         id: category.id,
         name: category.name,
@@ -737,18 +737,18 @@ Tin nhan: "${message}"`,
       lowerMessage.includes('khuyen');
 
     if (isAnalysisRequest) {
-      return this.handleAnalysis(message ?? '', userId, fundId);
+      return this.handleAnalysis(message ?? '', userId, goalId);
     }
 
     if (this.isCategoryRequest(message ?? '')) {
-      return this.handleCategoryRequest(message ?? '', userId, fundId);
+      return this.handleCategoryRequest(message ?? '', userId, goalId);
     }
 
     if (this.isGetTransactionRequest(message ?? '')) {
-      return this.handleGetTransactions(message ?? '', userId, fundId);
+      return this.handleGetTransactions(message ?? '', userId, goalId);
     }
 
-    const categories = await this.getCategories(userId, fundId);
+    const categories = await this.getCategories(userId, goalId);
     if (categories.length === 0) {
       const answer = await this.chatAnswer(message ?? '');
       return { success: true, statusCode: 200, message: answer };
@@ -833,17 +833,17 @@ Tin nhan: "${message}"`,
   private async handleAnalysis(
     message: string,
     userId: number,
-    fundId?: number,
+    goalId?: number,
   ): Promise<ApiResponse<string>> {
-    const resolvedFundId =
-      fundId ??
-      (await this.financialInsightsService.getSelectedFundId(userId)) ??
+    const resolvedGoalId =
+      goalId ??
+      (await this.financialInsightsService.getSelectedGoalId(userId)) ??
       0;
 
     const intentHash = this.buildIntentHash(message);
     const analysisCacheKey = buildAiAnalysisCacheKey(
       userId,
-      resolvedFundId,
+      resolvedGoalId,
       intentHash,
     );
     const cachedResult = await this.cacheService.get<string>(analysisCacheKey);
@@ -859,7 +859,7 @@ Tin nhan: "${message}"`,
       }),
       this.financialInsightsService.getInsights(
         userId,
-        resolvedFundId || undefined,
+        resolvedGoalId || undefined,
         'last_30_days',
       ),
     ]);
@@ -886,7 +886,7 @@ Tin nhan: "${message}"`,
     );
     await this.registerAnalysisCacheKey(
       userId,
-      resolvedFundId,
+      resolvedGoalId,
       analysisCacheKey,
     );
 
@@ -896,9 +896,9 @@ Tin nhan: "${message}"`,
   async bulkCreateTransactions(
     userId: number,
     items: any[],
-    fundId?: number,
+    goalId?: number,
   ): Promise<void> {
-    const categories = await this.getCategories(userId, fundId);
+    const categories = await this.getCategories(userId, goalId);
     if (!categories.length) {
       throw new BadRequestException('Nguoi dung chua co hang muc chi tieu');
     }
@@ -1095,7 +1095,7 @@ YEU CAU:${text}
 
     const result = await this.generateContent(
       `Ban la tro ly tai chinh thong minh cua ung dung Money Care.
-NHIEM VU: Ho tro nguoi dung ve cac chuyen de tai chinh, chi tieu, tiet kiem va cach su dung cac tinh nang cua app Money Care.
+NHIEM VU: Ho tro nguoi dung ve cac chuyen de tai chinh, chi tieu, tiet kiem va cách su dung cac tinh nang cua app Money Care.
 QUY TAC:
 1. Neu nguoi dung hoi ve nhieu chuyen de khong lien quan den tai chinh (vi du: the thao, bong da, giai tri, thoi tiet, kien thuc tong hop khong lien quan...), hay lich su tu choi va giai thich rang ban la tro ly tai chinh cua Money Care nen chi tap trung vao ho tro quan ly tien bac.
 2. Tra loi ngan gon, than thien bang tieng Viet.

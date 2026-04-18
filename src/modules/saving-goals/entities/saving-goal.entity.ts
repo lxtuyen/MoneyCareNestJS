@@ -10,13 +10,10 @@ import {
 import { User } from 'src/modules/user/entities/user.entity';
 import { Category } from 'src/modules/categories/entities/category.entity';
 
-export enum FundType {
-  SPENDING = 'SPENDING',
-  SAVING_GOAL = 'SAVING_GOAL',
-}
+import { ColumnNumericTransformer } from 'src/common/transformers/decimal.transformer';
 
-@Entity('funds')
-export class Fund {
+@Entity('saving_goals')
+export class SavingGoal {
   @PrimaryGeneratedColumn()
   id: number;
 
@@ -24,31 +21,30 @@ export class Fund {
   name: string;
 
   @Column({
-    type: 'enum',
-    enum: FundType,
-    default: FundType.SPENDING,
+    type: 'decimal',
+    precision: 15,
+    scale: 2,
+    default: 0,
+    transformer: new ColumnNumericTransformer(),
   })
-  type: FundType;
-
-  @Column({ type: 'decimal', precision: 15, scale: 2, default: 0 })
   balance: number;
 
-  @Column({ type: 'decimal', precision: 15, scale: 2, nullable: true })
-  monthly_limit: number | null;
-
-  @Column({ type: 'decimal', precision: 15, scale: 2, default: 0 })
-  spent_current_month: number;
-
-  @Column({ default: false })
-  notified_70: boolean;
-
-  @Column({ default: false })
-  notified_90: boolean;
-
-  @Column({ type: 'decimal', precision: 15, scale: 2, nullable: true })
+  @Column({
+    type: 'decimal',
+    precision: 15,
+    scale: 2,
+    nullable: true,
+    transformer: new ColumnNumericTransformer(),
+  })
   target: number | null;
 
-  @Column({ type: 'decimal', precision: 15, scale: 2, default: 0 })
+  @Column({
+    type: 'decimal',
+    precision: 15,
+    scale: 2,
+    default: 0,
+    transformer: new ColumnNumericTransformer(),
+  })
   saved_amount: number;
 
   @Column({ default: false })
@@ -76,10 +72,10 @@ export class Fund {
   @Column({ default: false })
   is_selected: boolean;
 
-  @ManyToOne(() => User, (user) => user.funds, { onDelete: 'CASCADE' })
+  @ManyToOne(() => User, (user) => user.savingGoals, { onDelete: 'CASCADE' })
   user: User;
 
-  @OneToMany(() => Category, (category) => category.fund)
+  @OneToMany(() => Category, (category) => category.savingGoal)
   categories: Category[];
 
   @CreateDateColumn()

@@ -11,7 +11,7 @@ import { CreateTransactionDto } from './dto/create-transaction.dto';
 import { UpdateTransactionDto } from './dto/update-transaction.dto';
 import { User } from 'src/modules/user/entities/user.entity';
 import { Category } from 'src/modules/categories/entities/category.entity';
-import { Fund } from 'src/modules/saving-funds/entities/fund.entity';
+import { SavingGoal } from 'src/modules/saving-goals/entities/saving-goal.entity';
 import { TransactionFilterDto } from './dto/transaction-filter.dto';
 import { ApiResponse } from 'src/common/dto/api-response.dto';
 import {
@@ -39,8 +39,8 @@ export class TransactionService {
     private userRepo: Repository<User>,
     @InjectRepository(Category)
     private categoryRepo: Repository<Category>,
-    @InjectRepository(Fund)
-    private fundRepo: Repository<Fund>,
+    @InjectRepository(SavingGoal)
+    private goalRepo: Repository<SavingGoal>,
     private notificationsService: NotificationsService,
     private cacheService: CacheService,
   ) {}
@@ -51,7 +51,7 @@ export class TransactionService {
       dto.categoryId
         ? this.categoryRepo.findOne({
             where: { id: dto.categoryId },
-            relations: ['fund'],
+            relations: ['savingGoal'],
           })
         : Promise.resolve(null),
     ]);
@@ -73,7 +73,7 @@ export class TransactionService {
     });
 
     let currentExpenseTotal = 0;
-    if (dto.type === 'expense' && category?.fund) {
+    if (dto.type === 'expense' && category?.savingGoal) {
       const currentExpenseRes = await this.transactionRepo
         .createQueryBuilder('t')
         .where('t.category.id = :categoryId', { categoryId: category.id })
@@ -85,18 +85,18 @@ export class TransactionService {
     }
 
     await this.transactionRepo.save(transaction);
-    await this.invalidateFinancialCache(user.id, [category?.fund?.id ?? 0]);
+    await this.invalidateFinancialCache(user.id, [category?.savingGoal?.id ?? 0]);
 
-    if (dto.type === 'expense' && category?.fund) {
-      const balance =
-        (Number(category.fund.balance) * Number(category.percentage)) / 100;
+    if (dto.type === 'expense' && category?.savingGoal) {
+      const limitBase = Number(category.savingGoal.target || 0);
+      const budgetLimit = (limitBase * Number(category.percentage)) / 100;
       const sumExpensesAfter = currentExpenseTotal + Number(dto.amount);
 
-      if (currentExpenseTotal <= balance && sumExpensesAfter > balance) {
+      if (budgetLimit > 0 && currentExpenseTotal <= budgetLimit && sumExpensesAfter > budgetLimit) {
         await this.notificationsService.sendPushNotification(
           user,
           'Cảnh báo ngân sách',
-          `Khoản chi vừa rồi đã khiến mục "${category.name}" vượt quá ngân sách dự kiến (${balance.toLocaleString('vi-VN')} đ)!`,
+          `Khoản chi vừa rồi đã khiến mục "${category.name}" vượt quá ngân sách dự kiến (${budgetLimit.toLocaleString('vi-VN')} đ)!`,
           undefined,
           NotificationType.ALERT,
         );
@@ -116,15 +116,15 @@ export class TransactionService {
   ): Promise<ApiResponse<Transaction>> {
     const transaction = await this.transactionRepo.findOne({
       where: { id },
-      relations: ['category', 'category.fund', 'user'],
+      relations: ['category', 'category.savingGoal', 'user'],
     });
     if (!transaction) throw new NotFoundException('Transaction not found');
-    const previousFundId = transaction.category?.fund?.id ?? 0;
+    const previousGoalId = transaction.category?.savingGoal?.id ?? 0;
 
     if (dto.categoryId) {
       const category = await this.categoryRepo.findOne({
         where: { id: dto.categoryId },
-        relations: ['fund'],
+        relations: ['savingGoal'],
       });
       if (!category) throw new NotFoundException('Category not found');
       transaction.category = category;
@@ -141,8 +141,8 @@ export class TransactionService {
 
     await this.transactionRepo.save(transaction);
     await this.invalidateFinancialCache(transaction.user.id, [
-      previousFundId,
-      transaction.category?.fund?.id ?? 0,
+      previousGoalId,
+      transaction.category?.savingGoal?.id ?? 0,
     ]);
 
     return new ApiResponse({
@@ -162,17 +162,19 @@ export class TransactionService {
       .addSelect('category.percentage', 'percentage')
       .addSelect('category.icon', 'categoryIcon');
 
-    if (dto.fundId) {
+    if (dto.savingGoalId) {
       categoryQuery
-        .leftJoin('category.fund', 'fund')
-        .leftJoin('fund.user', 'user')
-        .addSelect('fund.balance', 'balance')
+        .leftJoin('category.savingGoal', 'savingGoal')
+        .leftJoin('category.user', 'user')
+        .addSelect('savingGoal.target', 'target')
         .where('user.id = :userId', { userId: dto.userId })
-        .andWhere('fund.id = :fundId', { fundId: dto.fundId });
+        .andWhere('(savingGoal.id = :goalId OR savingGoal.id IS NULL)', {
+          goalId: dto.savingGoalId,
+        });
     } else {
       categoryQuery
         .leftJoin('category.user', 'user')
-        .addSelect('NULL', 'balance')
+        .addSelect('NULL', 'target')
         .where('user.id = :userId', { userId: dto.userId });
     }
 
@@ -189,11 +191,12 @@ export class TransactionService {
     const transactionQuery =
       dto.type === 'income'
         ? this.createBaseQuery(dto.userId, 'income', {
+            savingGoalId: dto.savingGoalId,
             startDate: dto.startDate,
             endDate: dto.endDate,
           })
         : this.createBaseQuery(dto.userId, 'expense', {
-            fundId: dto.fundId,
+            savingGoalId: dto.savingGoalId,
             startDate: dto.startDate,
             endDate: dto.endDate,
           });
@@ -209,7 +212,7 @@ export class TransactionService {
         categoryName: string;
         percentage: number;
         categoryIcon: string;
-        balance: string | null;
+        target: string | null;
       }>(),
       transactionQuery.getRawMany<{
         categoryId: number | null;
@@ -229,23 +232,16 @@ export class TransactionService {
       0,
     );
 
-    let categorizedTotal = 0;
     const formatted: TotalByCategory[] = categories.map((cat) => {
       const spent = totalMap.get(Number(cat.categoryId)) ?? 0;
-      categorizedTotal += spent;
       return {
-        category_id: Number(
-          (cat as any).categoryId ||
-            (cat as any).category_id ||
-            (cat as any).categoryid ||
-            (cat as any).id,
-        ),
+        category_id: Number(cat.categoryId),
         categoryName: cat.categoryName,
         categoryIcon: cat.categoryIcon,
         percentage: Number(cat.percentage),
         spendingPercentage:
           grandTotal > 0 ? Math.round((spent / grandTotal) * 100) : 0,
-        limit: (Number(cat.percentage) * Number(cat.balance || 0)) / 100,
+        limit: (Number(cat.percentage) * Number(cat.target || 0)) / 100,
         total: spent,
       };
     });
@@ -260,11 +256,11 @@ export class TransactionService {
   async findAllByFilter(
     filter: TransactionFilterDto,
   ): Promise<ApiResponse<{ income: Transaction[]; expense: Transaction[] }>> {
-    const { userId, categoryId, startDate, endDate, fundId, categoryName, limit } = filter;
+    const { userId, categoryId, startDate, endDate, savingGoalId, categoryName, limit } = filter;
 
     const incomeQuery = this.createBaseQuery(userId, 'income', {
       categoryId,
-      fundId,
+      savingGoalId,
       startDate,
       endDate,
       withRelations: true,
@@ -273,7 +269,7 @@ export class TransactionService {
 
     const expenseQuery = this.createBaseQuery(userId, 'expense', {
       categoryId,
-      fundId,
+      savingGoalId,
       startDate,
       endDate,
       withRelations: true,
@@ -309,32 +305,33 @@ export class TransactionService {
     }>
   > {
     const incomeQuery = this.createBaseQuery(dto.userId, 'income', {
+      savingGoalId: dto.savingGoalId,
       startDate: dto.startDate,
       endDate: dto.endDate,
     });
 
     const expenseQuery = this.createBaseQuery(dto.userId, 'expense', {
-      fundId: dto.fundId,
+      savingGoalId: dto.savingGoalId,
       startDate: dto.startDate,
       endDate: dto.endDate,
     });
 
-    const [incomeTotalRes, expenseTotalRes, fund] = await Promise.all([
+    const [incomeTotalRes, expenseTotalRes, goal] = await Promise.all([
       incomeQuery
         .select('SUM(transaction.amount)', 'total')
         .getRawOne<{ total: string }>(),
       expenseQuery
         .select('SUM(transaction.amount)', 'total')
         .getRawOne<{ total: string }>(),
-      dto.fundId
-        ? this.fundRepo.findOne({ where: { id: dto.fundId } })
+      dto.savingGoalId
+        ? this.goalRepo.findOne({ where: { id: dto.savingGoalId } })
         : Promise.resolve(null),
     ]);
 
     const incomeTotal = Number(incomeTotalRes?.total ?? 0);
     const expenseTotal = Number(expenseTotalRes?.total ?? 0);
     const currentSaving = incomeTotal - expenseTotal;
-    const targetSaving = Number(fund?.target ?? 0);
+    const targetSaving = Number(goal?.target ?? 0);
 
     return new ApiResponse({
       success: true,
@@ -350,10 +347,10 @@ export class TransactionService {
 
   async getStatisticsSummary(
     userId: number,
-    fundId?: number,
+    savingGoalId?: number,
   ): Promise<ApiResponse<StatisticsSummaryResponseDto>> {
-    const resolvedFundId = Number(fundId) || 0;
-    const cacheKey = buildStatisticsSummaryCacheKey(userId, resolvedFundId);
+    const resolvedGoalId = Number(savingGoalId) || 0;
+    const cacheKey = buildStatisticsSummaryCacheKey(userId, resolvedGoalId);
     const cached =
       await this.cacheService.get<StatisticsSummaryResponseDto>(cacheKey);
     if (cached) {
@@ -379,9 +376,9 @@ export class TransactionService {
         userId,
         currentMonthStart,
         currentMonthEnd,
-        fundId,
+        resolvedGoalId,
       ),
-      this.getTotalsForRange(userId, prevMonthStart, prevMonthEnd, fundId),
+      this.getTotalsForRange(userId, prevMonthStart, prevMonthEnd, resolvedGoalId),
     ]);
 
     const daysPassedInCurrentMonth = now.getDate();
@@ -424,14 +421,15 @@ export class TransactionService {
     userId: number,
     start: Date,
     end: Date,
-    fundId?: number,
+    savingGoalId?: number,
   ) {
     const incomeQuery = this.createBaseQuery(userId, 'income', {
+      savingGoalId,
       startDate: start.toISOString(),
       endDate: end.toISOString(),
     });
     const expenseQuery = this.createBaseQuery(userId, 'expense', {
-      fundId,
+      savingGoalId,
       startDate: start.toISOString(),
       endDate: end.toISOString(),
     });
@@ -458,12 +456,12 @@ export class TransactionService {
 
   private async invalidateFinancialCache(
     userId: number,
-    fundIds: number[],
+    goalIds: number[],
   ): Promise<void> {
-    const keys = getFinancialCacheKeys(userId, [0, ...fundIds]);
+    const keys = getFinancialCacheKeys(userId, [0, ...goalIds]);
     await this.cacheService.delMany(keys);
 
-    const registryKeys = getAiAnalysisRegistryKeys(userId, [0, ...fundIds]);
+    const registryKeys = getAiAnalysisRegistryKeys(userId, [0, ...goalIds]);
     const registryEntries = await Promise.all(
       registryKeys.map((registryKey) =>
         this.cacheService.get<string[]>(registryKey),
@@ -480,12 +478,12 @@ export class TransactionService {
   async remove(id: number): Promise<ApiResponse<string>> {
     const transaction = await this.transactionRepo.findOne({
       where: { id },
-      relations: ['category', 'category.fund', 'user'],
+      relations: ['category', 'category.savingGoal', 'user'],
     });
     if (!transaction) throw new NotFoundException('Transaction not found');
     await this.transactionRepo.remove(transaction);
     await this.invalidateFinancialCache(transaction.user.id, [
-      transaction.category?.fund?.id ?? 0,
+      transaction.category?.savingGoal?.id ?? 0,
     ]);
     return new ApiResponse({
       success: true,
@@ -496,12 +494,13 @@ export class TransactionService {
 
   async sumByDay(dto: GetTransactionDto): Promise<ApiResponse<TotalsByDate>> {
     const incomeQuery = this.createBaseQuery(dto.userId, 'income', {
+      savingGoalId: dto.savingGoalId,
       startDate: dto.startDate,
       endDate: dto.endDate,
     });
 
     const expenseQuery = this.createBaseQuery(dto.userId, 'expense', {
-      fundId: dto.fundId,
+      savingGoalId: dto.savingGoalId,
       startDate: dto.startDate,
       endDate: dto.endDate,
     });
@@ -540,14 +539,14 @@ export class TransactionService {
     type: 'income' | 'expense',
     {
       categoryId,
-      fundId,
+      savingGoalId,
       startDate,
       endDate,
       withRelations = false,
       categoryName,
     }: {
       categoryId?: number;
-      fundId?: number;
+      savingGoalId?: number;
       startDate?: string;
       endDate?: string;
       withRelations?: boolean;
@@ -570,16 +569,18 @@ export class TransactionService {
     if (categoryId) {
       query.andWhere('category.id = :categoryId', { categoryId });
     }
-    if (fundId) {
-      query.leftJoin('category.fund', 'fund');
-      query.andWhere('fund.id = :fundId', { fundId });
+    if (savingGoalId) {
+      query.leftJoin('category.savingGoal', 'savingGoal');
+      query.andWhere('(savingGoal.id = :goalId OR savingGoal.id IS NULL)', {
+        goalId: savingGoalId,
+      });
     }
-    if (startDate) {
+    if (startDate && startDate !== 'null') {
       query.andWhere('transaction.transaction_date >= :start', {
         start: startDate,
       });
     }
-    if (endDate) {
+    if (endDate && endDate !== 'null') {
       query.andWhere('transaction.transaction_date <= :end', { end: endDate });
     }
     if (categoryName) {
