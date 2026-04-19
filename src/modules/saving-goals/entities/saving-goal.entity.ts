@@ -9,8 +9,8 @@ import {
 } from 'typeorm';
 import { User } from 'src/modules/user/entities/user.entity';
 import { Category } from 'src/modules/categories/entities/category.entity';
-
 import { ColumnNumericTransformer } from 'src/common/transformers/decimal.transformer';
+import { SavingGoalStatus } from '../enums/saving-goal-status.enum';
 
 @Entity('saving_goals')
 export class SavingGoal {
@@ -61,10 +61,10 @@ export class SavingGoal {
 
   @Column({
     type: 'enum',
-    enum: ['ACTIVE', 'EXPIRED', 'COMPLETED', 'ARCHIVED'],
-    default: 'ACTIVE',
+    enum: SavingGoalStatus,
+    default: SavingGoalStatus.ACTIVE,
   })
-  status: string;
+  status: SavingGoalStatus;
 
   @Column({ default: false })
   completion_notified: boolean;

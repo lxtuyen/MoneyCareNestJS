@@ -280,8 +280,8 @@ export class TransactionService {
     expenseQuery.orderBy('transaction.transaction_date', 'DESC');
 
     if (limit) {
-      incomeQuery.take(limit);
-      expenseQuery.take(limit);
+      incomeQuery.limit(limit);
+      expenseQuery.limit(limit);
     }
 
     const [income, expense] = await Promise.all([
@@ -371,14 +371,35 @@ export class TransactionService {
     const prevMonthStart = new Date(currentYear, currentMonth - 1, 1);
     const prevMonthEnd = new Date(currentYear, currentMonth, 0);
 
+    let calculationStart = currentMonthStart;
+    let prevCalculationStart = prevMonthStart;
+    let calculationEnd = currentMonthEnd;
+
+    if (resolvedGoalId > 0) {
+      const goal = await this.goalRepo.findOne({ where: { id: resolvedGoalId } });
+      if (goal && goal.start_date) {
+        if (goal.start_date > calculationStart) {
+          calculationStart = goal.start_date;
+        }
+        if (goal.start_date > prevCalculationStart) {
+          // If the goal started after a portion of the previous month, we clamp it.
+          // If it started after the entire previous month, prevMonthTotals will be zero.
+          prevCalculationStart = goal.start_date > prevMonthEnd ? prevMonthEnd : goal.start_date;
+        }
+      }
+      if (goal && goal.end_date && goal.end_date < calculationEnd) {
+        calculationEnd = goal.end_date;
+      }
+    }
+
     const [currentMonthTotals, prevMonthTotals] = await Promise.all([
       this.getTotalsForRange(
         userId,
-        currentMonthStart,
-        currentMonthEnd,
+        calculationStart,
+        calculationEnd,
         resolvedGoalId,
       ),
-      this.getTotalsForRange(userId, prevMonthStart, prevMonthEnd, resolvedGoalId),
+      this.getTotalsForRange(userId, prevCalculationStart, prevMonthEnd, resolvedGoalId),
     ]);
 
     const daysPassedInCurrentMonth = now.getDate();
@@ -569,19 +590,19 @@ export class TransactionService {
     if (categoryId) {
       query.andWhere('category.id = :categoryId', { categoryId });
     }
-    if (savingGoalId) {
-      query.leftJoin('category.savingGoal', 'savingGoal');
-      query.andWhere('(savingGoal.id = :goalId OR savingGoal.id IS NULL)', {
-        goalId: savingGoalId,
-      });
-    }
     if (startDate && startDate !== 'null') {
+      const start = new Date(startDate);
+      start.setHours(0, 0, 0, 0);
       query.andWhere('transaction.transaction_date >= :start', {
-        start: startDate,
+        start: start.toISOString(),
       });
     }
     if (endDate && endDate !== 'null') {
-      query.andWhere('transaction.transaction_date <= :end', { end: endDate });
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999);
+      query.andWhere('transaction.transaction_date <= :end', {
+        end: end.toISOString(),
+      });
     }
     if (categoryName) {
       query.andWhere('category.name LIKE :catName', {

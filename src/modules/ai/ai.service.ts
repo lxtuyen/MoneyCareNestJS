@@ -641,7 +641,7 @@ Tin nhan: "${message}"`,
 
     const filter: any = {
       userId,
-      fundId: goalId,
+      savingGoalId: goalId,
       startDate: query.startDate ?? undefined,
       endDate: query.endDate ?? undefined,
       categoryName: query.category_name ?? undefined,
@@ -707,12 +707,13 @@ Tin nhan: "${message}"`,
     message: string | undefined,
     userIdRaw: unknown,
     file?: Express.Multer.File,
-    goalId?: number,
   ): Promise<ApiResponse<string>> {
     const userId = Number(userIdRaw);
     if (!Number.isFinite(userId)) {
       throw new BadRequestException('userId must be a number');
     }
+
+    const goalId = (await this.financialInsightsService.getSelectedGoalId(userId)) ?? 0;
 
     if (file) {
       const categories = await this.getCategories(userId, goalId);
@@ -896,8 +897,8 @@ Tin nhan: "${message}"`,
   async bulkCreateTransactions(
     userId: number,
     items: any[],
-    goalId?: number,
   ): Promise<void> {
+    const goalId = (await this.financialInsightsService.getSelectedGoalId(userId)) ?? 0;
     const categories = await this.getCategories(userId, goalId);
     if (!categories.length) {
       throw new BadRequestException('Nguoi dung chua co hang muc chi tieu');

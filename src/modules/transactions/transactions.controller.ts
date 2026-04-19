@@ -34,8 +34,9 @@ export class TransactionController {
     @Param('userId', ParseIntPipe) userId: number,
     @Query('savingGoalId') savingGoalId?: any,
     @Query('categoryId') categoryId?: any,
-    @Query('start_date') startDate?: string,
-    @Query('end_date') endDate?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('limit') limit?: any,
   ) {
     const dto: TransactionFilterDto = {
       userId,
@@ -43,6 +44,7 @@ export class TransactionController {
       savingGoalId: (savingGoalId === 'null' || savingGoalId === 'undefined') ? undefined : (savingGoalId ? Number(savingGoalId) : undefined),
       startDate,
       endDate,
+      limit: (limit === 'null' || limit === 'undefined') ? undefined : (limit ? Number(limit) : undefined),
     };
     return this.transactionService.findAllByFilter(dto);
   }
@@ -51,8 +53,8 @@ export class TransactionController {
   async getTotalsByDay(
     @Param('userId', ParseIntPipe) userId: number,
     @Query('savingGoalId') savingGoalId?: any,
-    @Query('start_date') startDate?: string,
-    @Query('end_date') endDate?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
     @Query('type') type?: string,
   ) {
     const dto: GetTransactionDto = {
@@ -69,8 +71,8 @@ export class TransactionController {
   async getTotalsByType(
     @Param('userId', ParseIntPipe) userId: number,
     @Query('savingGoalId') savingGoalId?: any,
-    @Query('start_date') startDate?: string,
-    @Query('end_date') endDate?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
     @Query('type') type?: string,
   ) {
     const dto: GetTransactionDto = {
@@ -88,8 +90,8 @@ export class TransactionController {
   async getTotalsByCate(
     @Param('userId', ParseIntPipe) userId: number,
     @Query('savingGoalId') savingGoalId?: any,
-    @Query('start_date') startDate?: string,
-    @Query('end_date') endDate?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
     @Query('type') type?: string,
   ) {
     const dto: GetTransactionDto = {
