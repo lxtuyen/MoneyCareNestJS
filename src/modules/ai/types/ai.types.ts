@@ -52,20 +52,6 @@ export type FinancialInsightSnapshot = {
   };
 };
 
-export interface ReceiptItem {
-  name: string;
-  amount: number;
-  category: string;
-  categoryId: number | null;
-}
-
-export interface ReceiptScanResult {
-  merchant_name: string | null;
-  date: string | null;
-  total_amount: number | null;
-  items: ReceiptItem[];
-}
-
 export type GetTransactionQuery = {
   type: 'income' | 'expense' | 'all';
   startDate: string | null;

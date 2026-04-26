@@ -22,7 +22,6 @@ import {
   FinancialAnalysisResult,
   FinancialInsightSnapshot,
   GetTransactionQuery,
-  ReceiptScanResult,
 } from './types/ai.types';
 import { FinancialInsightsService } from './financial-insights.service';
 import { CacheService } from 'src/common/cache/cache.service';
@@ -40,7 +39,6 @@ const CHAT_TTL_SECONDS = 60;
 const MSG_PREFIX = {
   TRANSACTION_LIST: '__TRANSACTION_LIST__',
   TRANSACTION_SAVED: '__TRANSACTION_SAVED__',
-  STRUCTURED_RECEIPT: '__STRUCTURED_RECEIPT__',
   STRUCTURED_ANALYSIS: '__STRUCTURED_ANALYSIS__',
   CATEGORY_LIST: '__CATEGORY_LIST__',
   CATEGORY_CREATED: '__CATEGORY_CREATED__',
@@ -73,7 +71,6 @@ export class AiService {
   private readonly chatModel: string;
   private readonly parseModel: string;
   private readonly analysisModel: string;
-  private readonly receiptModel: string;
 
   constructor(
     private readonly transactionService: TransactionService,
@@ -94,7 +91,6 @@ export class AiService {
     this.chatModel = process.env.GEMINI_CHAT_MODEL || DEFAULT_MODEL;
     this.parseModel = process.env.GEMINI_PARSE_MODEL || this.chatModel;
     this.analysisModel = process.env.GEMINI_ANALYSIS_MODEL || this.chatModel;
-    this.receiptModel = process.env.GEMINI_RECEIPT_MODEL || this.parseModel;
   }
 
   private mapToAiTransaction(t: any) {
@@ -706,7 +702,6 @@ Tin nhan: "${message}"`,
   async handle(
     message: string | undefined,
     userIdRaw: unknown,
-    file?: Express.Multer.File,
   ): Promise<ApiResponse<string>> {
     const userId = Number(userIdRaw);
     if (!Number.isFinite(userId)) {
@@ -714,21 +709,6 @@ Tin nhan: "${message}"`,
     }
 
     const goalId = (await this.financialInsightsService.getSelectedGoalId(userId)) ?? 0;
-
-    if (file) {
-      const categories = await this.getCategories(userId, goalId);
-      const categoryOptions: CatOption[] = categories.map((category) => ({
-        id: category.id,
-        name: category.name,
-      }));
-      const scanResult = await this.scanReceipt(file.buffer, categoryOptions);
-
-      return {
-        success: true,
-        statusCode: 200,
-        message: `${MSG_PREFIX.STRUCTURED_RECEIPT}${JSON.stringify(scanResult)}`,
-      };
-    }
 
     const lowerMessage = norm(message || '');
     const isAnalysisRequest =
@@ -892,50 +872,6 @@ Tin nhan: "${message}"`,
     );
 
     return { success: true, statusCode: 200, message: resultString };
-  }
-
-  async bulkCreateTransactions(
-    userId: number,
-    items: any[],
-  ): Promise<void> {
-    const goalId = (await this.financialInsightsService.getSelectedGoalId(userId)) ?? 0;
-    const categories = await this.getCategories(userId, goalId);
-    if (!categories.length) {
-      throw new BadRequestException('Nguoi dung chua co hang muc chi tieu');
-    }
-
-    const now = new Date().toISOString();
-    for (const item of items) {
-      const amount = normalizeAmount(item.amount);
-      if (!amount || amount <= 0) continue;
-
-      let categoryId = item.categoryId;
-      if (!categoryId) {
-        const picked = this.pickCategoryByName(
-          categories,
-          item.category,
-          'expense',
-        );
-        if (picked) {
-          categoryId = picked.id;
-        } else {
-          const fallback = await this.getFallbackCategoryFromDB(
-            userId,
-            'expense',
-          );
-          categoryId = fallback?.id;
-        }
-      }
-
-      await this.transactionService.create({
-        userId,
-        type: 'expense',
-        amount,
-        note: item.name || 'Giao dich tu hoa don',
-        transactionDate: now,
-        categoryId,
-      });
-    }
   }
 
   async parseTransaction(
@@ -1110,142 +1046,5 @@ Cau hoi: "${text}"`,
     const answer = (result.text || '').trim();
     await this.cacheService.set(cacheKey, answer, CHAT_TTL_SECONDS);
     return answer;
-  }
-
-  private getMimeType(buffer: Buffer): string {
-    const signature = buffer.toString('hex', 0, 4);
-    if (signature.startsWith('89504e47')) return 'image/png';
-    if (signature.startsWith('ffd8ff')) return 'image/jpeg';
-    if (signature.startsWith('52494646')) return 'image/webp';
-    return 'image/jpeg';
-  }
-
-  async scanReceipt(
-    imageBuffer: Buffer,
-    categories?: CatOption[],
-  ): Promise<ReceiptScanResult> {
-    const mimeType = this.getMimeType(imageBuffer);
-
-    try {
-      const response = await this.genAI.models.generateContent({
-        model: this.receiptModel,
-        contents: [
-          {
-            role: 'user',
-            parts: [
-              {
-                inlineData: { data: imageBuffer.toString('base64'), mimeType },
-              },
-              {
-                text: 'Trich xuat toan bo thong tin tu hoa don trong anh nay.',
-              },
-            ],
-          },
-        ],
-        config: {
-          tools: [
-            {
-              functionDeclarations: [
-                {
-                  name: 'extract_receipt',
-                  description: 'Trich xuat thong tin tu anh hoa don',
-                  parameters: {
-                    type: Type.OBJECT,
-                    properties: {
-                      merchant_name: {
-                        type: Type.STRING,
-                        description: 'Ten thuong hieu hoac cua hang',
-                        nullable: true,
-                      },
-                      date: {
-                        type: Type.STRING,
-                        description: 'Ngay tren hoa don theo ISO 8601',
-                        nullable: true,
-                      },
-                      total_amount: {
-                        type: Type.NUMBER,
-                        description: 'Tong tien thanh toan cuoi cung',
-                        nullable: true,
-                      },
-                      items: {
-                        type: Type.ARRAY,
-                        description: 'Danh sach cac mat hang tren hoa don',
-                        items: {
-                          type: Type.OBJECT,
-                          properties: {
-                            name: {
-                              type: Type.STRING,
-                              description: 'Ten mat hang',
-                            },
-                            amount: {
-                              type: Type.NUMBER,
-                              description: 'Gia tien',
-                            },
-                            category: {
-                              type: Type.STRING,
-                              description: 'Ten hang muc phu hop nhat',
-                              ...(categories?.length
-                                ? {
-                                    enum: [
-                                      ...categories.map((item) => item.name),
-                                      'Khac',
-                                    ],
-                                  }
-                                : {}),
-                            },
-                            categoryId: {
-                              type: Type.NUMBER,
-                              description:
-                                'ID hang muc tuong ung, null neu khong khop',
-                              nullable: true,
-                            },
-                          },
-                          required: ['name', 'amount', 'category'],
-                        },
-                      },
-                    },
-                    required: ['items'],
-                  },
-                },
-              ],
-            },
-          ],
-          toolConfig: { functionCallingConfig: { mode: 'ANY' as any } },
-        },
-      });
-
-      const calls = (response as any).functionCalls as any[] | undefined;
-      const args = calls?.[0]?.args;
-      if (!args) {
-        throw new Error('Khong nhan duoc function call');
-      }
-
-      return {
-        merchant_name: args.merchant_name ?? null,
-        date: args.date ?? null,
-        total_amount: args.total_amount ?? null,
-        items: (args.items || []).map((item: any) => ({
-          name: item.name || 'Khong ro',
-          amount: Number(item.amount) || 0,
-          category: item.category || 'Khac',
-          categoryId: item.categoryId ?? null,
-        })),
-      };
-    } catch (error) {
-      this.logger.error('Receipt scan failed', error);
-      return { merchant_name: null, date: null, total_amount: null, items: [] };
-    }
-  }
-
-  async scanReceiptStandalone(
-    imageBuffer: Buffer,
-  ): Promise<ApiResponse<ReceiptScanResult>> {
-    const data = await this.scanReceipt(imageBuffer);
-    return new ApiResponse({
-      success: true,
-      statusCode: HttpStatus.OK,
-      data,
-      message: 'Quet hoa don thanh cong',
-    });
   }
 }
