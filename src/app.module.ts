@@ -18,6 +18,7 @@ import { FinanceModeModule } from './modules/finance-mode/finance-mode.module';
 import { GamificationModule } from './modules/gamification/gamification.module';
 import { SavingGoalsModule } from './modules/saving-goals/saving-goals.module';
 import { AiModule } from './modules/ai/ai.module';
+import { RecurringTransactionsModule } from './modules/recurring-transactions/recurring-transactions.module';
 
 @Module({
   imports: [
@@ -58,6 +59,7 @@ import { AiModule } from './modules/ai/ai.module';
     FinanceModeModule,
     GamificationModule,
     AiModule,
+    RecurringTransactionsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
