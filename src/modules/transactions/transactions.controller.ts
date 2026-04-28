@@ -12,12 +12,16 @@ import {
 import { CreateTransactionDto } from './dto/create-transaction.dto';
 import { UpdateTransactionDto } from './dto/update-transaction.dto';
 import { TransactionService } from './transactions.service';
+import { TransactionExportService } from './transactions-export.service';
 import { TransactionFilterDto } from './dto/transaction-filter.dto';
 import { GetTransactionDto } from './dto/get-transaction.dto';
 
 @Controller('transactions')
 export class TransactionController {
-  constructor(private readonly transactionService: TransactionService) {}
+  constructor(
+    private readonly transactionService: TransactionService,
+    private readonly transactionExportService: TransactionExportService,
+  ) {}
 
   @Post()
   async create(@Body() dto: CreateTransactionDto) {
@@ -111,6 +115,15 @@ export class TransactionController {
   ) {
     const resolvedSavingGoalId = (savingGoalId === 'null' || savingGoalId === 'undefined') ? undefined : (savingGoalId ? Number(savingGoalId) : undefined);
     return this.transactionService.getStatisticsSummary(userId, resolvedSavingGoalId);
+  }
+
+  @Post(':userId/export')
+  async export(
+    @Param('userId', ParseIntPipe) userId: number,
+    @Query('format') format: 'pdf' | 'csv' = 'pdf',
+    @Body() filter: TransactionFilterDto,
+  ) {
+    return this.transactionExportService.exportAndSendEmail(userId, filter, format);
   }
 
   @Delete(':id')

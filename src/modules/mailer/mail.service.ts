@@ -13,4 +13,13 @@ export class MailService {
       context: { otp },
     });
   }
+
+  async sendEmailWithAttachment(to: string, subject: string, text: string, attachments: any[]) {
+    await this.mailerService.sendMail({
+      to,
+      subject,
+      text,
+      attachments,
+    });
+  }
 }
