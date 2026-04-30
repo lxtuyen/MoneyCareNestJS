@@ -1,12 +1,13 @@
-import { IsOptional, IsNumber, IsDateString } from 'class-validator';
+import { IsDateString, IsNumber, IsOptional } from 'class-validator';
 
-export class TransactionFilterDto {
-  @IsNumber()
-  userId: number;
-
+export class ExportTransactionDto {
   @IsOptional()
   @IsNumber()
   categoryId?: number;
+
+  @IsOptional()
+  @IsNumber()
+  savingGoalId?: number;
 
   @IsOptional()
   @IsDateString()
@@ -15,9 +16,6 @@ export class TransactionFilterDto {
   @IsOptional()
   @IsDateString()
   endDate?: string;
-
-  @IsOptional()
-  categoryName?: string;
 
   @IsOptional()
   @IsNumber()

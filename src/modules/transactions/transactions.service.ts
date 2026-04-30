@@ -162,21 +162,10 @@ export class TransactionService {
       .addSelect('category.percentage', 'percentage')
       .addSelect('category.icon', 'categoryIcon');
 
-    if (dto.savingGoalId) {
-      categoryQuery
-        .leftJoin('category.savingGoal', 'savingGoal')
-        .leftJoin('category.user', 'user')
-        .addSelect('savingGoal.target', 'target')
-        .where('user.id = :userId', { userId: dto.userId })
-        .andWhere('(savingGoal.id = :goalId OR savingGoal.id IS NULL)', {
-          goalId: dto.savingGoalId,
-        });
-    } else {
-      categoryQuery
-        .leftJoin('category.user', 'user')
-        .addSelect('NULL', 'target')
-        .where('user.id = :userId', { userId: dto.userId });
-    }
+    categoryQuery
+      .leftJoin('category.user', 'user')
+      .addSelect('NULL', 'target')
+      .where('user.id = :userId', { userId: dto.userId });
 
     if (dto.type) {
       categoryQuery.andWhere(
@@ -191,12 +180,10 @@ export class TransactionService {
     const transactionQuery =
       dto.type === 'income'
         ? this.createBaseQuery(dto.userId, 'income', {
-            savingGoalId: dto.savingGoalId,
             startDate: dto.startDate,
             endDate: dto.endDate,
           })
         : this.createBaseQuery(dto.userId, 'expense', {
-            savingGoalId: dto.savingGoalId,
             startDate: dto.startDate,
             endDate: dto.endDate,
           });
@@ -256,11 +243,10 @@ export class TransactionService {
   async findAllByFilter(
     filter: TransactionFilterDto,
   ): Promise<ApiResponse<{ income: Transaction[]; expense: Transaction[] }>> {
-    const { userId, categoryId, startDate, endDate, savingGoalId, categoryName, limit } = filter;
+    const { userId, categoryId, startDate, endDate, categoryName, limit } = filter;
 
     const incomeQuery = this.createBaseQuery(userId, 'income', {
       categoryId,
-      savingGoalId,
       startDate,
       endDate,
       withRelations: true,
@@ -269,7 +255,6 @@ export class TransactionService {
 
     const expenseQuery = this.createBaseQuery(userId, 'expense', {
       categoryId,
-      savingGoalId,
       startDate,
       endDate,
       withRelations: true,
@@ -305,33 +290,30 @@ export class TransactionService {
     }>
   > {
     const incomeQuery = this.createBaseQuery(dto.userId, 'income', {
-      savingGoalId: dto.savingGoalId,
       startDate: dto.startDate,
       endDate: dto.endDate,
     });
 
     const expenseQuery = this.createBaseQuery(dto.userId, 'expense', {
-      savingGoalId: dto.savingGoalId,
       startDate: dto.startDate,
       endDate: dto.endDate,
     });
 
-    const [incomeTotalRes, expenseTotalRes, goal] = await Promise.all([
+    const [incomeTotalRes, expenseTotalRes] = await Promise.all([
       incomeQuery
         .select('SUM(transaction.amount)', 'total')
         .getRawOne<{ total: string }>(),
       expenseQuery
         .select('SUM(transaction.amount)', 'total')
         .getRawOne<{ total: string }>(),
-      dto.savingGoalId
-        ? this.goalRepo.findOne({ where: { id: dto.savingGoalId } })
-        : Promise.resolve(null),
     ]);
+
+    const goal = null;
 
     const incomeTotal = Number(incomeTotalRes?.total ?? 0);
     const expenseTotal = Number(expenseTotalRes?.total ?? 0);
     const currentSaving = incomeTotal - expenseTotal;
-    const targetSaving = Number(goal?.target ?? 0);
+    const targetSaving = 0;
 
     return new ApiResponse({
       success: true,
@@ -347,10 +329,8 @@ export class TransactionService {
 
   async getStatisticsSummary(
     userId: number,
-    savingGoalId?: number,
   ): Promise<ApiResponse<StatisticsSummaryResponseDto>> {
-    const resolvedGoalId = Number(savingGoalId) || 0;
-    const cacheKey = buildStatisticsSummaryCacheKey(userId, resolvedGoalId);
+    const cacheKey = buildStatisticsSummaryCacheKey(userId, 0);
     const cached =
       await this.cacheService.get<StatisticsSummaryResponseDto>(cacheKey);
     if (cached) {
@@ -371,35 +351,17 @@ export class TransactionService {
     const prevMonthStart = new Date(currentYear, currentMonth - 1, 1);
     const prevMonthEnd = new Date(currentYear, currentMonth, 0);
 
-    let calculationStart = currentMonthStart;
-    let prevCalculationStart = prevMonthStart;
-    let calculationEnd = currentMonthEnd;
-
-    if (resolvedGoalId > 0) {
-      const goal = await this.goalRepo.findOne({ where: { id: resolvedGoalId } });
-      if (goal && goal.start_date) {
-        if (goal.start_date > calculationStart) {
-          calculationStart = goal.start_date;
-        }
-        if (goal.start_date > prevCalculationStart) {
-          // If the goal started after a portion of the previous month, we clamp it.
-          // If it started after the entire previous month, prevMonthTotals will be zero.
-          prevCalculationStart = goal.start_date > prevMonthEnd ? prevMonthEnd : goal.start_date;
-        }
-      }
-      if (goal && goal.end_date && goal.end_date < calculationEnd) {
-        calculationEnd = goal.end_date;
-      }
-    }
+    const calculationStart = currentMonthStart;
+    const prevCalculationStart = prevMonthStart;
+    const calculationEnd = currentMonthEnd;
 
     const [currentMonthTotals, prevMonthTotals] = await Promise.all([
       this.getTotalsForRange(
         userId,
         calculationStart,
         calculationEnd,
-        resolvedGoalId,
       ),
-      this.getTotalsForRange(userId, prevCalculationStart, prevMonthEnd, resolvedGoalId),
+      this.getTotalsForRange(userId, prevCalculationStart, prevMonthEnd),
     ]);
 
     const daysPassedInCurrentMonth = now.getDate();
@@ -442,15 +404,12 @@ export class TransactionService {
     userId: number,
     start: Date,
     end: Date,
-    savingGoalId?: number,
   ) {
     const incomeQuery = this.createBaseQuery(userId, 'income', {
-      savingGoalId,
       startDate: start.toISOString(),
       endDate: end.toISOString(),
     });
     const expenseQuery = this.createBaseQuery(userId, 'expense', {
-      savingGoalId,
       startDate: start.toISOString(),
       endDate: end.toISOString(),
     });
@@ -515,13 +474,11 @@ export class TransactionService {
 
   async sumByDay(dto: GetTransactionDto): Promise<ApiResponse<TotalsByDate>> {
     const incomeQuery = this.createBaseQuery(dto.userId, 'income', {
-      savingGoalId: dto.savingGoalId,
       startDate: dto.startDate,
       endDate: dto.endDate,
     });
 
     const expenseQuery = this.createBaseQuery(dto.userId, 'expense', {
-      savingGoalId: dto.savingGoalId,
       startDate: dto.startDate,
       endDate: dto.endDate,
     });
@@ -560,24 +517,19 @@ export class TransactionService {
     type: 'income' | 'expense',
     {
       categoryId,
-      savingGoalId,
       startDate,
       endDate,
       withRelations = false,
       categoryName,
     }: {
       categoryId?: number;
-      savingGoalId?: number;
       startDate?: string;
       endDate?: string;
       withRelations?: boolean;
       categoryName?: string;
     } = {},
   ) {
-    const query = this.transactionRepo
-      .createQueryBuilder('transaction')
-      .where('user.id = :userId', { userId })
-      .andWhere('transaction.type = :type', { type });
+    const query = this.transactionRepo.createQueryBuilder('transaction');
 
     if (withRelations) {
       query.leftJoinAndSelect('transaction.category', 'category');
@@ -587,22 +539,30 @@ export class TransactionService {
       query.leftJoin('transaction.user', 'user');
     }
 
+    query
+      .where('user.id = :userId', { userId })
+      .andWhere('transaction.type = :type', { type });
+
     if (categoryId) {
       query.andWhere('category.id = :categoryId', { categoryId });
     }
-    if (startDate && startDate !== 'null') {
+    if (startDate && startDate !== 'null' && startDate !== 'undefined') {
       const start = new Date(startDate);
-      start.setHours(0, 0, 0, 0);
-      query.andWhere('transaction.transaction_date >= :start', {
-        start: start.toISOString(),
-      });
+      if (!isNaN(start.getTime())) {
+        start.setHours(0, 0, 0, 0);
+        query.andWhere('transaction.transaction_date >= :start', {
+          start: start.toISOString(),
+        });
+      }
     }
-    if (endDate && endDate !== 'null') {
+    if (endDate && endDate !== 'null' && endDate !== 'undefined') {
       const end = new Date(endDate);
-      end.setHours(23, 59, 59, 999);
-      query.andWhere('transaction.transaction_date <= :end', {
-        end: end.toISOString(),
-      });
+      if (!isNaN(end.getTime())) {
+        end.setHours(23, 59, 59, 999);
+        query.andWhere('transaction.transaction_date <= :end', {
+          end: end.toISOString(),
+        });
+      }
     }
     if (categoryName) {
       query.andWhere('category.name LIKE :catName', {

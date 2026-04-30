@@ -1,4 +1,9 @@
-import { Injectable, InternalServerErrorException } from '@nestjs/common';
+import {
+  Injectable,
+  InternalServerErrorException,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { TransactionService } from './transactions.service';
 import { MailService } from '../mailer/mail.service';
 import { TransactionFilterDto } from './dto/transaction-filter.dto';
@@ -7,10 +12,13 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import PDFDocument from 'pdfkit';
 import { Parser } from 'json2csv';
+import { existsSync } from 'fs';
 import { join } from 'path';
 
 @Injectable()
 export class TransactionExportService {
+  private readonly logger = new Logger(TransactionExportService.name);
+
   constructor(
     private readonly transactionService: TransactionService,
     private readonly mailService: MailService,
@@ -19,13 +27,16 @@ export class TransactionExportService {
   ) {}
 
   async exportAndSendEmail(userId: number, filter: TransactionFilterDto, format: 'pdf' | 'csv') {
-    const user = await this.userRepo.findOne({ where: { id: userId } });
-    if (!user) throw new Error('User not found');
+    const user = await this.userRepo.findOne({
+      where: { id: userId },
+      relations: ['profile'],
+    });
+    if (!user) throw new NotFoundException('User not found');
 
     const transactionsResponse = await this.transactionService.findAllByFilter({
       ...filter,
       userId,
-      limit: undefined, // Export all for the period
+      limit: undefined,
     });
 
     if (!transactionsResponse.data) {
@@ -41,14 +52,21 @@ export class TransactionExportService {
     let filename: string;
     let contentType: string;
 
-    if (format === 'csv') {
-      buffer = await this.generateCsv(allTransactions);
-      filename = `report_${new Date().getTime()}.csv`;
-      contentType = 'text/csv';
-    } else {
-      buffer = await this.generatePdf(allTransactions, user, filter.startDate, filter.endDate);
-      filename = `report_${new Date().getTime()}.pdf`;
-      contentType = 'application/pdf';
+    try {
+      if (format === 'csv') {
+        this.logger.log(`Generating CSV for user ${userId}`);
+        buffer = await this.generateCsv(allTransactions);
+        filename = `report_${new Date().getTime()}.csv`;
+        contentType = 'text/csv';
+      } else {
+        this.logger.log(`Generating PDF for user ${userId}`);
+        buffer = await this.generatePdf(allTransactions, user, filter.startDate, filter.endDate);
+        filename = `report_${new Date().getTime()}.pdf`;
+        contentType = 'application/pdf';
+      }
+    } catch (error) {
+      this.logger.error(`Failed to generate ${format} report: ${error.message}`, error.stack);
+      throw new InternalServerErrorException(`Lỗi khi tạo file báo cáo: ${error.message}`);
     }
 
     const userName = user.profile?.first_name 
@@ -56,17 +74,44 @@ export class TransactionExportService {
       : 'bạn';
 
     const subject = `Báo cáo tài chính MoneyCare - ${new Date().toLocaleDateString('vi-VN')}`;
-    const text = `Xin chào ${userName},\n\nChúng tôi gửi kèm báo cáo tài chính của bạn trong giai đoạn từ ${filter.startDate || 'đầu'} đến ${filter.endDate || 'nay'}.\n\nTrân trọng,\nMoneyCare Team`;
+    const html = `
+      <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
+        <h2 style="color: #2E7D32; border-bottom: 2px solid #2E7D32; padding-bottom: 10px;">Báo cáo tài chính MoneyCare</h2>
+        <p>Xin chào <strong>${userName}</strong>,</p>
+        <p>Chúng tôi gửi kèm báo cáo tài chính của bạn trong giai đoạn từ <strong>${filter.startDate || 'đầu kỳ'}</strong> đến <strong>${filter.endDate || 'hiện tại'}</strong>.</p>
+        <div style="background-color: #f9f9f9; padding: 15px; border-radius: 5px; margin: 20px 0;">
+          <p style="margin: 0;">Số lượng giao dịch: <strong>${allTransactions.length}</strong></p>
+          <p style="margin: 5px 0 0 0;">Định dạng báo cáo: <strong>${format.toUpperCase()}</strong></p>
+        </div>
+        <p>Vui lòng xem chi tiết trong tệp đính kèm.</p>
+        <br/>
+        <p style="color: #666; font-size: 12px;">Đây là email tự động, vui lòng không trả lời email này.<br/>MoneyCare Team</p>
+      </div>
+    `;
 
-    await this.mailService.sendEmailWithAttachment(user.email, subject, text, [
-      {
-        filename,
-        content: buffer,
-        contentType,
-      },
-    ]);
+    try {
+      await this.mailService.sendEmailWithAttachment(
+        user.email,
+        subject,
+        html,
+        [
+          {
+            filename,
+            content: buffer,
+            contentType,
+          },
+        ],
+      );
+    } catch (error) {
+      this.logger.error(
+        `Failed to export transactions for user ${userId} in ${format} format`,
+        error instanceof Error ? error.stack : undefined,
+      );
+      throw error;
+    }
 
-    return { success: true, message: 'Report sent to email' };
+    this.logger.log(`Report successfully sent to ${user.email}`);
+    return { success: true, message: 'Báo cáo đã được gửi đến email của bạn' };
   }
 
   private async generateCsv(transactions: any[]): Promise<Buffer> {
@@ -92,9 +137,8 @@ export class TransactionExportService {
       doc.on('end', () => resolve(Buffer.concat(buffers)));
       doc.on('error', reject);
 
-      // Load fonts
-      const regularFont = join(__dirname, '..', '..', 'assets', 'fonts', 'BeVietnamPro-Regular.ttf');
-      const boldFont = join(__dirname, '..', '..', 'assets', 'fonts', 'BeVietnamPro-Bold.ttf');
+      const regularFont = this.resolveFontPath('BeVietnamPro-Regular.ttf');
+      const boldFont = this.resolveFontPath('BeVietnamPro-Bold.ttf');
 
       doc.font(boldFont).fontSize(20).text('BÁO CÁO TÀI CHÍNH MONEYCARE', { align: 'center' });
       doc.moveDown();
@@ -108,7 +152,6 @@ export class TransactionExportService {
       doc.text(`Thời gian: ${startDate || 'Mọi lúc'} - ${endDate || 'Hiện tại'}`);
       doc.moveDown();
 
-      // Summary
       const totalIncome = transactions.filter(t => t.type === 'income').reduce((sum, t) => sum + Number(t.amount), 0);
       const totalExpense = transactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + Number(t.amount), 0);
       
@@ -118,7 +161,6 @@ export class TransactionExportService {
       doc.text(`Số dư ròng: ${(totalIncome - totalExpense).toLocaleString('vi-VN')} VND`);
       doc.moveDown();
 
-      // Table Header
       const tableTop = doc.y;
       doc.font(boldFont).fontSize(10);
       doc.text('Ngày', 50, tableTop);
@@ -138,7 +180,11 @@ export class TransactionExportService {
           y = 50;
         }
 
-        const dateStr = new Date(t.transaction_date).toLocaleDateString('vi-VN');
+        const transDate = t.transaction_date ? new Date(t.transaction_date) : new Date();
+        const dateStr = !isNaN(transDate.getTime()) 
+          ? transDate.toLocaleDateString('vi-VN') 
+          : 'N/A';
+          
         doc.text(dateStr, 50, y);
         doc.text(t.category?.name || 'Khác', 120, y);
         doc.text(t.type === 'income' ? 'Thu nhập' : 'Chi tiêu', 220, y);
@@ -150,5 +196,24 @@ export class TransactionExportService {
 
       doc.end();
     });
+  }
+
+  private resolveFontPath(fileName: string): string {
+    const fontCandidates = [
+      join(process.cwd(), 'dist', 'assets', 'fonts', fileName),
+      join(process.cwd(), 'src', 'assets', 'fonts', fileName),
+      join(__dirname, '..', '..', 'assets', 'fonts', fileName),
+    ];
+
+    const matchedPath = fontCandidates.find((fontPath) => {
+      return existsSync(fontPath);
+    });
+
+    if (!matchedPath) {
+      this.logger.error(`All font path candidates failed for: ${fileName}`);
+      throw new InternalServerErrorException(`Không tìm thấy font hệ thống: ${fileName}`);
+    }
+
+    return matchedPath;
   }
 }

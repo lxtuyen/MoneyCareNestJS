@@ -42,6 +42,7 @@ import { RecurringTransactionsModule } from './modules/recurring-transactions/re
         database: configService.get('DB_NAME'),
         autoLoadEntities: true,
         synchronize: true,
+        logging: false,
       }),
       inject: [ConfigService],
     }),

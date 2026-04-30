@@ -15,6 +15,7 @@ import { TransactionService } from './transactions.service';
 import { TransactionExportService } from './transactions-export.service';
 import { TransactionFilterDto } from './dto/transaction-filter.dto';
 import { GetTransactionDto } from './dto/get-transaction.dto';
+import { ExportTransactionDto } from './dto/export-transaction.dto';
 
 @Controller('transactions')
 export class TransactionController {
@@ -36,7 +37,6 @@ export class TransactionController {
   @Get('filter/:userId')
   async findAllByFilter(
     @Param('userId', ParseIntPipe) userId: number,
-    @Query('savingGoalId') savingGoalId?: any,
     @Query('categoryId') categoryId?: any,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
@@ -45,7 +45,6 @@ export class TransactionController {
     const dto: TransactionFilterDto = {
       userId,
       categoryId: (categoryId === 'null' || categoryId === 'undefined') ? undefined : (categoryId ? Number(categoryId) : undefined),
-      savingGoalId: (savingGoalId === 'null' || savingGoalId === 'undefined') ? undefined : (savingGoalId ? Number(savingGoalId) : undefined),
       startDate,
       endDate,
       limit: (limit === 'null' || limit === 'undefined') ? undefined : (limit ? Number(limit) : undefined),
@@ -56,14 +55,12 @@ export class TransactionController {
   @Get(':userId/total-by-day')
   async getTotalsByDay(
     @Param('userId', ParseIntPipe) userId: number,
-    @Query('savingGoalId') savingGoalId?: any,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
     @Query('type') type?: string,
   ) {
     const dto: GetTransactionDto = {
       userId,
-      savingGoalId: (savingGoalId === 'null' || savingGoalId === 'undefined') ? undefined : (savingGoalId ? Number(savingGoalId) : undefined),
       startDate,
       endDate,
       type,
@@ -74,14 +71,12 @@ export class TransactionController {
   @Get(':userId/total-by-type')
   async getTotalsByType(
     @Param('userId', ParseIntPipe) userId: number,
-    @Query('savingGoalId') savingGoalId?: any,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
     @Query('type') type?: string,
   ) {
     const dto: GetTransactionDto = {
       userId,
-      savingGoalId: (savingGoalId === 'null' || savingGoalId === 'undefined') ? undefined : (savingGoalId ? Number(savingGoalId) : undefined),
       startDate,
       endDate,
       type,
@@ -93,14 +88,12 @@ export class TransactionController {
   @Get(':userId/total-by-category')
   async getTotalsByCate(
     @Param('userId', ParseIntPipe) userId: number,
-    @Query('savingGoalId') savingGoalId?: any,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
     @Query('type') type?: string,
   ) {
     const dto: GetTransactionDto = {
       userId,
-      savingGoalId: (savingGoalId === 'null' || savingGoalId === 'undefined') ? undefined : (savingGoalId ? Number(savingGoalId) : undefined),
       startDate,
       endDate,
       type,
@@ -111,19 +104,21 @@ export class TransactionController {
   @Get(':userId/statistics-summary')
   async getStatisticsSummary(
     @Param('userId', ParseIntPipe) userId: number,
-    @Query('savingGoalId') savingGoalId?: any,
   ) {
-    const resolvedSavingGoalId = (savingGoalId === 'null' || savingGoalId === 'undefined') ? undefined : (savingGoalId ? Number(savingGoalId) : undefined);
-    return this.transactionService.getStatisticsSummary(userId, resolvedSavingGoalId);
+    return this.transactionService.getStatisticsSummary(userId);
   }
 
   @Post(':userId/export')
   async export(
     @Param('userId', ParseIntPipe) userId: number,
     @Query('format') format: 'pdf' | 'csv' = 'pdf',
-    @Body() filter: TransactionFilterDto,
+    @Body() filter: ExportTransactionDto,
   ) {
-    return this.transactionExportService.exportAndSendEmail(userId, filter, format);
+    return this.transactionExportService.exportAndSendEmail(
+      userId,
+      { ...filter, userId },
+      format,
+    );
   }
 
   @Delete(':id')

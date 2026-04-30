@@ -1,12 +1,16 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, LessThanOrEqual, IsNull, Or } from 'typeorm';
-import { RecurringTransaction, RecurringFrequency } from './entities/recurring-transaction.entity';
+import {
+  RecurringTransaction,
+  RecurringFrequency,
+} from './entities/recurring-transaction.entity';
 import { CreateRecurringTransactionDto } from './dto/create-recurring-transaction.dto';
 import { Transaction } from '../transactions/entities/transaction.entity';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { User } from '../user/entities/user.entity';
 import { Category } from '../categories/entities/category.entity';
+import { ApiResponse } from 'src/common/dto/api-response.dto';
 
 @Injectable()
 export class RecurringTransactionsService {
@@ -26,7 +30,16 @@ export class RecurringTransactionsService {
   async create(dto: CreateRecurringTransactionDto) {
     const { userId, categoryId, startDate, endDate, ...rest } = dto;
     const user = await this.userRepo.findOne({ where: { id: userId } });
-    const category = categoryId ? await this.categoryRepo.findOne({ where: { id: categoryId } }) : null;
+    if (!user) {
+      throw new NotFoundException('Người dùng không tồn tại');
+    }
+
+    const category = categoryId
+      ? await this.categoryRepo.findOne({ where: { id: categoryId } })
+      : null;
+    if (categoryId && !category) {
+      throw new NotFoundException('Danh mục không tồn tại');
+    }
 
     const recurring = this.recurringRepo.create({
       ...rest,
@@ -36,19 +49,39 @@ export class RecurringTransactionsService {
       endDate: endDate ? new Date(endDate) : null,
     } as any);
 
-    return this.recurringRepo.save(recurring);
+    const savedRecurring = (await this.recurringRepo.save(
+      recurring,
+    )) as unknown as RecurringTransaction;
+    return new ApiResponse<RecurringTransaction>({
+      success: true,
+      statusCode: 201,
+      data: savedRecurring,
+      message: 'Tạo giao dịch định kỳ thành công',
+    });
   }
 
   async findAllByUser(userId: number) {
-    return this.recurringRepo.find({
+    const recurrences = await this.recurringRepo.find({
       where: { user: { id: userId } },
       relations: ['category'],
       order: { created_at: 'DESC' },
     });
+
+    return new ApiResponse<RecurringTransaction[]>({
+      success: true,
+      statusCode: 200,
+      data: recurrences,
+    });
   }
 
   async remove(id: number) {
-    return this.recurringRepo.delete(id);
+    await this.recurringRepo.delete(id);
+    return new ApiResponse<boolean>({
+      success: true,
+      statusCode: 200,
+      data: true,
+      message: 'Xóa giao dịch định kỳ thành công',
+    });
   }
 
   @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
@@ -90,7 +123,10 @@ export class RecurringTransactionsService {
         return diffDays >= 7;
       case RecurringFrequency.MONTHLY:
         // Simple month check
-        return now.getMonth() !== lastDate.getMonth() || now.getFullYear() !== lastDate.getFullYear();
+        return (
+          now.getMonth() !== lastDate.getMonth() ||
+          now.getFullYear() !== lastDate.getFullYear()
+        );
       case RecurringFrequency.YEARLY:
         return now.getFullYear() !== lastDate.getFullYear();
       default:
@@ -99,8 +135,10 @@ export class RecurringTransactionsService {
   }
 
   private async executeTransaction(rt: RecurringTransaction, now: Date) {
-    this.logger.log(`Executing recurring transaction ${rt.id} for user ${rt.user.id}`);
-    
+    this.logger.log(
+      `Executing recurring transaction ${rt.id} for user ${rt.user.id}`,
+    );
+
     const transaction = this.transactionRepo.create({
       amount: rt.amount,
       type: rt.type,
@@ -111,7 +149,7 @@ export class RecurringTransactionsService {
     });
 
     await this.transactionRepo.save(transaction);
-    
+
     rt.lastExecutedDate = now;
     await this.recurringRepo.save(rt);
   }

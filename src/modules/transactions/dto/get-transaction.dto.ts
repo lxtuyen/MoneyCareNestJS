@@ -5,10 +5,6 @@ export class GetTransactionDto {
   userId: number;
 
   @IsOptional()
-  @IsNumber()
-  savingGoalId?: number;
-
-  @IsOptional()
   @IsDateString()
   startDate?: string;
 
