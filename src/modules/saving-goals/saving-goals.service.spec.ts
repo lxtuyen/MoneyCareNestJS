@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { FundsService } from './funds.service';
+import { SavingGoalsService } from './saving-goals.service';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { Fund } from './entities/fund.entity';
+import { SavingGoal } from './entities/saving-goal.entity';
 import { User } from '../user/entities/user.entity';
 import { Category } from '../categories/entities/category.entity';
 import { Transaction } from '../transactions/entities/transaction.entity';
@@ -19,15 +19,15 @@ const mockQueryBuilder = {
   execute: jest.fn().mockResolvedValue({}),
 };
 
-describe('FundsService', () => {
-  let service: FundsService;
+describe('SavingGoalsService', () => {
+  let service: SavingGoalsService;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
-        FundsService,
+        SavingGoalsService,
         {
-          provide: getRepositoryToken(Fund),
+          provide: getRepositoryToken(SavingGoal),
           useValue: {
             create: jest.fn(),
             save: jest.fn(),
@@ -53,7 +53,7 @@ describe('FundsService', () => {
       ],
     }).compile();
 
-    service = module.get<FundsService>(FundsService);
+    service = module.get<SavingGoalsService>(SavingGoalsService);
   });
 
   it('should be defined', () => {

@@ -5,7 +5,7 @@ import { TransactionFilterDto } from './dto/transaction-filter.dto';
 import { User } from '../user/entities/user.entity';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import * as PDFDocument from 'pdfkit';
+import PDFDocument from 'pdfkit';
 import { Parser } from 'json2csv';
 import { join } from 'path';
 
@@ -51,8 +51,12 @@ export class TransactionExportService {
       contentType = 'application/pdf';
     }
 
+    const userName = user.profile?.first_name 
+      ? `${user.profile.first_name}${user.profile.last_name ? ' ' + user.profile.last_name : ''}`
+      : 'bạn';
+
     const subject = `Báo cáo tài chính MoneyCare - ${new Date().toLocaleDateString('vi-VN')}`;
-    const text = `Xin chào ${user.profile?.fullName || 'bạn'},\n\nChúng tôi gửi kèm báo cáo tài chính của bạn trong giai đoạn từ ${filter.startDate || 'đầu'} đến ${filter.endDate || 'nay'}.\n\nTrân trọng,\nMoneyCare Team`;
+    const text = `Xin chào ${userName},\n\nChúng tôi gửi kèm báo cáo tài chính của bạn trong giai đoạn từ ${filter.startDate || 'đầu'} đến ${filter.endDate || 'nay'}.\n\nTrân trọng,\nMoneyCare Team`;
 
     await this.mailService.sendEmailWithAttachment(user.email, subject, text, [
       {
@@ -95,7 +99,11 @@ export class TransactionExportService {
       doc.font(boldFont).fontSize(20).text('BÁO CÁO TÀI CHÍNH MONEYCARE', { align: 'center' });
       doc.moveDown();
 
-      doc.font(regularFont).fontSize(12).text(`Người dùng: ${user.profile?.fullName || user.email}`);
+      const userName = user.profile?.first_name 
+        ? `${user.profile.first_name}${user.profile.last_name ? ' ' + user.profile.last_name : ''}`
+        : user.email;
+
+      doc.font(regularFont).fontSize(12).text(`Người dùng: ${userName}`);
       doc.text(`Email: ${user.email}`);
       doc.text(`Thời gian: ${startDate || 'Mọi lúc'} - ${endDate || 'Hiện tại'}`);
       doc.moveDown();

@@ -4,7 +4,7 @@ import { TransactionService } from './transactions.service';
 import { Transaction } from './entities/transaction.entity';
 import { User } from '../user/entities/user.entity';
 import { Category } from '../categories/entities/category.entity';
-import { Fund } from '../saving-funds/entities/fund.entity';
+import { SavingGoal } from '../saving-goals/entities/saving-goal.entity';
 import { NotificationsService } from '../notifications/notifications.service';
 import { CacheService } from 'src/common/cache/cache.service';
 import {
@@ -68,7 +68,7 @@ describe('TransactionsService', () => {
         },
         { provide: getRepositoryToken(User), useValue: userRepo },
         { provide: getRepositoryToken(Category), useValue: categoryRepo },
-        { provide: getRepositoryToken(Fund), useValue: { findOne: jest.fn() } },
+        { provide: getRepositoryToken(SavingGoal), useValue: { findOne: jest.fn() } },
         {
           provide: NotificationsService,
           useValue: { sendPushNotification: jest.fn() },

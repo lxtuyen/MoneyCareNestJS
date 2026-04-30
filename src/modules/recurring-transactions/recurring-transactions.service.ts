@@ -24,16 +24,17 @@ export class RecurringTransactionsService {
   ) {}
 
   async create(dto: CreateRecurringTransactionDto) {
-    const user = await this.userRepo.findOne({ where: { id: dto.userId } });
-    const category = dto.categoryId ? await this.categoryRepo.findOne({ where: { id: dto.categoryId } }) : null;
+    const { userId, categoryId, startDate, endDate, ...rest } = dto;
+    const user = await this.userRepo.findOne({ where: { id: userId } });
+    const category = categoryId ? await this.categoryRepo.findOne({ where: { id: categoryId } }) : null;
 
     const recurring = this.recurringRepo.create({
-      ...dto,
+      ...rest,
       user,
       category,
-      startDate: new Date(dto.startDate),
-      endDate: dto.endDate ? new Date(dto.endDate) : null,
-    });
+      startDate: new Date(startDate),
+      endDate: endDate ? new Date(endDate) : null,
+    } as any);
 
     return this.recurringRepo.save(recurring);
   }

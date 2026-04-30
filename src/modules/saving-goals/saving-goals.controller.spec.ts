@@ -1,33 +1,33 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { FundsController } from './funds.controller';
-import { FundsService } from './funds.service';
+import { SavingGoalsController } from './saving-goals.controller';
+import { SavingGoalsService } from './saving-goals.service';
 
-describe('FundsController', () => {
-  let controller: FundsController;
+describe('SavingGoalsController', () => {
+  let controller: SavingGoalsController;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
-      controllers: [FundsController],
+      controllers: [SavingGoalsController],
       providers: [
         {
-          provide: FundsService,
+          provide: SavingGoalsService,
           useValue: {
             create: jest.fn(),
             findAllByUser: jest.fn(),
             findOne: jest.fn(),
             update: jest.fn(),
             remove: jest.fn(),
-            selectFund: jest.fn(),
-            checkExpiredFund: jest.fn(),
+            selectGoal: jest.fn(),
+            checkExpiredGoal: jest.fn(),
             markAsNotified: jest.fn(),
-            extendFund: jest.fn(),
-            getFundReport: jest.fn(),
+            extendGoal: jest.fn(),
+            getGoalReport: jest.fn(),
           },
         },
       ],
     }).compile();
 
-    controller = module.get<FundsController>(FundsController);
+    controller = module.get<SavingGoalsController>(SavingGoalsController);
   });
 
   it('should be defined', () => {

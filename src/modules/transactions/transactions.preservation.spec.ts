@@ -9,25 +9,27 @@
  */
 
 import { Test, TestingModule } from '@nestjs/testing';
-import { Repository, SelectQueryBuilder } from 'typeorm';
+import { Repository, SelectQueryBuilder, ObjectLiteral } from 'typeorm';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import * as fc from 'fast-check';
 import { TransactionService } from './transactions.service';
 import { Transaction } from './entities/transaction.entity';
 import { User } from '../user/entities/user.entity';
 import { Category } from '../categories/entities/category.entity';
-import { Fund } from '../saving-funds/entities/fund.entity';
+import { SavingGoal } from '../saving-goals/entities/saving-goal.entity';
 import { NotificationsService } from '../notifications/notifications.service';
 import { GetTransactionDto } from './dto/get-transaction.dto';
+import { CacheService } from '../../common/cache/cache.service';
 
 // ─── Test Utilities ──────────────────────────────────────────────────────────
 
-function createMockRepository<T>() {
+function createMockRepository<T extends ObjectLiteral>() {
   return {
     create: jest.fn(),
     save: jest.fn(),
-    find: jest.fn(),
+    find: jest.fn().mockResolvedValue([]),
     findOne: jest.fn(),
+    findBy: jest.fn().mockResolvedValue([]),
     update: jest.fn(),
     remove: jest.fn(),
     createQueryBuilder: jest.fn(),
@@ -83,11 +85,11 @@ describe('Preservation 5 — Sum by category aggregation (MUST PASS on unfixed c
           useValue: createMockRepository<Category>(),
         },
         {
-          provide: getRepositoryToken(Fund),
-          useValue: createMockRepository<Fund>(),
+          provide: getRepositoryToken(SavingGoal),
+          useValue: createMockRepository<SavingGoal>(),
         },
         {
-          provide: NotificationsService,
+          provide: CacheService, useValue: { get: jest.fn(), set: jest.fn(), delMany: jest.fn() } }, { provide: NotificationsService,
           useValue: {
             sendPushNotification: jest.fn(),
           },
@@ -114,14 +116,14 @@ describe('Preservation 5 — Sum by category aggregation (MUST PASS on unfixed c
         categoryName: 'Food',
         percentage: 30,
         categoryIcon: 'food-icon',
-        balance: '10000000',
+        target: '10000000',
       },
       {
         categoryId: 2,
         categoryName: 'Transport',
         percentage: 20,
         categoryIcon: 'transport-icon',
-        balance: '10000000',
+        target: '10000000',
       },
     ]);
 
@@ -139,7 +141,7 @@ describe('Preservation 5 — Sum by category aggregation (MUST PASS on unfixed c
 
     // Verify aggregation is correct
     expect(result.data).toHaveLength(2);
-    expect(result.data[0]).toEqual(
+    expect(result.data![0]).toEqual(
       expect.objectContaining({
         categoryName: 'Food',
         categoryIcon: 'food-icon',
@@ -148,7 +150,7 @@ describe('Preservation 5 — Sum by category aggregation (MUST PASS on unfixed c
         total: 2500000,
       }),
     );
-    expect(result.data[1]).toEqual(
+    expect(result.data![1]).toEqual(
       expect.objectContaining({
         categoryName: 'Transport',
         categoryIcon: 'transport-icon',
@@ -172,7 +174,7 @@ describe('Preservation 5 — Sum by category aggregation (MUST PASS on unfixed c
         categoryName: 'Food',
         percentage: 30,
         categoryIcon: 'food-icon',
-        balance: '10000000',
+        target: '10000000',
       },
     ]);
 
@@ -186,7 +188,7 @@ describe('Preservation 5 — Sum by category aggregation (MUST PASS on unfixed c
     const result = await service.sumByCategory(dto);
 
     expect(result.data).toHaveLength(1);
-    expect(result.data[0].total).toBe(0);
+    expect(result.data![0].total).toBe(0);
   });
 });
 
@@ -222,11 +224,11 @@ describe('Preservation 6 — Filter transactions by fundId (MUST PASS on unfixed
           useValue: createMockRepository<Category>(),
         },
         {
-          provide: getRepositoryToken(Fund),
-          useValue: createMockRepository<Fund>(),
+          provide: getRepositoryToken(SavingGoal),
+          useValue: createMockRepository<SavingGoal>(),
         },
         {
-          provide: NotificationsService,
+          provide: CacheService, useValue: { get: jest.fn(), set: jest.fn(), delMany: jest.fn() } }, { provide: NotificationsService,
           useValue: {
             sendPushNotification: jest.fn(),
           },
@@ -252,7 +254,7 @@ describe('Preservation 6 — Filter transactions by fundId (MUST PASS on unfixed
         categoryName: 'Food',
         percentage: 30,
         categoryIcon: 'food-icon',
-        balance: '10000000',
+        target: '10000000',
       },
     ]);
 
@@ -262,15 +264,15 @@ describe('Preservation 6 — Filter transactions by fundId (MUST PASS on unfixed
 
     const dto: GetTransactionDto = {
       userId: 1,
-      fundId: 5,
+      savingGoalId: 5,
     };
 
     await service.sumByCategory(dto);
 
     // Verify that fundId filter is applied
     expect(mockCategoryQueryBuilder.andWhere).toHaveBeenCalledWith(
-      'fund.id = :fundId',
-      { fundId: 5 },
+      '(savingGoal.id = :goalId OR savingGoal.id IS NULL)',
+      { goalId: 5 },
     );
   });
 });
@@ -327,11 +329,11 @@ describe('PBT Preservation — Sum by category with random data', () => {
                 useValue: createMockRepository<Category>(),
               },
               {
-                provide: getRepositoryToken(Fund),
-                useValue: createMockRepository<Fund>(),
+                provide: getRepositoryToken(SavingGoal),
+                useValue: createMockRepository<SavingGoal>(),
               },
               {
-                provide: NotificationsService,
+                provide: CacheService, useValue: { get: jest.fn(), set: jest.fn(), delMany: jest.fn() } }, { provide: NotificationsService,
                 useValue: {
                   sendPushNotification: jest.fn(),
                 },
@@ -357,7 +359,7 @@ describe('PBT Preservation — Sum by category with random data', () => {
           // Service uses 'balance' (from fund.balance) for limit calculation
           const categoryData = categories.map((cat) => ({
             ...cat,
-            balance: cat.amount.toString(), // map 'amount' to 'balance' as the service expects
+            target: cat.amount.toString(), // map 'amount' to 'balance' as the service expects
           }));
 
           const transactionData = transactions.map((tx) => ({
@@ -376,7 +378,7 @@ describe('PBT Preservation — Sum by category with random data', () => {
 
           // Verify that limit calculation is correct for each category
           // Service formula: (percentage * balance) / 100
-          result.data.forEach((item) => {
+          result.data!.forEach((item) => {
             const category = categories.find((c) => c.categoryName === item.categoryName);
             if (category) {
               const expectedLimit = (category.percentage * category.amount) / 100;
@@ -431,11 +433,11 @@ describe('PBT Preservation — Existing data preservation', () => {
                 useValue: createMockRepository<Category>(),
               },
               {
-                provide: getRepositoryToken(Fund),
-                useValue: createMockRepository<Fund>(),
+                provide: getRepositoryToken(SavingGoal),
+                useValue: createMockRepository<SavingGoal>(),
               },
               {
-                provide: NotificationsService,
+                provide: CacheService, useValue: { get: jest.fn(), set: jest.fn(), delMany: jest.fn() } }, { provide: NotificationsService,
                 useValue: {
                   sendPushNotification: jest.fn(),
                 },
@@ -459,7 +461,7 @@ describe('PBT Preservation — Existing data preservation', () => {
 
           const categoryData = categories.map((cat) => ({
             ...cat,
-            balance: cat.amount.toString(), // map 'amount' to 'balance' as the service expects
+            target: cat.amount.toString(), // map 'amount' to 'balance' as the service expects
           }));
 
           mockCategoryQueryBuilder.getRawMany.mockResolvedValue(categoryData);
@@ -473,7 +475,7 @@ describe('PBT Preservation — Existing data preservation', () => {
 
           // Verify that amount field is used in limit calculation
           // This confirms that existing data (amount → balance) is preserved and used correctly
-          result.data.forEach((item) => {
+          result.data!.forEach((item) => {
             const category = categories.find((c) => c.categoryName === item.categoryName);
             if (category) {
               const expectedLimit = (category.percentage * category.amount) / 100;

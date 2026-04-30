@@ -9,7 +9,7 @@
 
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { Repository, In } from 'typeorm';
+import { Repository, In, ObjectLiteral } from 'typeorm';
 import * as admin from 'firebase-admin';
 import { NotificationsService } from './notifications.service';
 import { Notification, NotificationType } from './entities/notification.entity';
@@ -25,7 +25,7 @@ function makeUser(id = 1): User {
   return u;
 }
 
-function makeRepoMock<T>(): jest.Mocked<Repository<T>> {
+function makeRepoMock<T extends ObjectLiteral>(): jest.Mocked<Repository<T>> {
   return {
     create: jest.fn(),
     save: jest.fn(),
