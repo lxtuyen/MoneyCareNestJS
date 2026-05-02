@@ -485,14 +485,14 @@ export class TransactionService {
 
     const [incomeRes, expenseRes] = await Promise.all([
       incomeQuery
-        .select('DATE(transaction.transaction_date)', 'date')
+        .select("DATE(transaction.transaction_date + interval '7 hours')", 'date')
         .addSelect('SUM(transaction.amount)', 'total')
-        .groupBy('DATE(transaction.transaction_date)')
+        .groupBy("DATE(transaction.transaction_date + interval '7 hours')")
         .getRawMany<TotalByDate>(),
       expenseQuery
-        .select('DATE(transaction.transaction_date)', 'date')
+        .select("DATE(transaction.transaction_date + interval '7 hours')", 'date')
         .addSelect('SUM(transaction.amount)', 'total')
-        .groupBy('DATE(transaction.transaction_date)')
+        .groupBy("DATE(transaction.transaction_date + interval '7 hours')")
         .getRawMany<TotalByDate>(),
     ]);
 

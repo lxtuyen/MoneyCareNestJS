@@ -292,28 +292,38 @@ export class SavingGoalsService {
 
     const start = this.setStartOfDay(goal.start_date);
     const end = this.setEndOfDay(goal.end_date);
-    const diffMs = end.getTime() - start.getTime();
-    const diffDays = diffMs / (1000 * 60 * 60 * 24);
+    
+    // Calculate total duration in days
+    const totalDiffMs = end.getTime() - start.getTime();
+    const totalDays = Math.max(1, Math.ceil(totalDiffMs / (1000 * 60 * 60 * 24)));
 
     const milestoneDates: Date[] = [];
-
     let current = new Date(start);
-    current = new Date(current.getFullYear(), current.getMonth() + 1, 1);
-
+    
     milestoneDates.push(new Date(start));
-    while (current < end) {
-      milestoneDates.push(new Date(current));
-      current.setMonth(current.getMonth() + 1);
+    
+    // Add the 1st of each subsequent month
+    let nextMonth = new Date(current.getFullYear(), current.getMonth() + 1, 1);
+    while (nextMonth < end) {
+      milestoneDates.push(new Date(nextMonth));
+      nextMonth = new Date(nextMonth.getFullYear(), nextMonth.getMonth() + 1, 1);
     }
+    
     milestoneDates.push(new Date(end));
 
-    const targetPerMilestone =
-      Number(goal.target ?? 0) / (milestoneDates.length - 1);
+    const totalTarget = Number(goal.target ?? 0);
     const results: any[] = [];
 
     for (let i = 0; i < milestoneDates.length - 1; i++) {
       const mStart = milestoneDates[i];
       const mEnd = milestoneDates[i + 1];
+
+      // Calculate days in this specific segment
+      const segmentDiffMs = mEnd.getTime() - mStart.getTime();
+      const segmentDays = Math.ceil(segmentDiffMs / (1000 * 60 * 60 * 24));
+      
+      // Calculate proportional target for this segment
+      const targetPerMilestone = (segmentDays / totalDays) * totalTarget;
 
       const mTransactions = transactions.filter(
         (t) => t.transaction_date >= mStart && t.transaction_date < mEnd,
