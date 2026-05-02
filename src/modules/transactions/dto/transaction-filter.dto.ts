@@ -9,6 +9,10 @@ export class TransactionFilterDto {
   categoryId?: number;
 
   @IsOptional()
+  @IsNumber()
+  walletId?: number;
+
+  @IsOptional()
   @IsDateString()
   startDate?: string;
 

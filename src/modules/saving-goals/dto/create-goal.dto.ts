@@ -28,8 +28,13 @@ export class CreateSavingGoalDto {
   @IsDateString()
   end_date?: string;
 
-  @IsArray()
-  @IsNumber({}, { each: true })
   @IsOptional()
   categoryIds?: number[];
+
+  @IsNumber()
+  @IsOptional()
+  walletId?: number;
+
+  @IsOptional()
+  create_new_wallet?: boolean;
 }

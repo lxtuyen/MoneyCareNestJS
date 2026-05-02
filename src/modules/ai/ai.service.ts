@@ -14,6 +14,7 @@ import { Category } from 'src/modules/categories/entities/category.entity';
 import { SavingGoal } from 'src/modules/saving-goals/entities/saving-goal.entity';
 import { User } from 'src/modules/user/entities/user.entity';
 import { TransactionService } from 'src/modules/transactions/transactions.service';
+import { Wallet } from 'src/modules/wallets/entities/wallet.entity';
 import { CreateTransactionDto } from 'src/modules/transactions/dto/create-transaction.dto';
 import {
   CatOption,
@@ -82,6 +83,8 @@ export class AiService {
     private readonly categoryRepo: Repository<Category>,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
+    @InjectRepository(Wallet)
+    private readonly walletRepo: Repository<Wallet>,
   ) {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
@@ -729,22 +732,28 @@ Tin nhan: "${message}"`,
       return this.handleGetTransactions(message ?? '', userId, goalId);
     }
 
-    const categories = await this.getCategories(userId, goalId);
-    if (categories.length === 0) {
-      const answer = await this.chatAnswer(message ?? '');
-      return { success: true, statusCode: 200, message: answer };
-    }
+    const wallets = await this.walletRepo.find({
+      where: { user: { id: userId }, is_active: true },
+    });
 
-    const options: CatOption[] = categories.map((category) => ({
-      id: category.id,
-      name: category.name,
+    const categories = await this.getCategories(userId, goalId);
+    const options: CatOption[] = categories.map((c) => ({
+      id: c.id,
+      name: c.name,
+      type: c.type as any,
     }));
+
     if (!this.isLikelyTransactionMessage(message ?? '', categories)) {
       const answer = await this.chatAnswer(message ?? '');
       return { success: true, statusCode: 200, message: answer };
     }
 
-    const parsedTrans = await this.parseTransaction(message ?? '', options);
+    const walletOptions = wallets.map((w) => ({ id: w.id, name: w.name }));
+    const parsedTrans = await this.parseTransaction(
+      message ?? '', 
+      options,
+      walletOptions
+    );
 
     if (parsedTrans.amount) {
       const amount = normalizeAmount(parsedTrans.amount);
@@ -767,15 +776,46 @@ Tin nhan: "${message}"`,
           `[Chatbot Transaction] Saving ${parsedTrans.type}: amount=${amount}, category=${pickedCategory?.name || 'None'}, time=${parsedTrans.time}`,
         );
 
+        // Resolve Wallet
+        let walletId: number | undefined;
+        let selectedWallet: Wallet | null = null;
+
+        // 1. Priority: Explicitly mentioned wallet name
+        if (parsedTrans.wallet_name) {
+          walletId = this.findWalletIdByName(wallets, parsedTrans.wallet_name);
+          if (walletId) {
+            selectedWallet = wallets.find(w => w.id === walletId) || null;
+          }
+        }
+
+        // 2. Priority: Wallet linked to the selected Goal
+        if (!walletId && goalId > 0) {
+          const selectedGoal = await this.goalRepo.findOne({
+            where: { id: goalId },
+            relations: ['wallet'],
+          });
+          if (selectedGoal?.wallet && selectedGoal.wallet.is_active) {
+            walletId = selectedGoal.wallet.id;
+            selectedWallet = selectedGoal.wallet;
+          }
+        }
+
+        // 3. Fallback: First active wallet
+        if (!walletId && wallets.length > 0) {
+          walletId = wallets[0].id;
+          selectedWallet = wallets[0];
+        }
+
         const dto: CreateTransactionDto = {
           userId,
           type: parsedTrans.type as 'income' | 'expense',
           amount,
-          note: parsedTrans.description ?? 'Giao dich tu chatbot',
+          note: parsedTrans.description ?? 'Giao dịch từ chatbot',
           transactionDate: isValidDate(parsedTrans.time)
             ? new Date(parsedTrans.time!).toISOString()
             : new Date().toISOString(),
           categoryId: pickedCategory?.id,
+          walletId: walletId,
         };
         await this.transactionService.create(dto);
 
@@ -791,7 +831,8 @@ Tin nhan: "${message}"`,
                 icon: pickedCategory?.icon,
               },
             }),
-            note: dto.note, // Override if needed
+            walletName: selectedWallet?.name,
+            note: dto.note,
           })}`,
         };
       }
@@ -877,6 +918,7 @@ Tin nhan: "${message}"`,
   async parseTransaction(
     message: string,
     options: CatOption[],
+    wallets: Array<{ id: number; name: string }> = [],
   ): Promise<ChatTransactionResult> {
     try {
       const response = await this.genAI.models.generateContent({
@@ -893,9 +935,9 @@ QUY TAC:
 2. Bat buoc lay CHINH XAC so tien, khong tu y tinh toan.
 3. Loai giao dich (type) phai chinh xac: 'income' cho thu nhap/luong, 'expense' cho chi tiêu.
 4. Neu khong co thoi gian, tra ve null cho time.
-5. Ghi chú (description) phải ngắn gọn, tập trung vào nội dung chính (Ví dụ: "Ăn sáng", "Tiền phòng tháng 10"). TUYỆT ĐỐI KHÔNG lặp lại số tiền trong phần ghi chú này.
-6. Ghi chú KHÔNG bao gồm các từ mô tả thời gian mang tính tương đối (như "hôm nay", "sáng nay", "vừa xong") vì thời gian đã được lưu riêng.
-7. category_name: CHỈ BẮT BUỘC chọn từ danh sách. Nếu KHÔNG CÓ hạng mục nào thực sự khớp 100% với mục đích chi tiêu, phải chọn "Khac" (tuyệt đối không gượng ép gán vào các hạng mục không liên quan như "Mua sắm" khi đi ăn).
+5. Ghi chú (description) phải ngắn gọn, tập trung vào nội dung chính. TUYỆT ĐỐI KHÔNG lặp lại số tiền trong phần ghi chú này.
+6. category_name: CHỈ BẮT BUỘC chọn từ danh sách: [${options.map((o) => o.name).join(', ')}].
+7. wallet_name: Neu nguoi dung co nhac den ten vi (vd: "vi ATM", "tien mat", "Momo"), hay trich xuat ten vi do tu danh sach: [${wallets.map((w) => w.name).join(', ')}]. Neu khong nhac den, tra ve null.
 
 Hom nay la: ${new Date().toISOString()}. 
 Tin nhan nguoi dung: "${message}"`,
@@ -940,6 +982,11 @@ Tin nhan nguoi dung: "${message}"`,
                           'Thoi gian giao dich theo ISO 8601, null neu khong de cap',
                         nullable: true,
                       },
+                      wallet_name: {
+                        type: Type.STRING,
+                        description: 'Ten vi nguoi dung nhac den',
+                        nullable: true,
+                      },
                     },
                     required: ['type', 'category_name', 'description'],
                   },
@@ -963,6 +1010,7 @@ Tin nhan nguoi dung: "${message}"`,
         category_name: args.category_name ?? 'Khac',
         description: args.description ?? message,
         time: args.time ?? null,
+        wallet_name: args.wallet_name ?? null,
         confidence: args.amount ? 1.0 : 0.0,
       };
     } catch (error) {
@@ -973,6 +1021,7 @@ Tin nhan nguoi dung: "${message}"`,
         category_name: null,
         description: null,
         time: null,
+        wallet_name: null,
         confidence: 0,
       };
     }
@@ -1046,5 +1095,18 @@ Cau hoi: "${text}"`,
     const answer = (result.text || '').trim();
     await this.cacheService.set(cacheKey, answer, CHAT_TTL_SECONDS);
     return answer;
+  }
+
+  private findWalletIdByName(
+    wallets: Wallet[],
+    name: string,
+  ): number | undefined {
+    const normalized = norm(name);
+    const match =
+      wallets.find((w) => norm(w.name) === normalized) ||
+      wallets.find(
+        (w) => norm(w.name).includes(normalized) || normalized.includes(norm(w.name)),
+      );
+    return match?.id;
   }
 }

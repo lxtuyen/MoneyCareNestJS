@@ -30,4 +30,8 @@ export class CreateTransactionDto {
 
   @IsNumber()
   userId: number;
+
+  @IsOptional()
+  @IsNumber()
+  walletId?: number;
 }

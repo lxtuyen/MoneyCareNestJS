@@ -12,6 +12,7 @@ import { UpdateTransactionDto } from './dto/update-transaction.dto';
 import { User } from 'src/modules/user/entities/user.entity';
 import { Category } from 'src/modules/categories/entities/category.entity';
 import { SavingGoal } from 'src/modules/saving-goals/entities/saving-goal.entity';
+import { Wallet } from 'src/modules/wallets/entities/wallet.entity';
 import { TransactionFilterDto } from './dto/transaction-filter.dto';
 import { ApiResponse } from 'src/common/dto/api-response.dto';
 import {
@@ -41,6 +42,8 @@ export class TransactionService {
     private categoryRepo: Repository<Category>,
     @InjectRepository(SavingGoal)
     private goalRepo: Repository<SavingGoal>,
+    @InjectRepository(Wallet)
+    private walletRepo: Repository<Wallet>,
     private notificationsService: NotificationsService,
     private cacheService: CacheService,
   ) {}
@@ -70,7 +73,19 @@ export class TransactionService {
         : new Date(),
       user,
       category,
+      wallet: dto.walletId ? ({ id: dto.walletId } as any) : null,
     });
+
+    if (dto.walletId) {
+      const wallet = await this.walletRepo.findOne({ where: { id: dto.walletId } });
+      if (wallet) {
+        const amt = Number(dto.amount);
+        wallet.balance = dto.type === 'income' 
+          ? Number(wallet.balance) + amt 
+          : Number(wallet.balance) - amt;
+        await this.walletRepo.save(wallet);
+      }
+    }
 
     let currentExpenseTotal = 0;
     if (dto.type === 'expense' && category?.savingGoal) {
@@ -116,7 +131,7 @@ export class TransactionService {
   ): Promise<ApiResponse<Transaction>> {
     const transaction = await this.transactionRepo.findOne({
       where: { id },
-      relations: ['category', 'category.savingGoal', 'user'],
+      relations: ['category', 'category.savingGoal', 'user', 'wallet'],
     });
     if (!transaction) throw new NotFoundException('Transaction not found');
     const previousGoalId = transaction.category?.savingGoal?.id ?? 0;
@@ -138,6 +153,60 @@ export class TransactionService {
     if (dto.transactionDate) {
       transaction.transaction_date = new Date(dto.transactionDate);
     }
+
+    // Handle Wallet Balance Update
+    const oldAmount = Number(transaction.amount);
+    const newAmount = dto.amount !== undefined ? Number(dto.amount) : oldAmount;
+    const oldType = transaction.type;
+    const newType = dto.type ?? oldType;
+    const oldWalletId = transaction.wallet?.id;
+    const newWalletId = dto.walletId !== undefined ? dto.walletId : oldWalletId;
+
+    if (oldWalletId || newWalletId) {
+      if (oldWalletId === newWalletId) {
+        // Same wallet, update diff
+        if (oldWalletId) {
+          const wallet = await this.walletRepo.findOne({ where: { id: oldWalletId } });
+          if (wallet) {
+            // Revert old
+            wallet.balance = oldType === 'income' 
+              ? Number(wallet.balance) - oldAmount 
+              : Number(wallet.balance) + oldAmount;
+            // Apply new
+            wallet.balance = newType === 'income' 
+              ? Number(wallet.balance) + newAmount 
+              : Number(wallet.balance) - newAmount;
+            await this.walletRepo.save(wallet);
+          }
+        }
+      } else {
+        // Different wallets
+        if (oldWalletId) {
+          const oldWallet = await this.walletRepo.findOne({ where: { id: oldWalletId } });
+          if (oldWallet) {
+            oldWallet.balance = oldType === 'income' 
+              ? Number(oldWallet.balance) - oldAmount 
+              : Number(oldWallet.balance) + oldAmount;
+            await this.walletRepo.save(oldWallet);
+          }
+        }
+        if (newWalletId) {
+          const newWallet = await this.walletRepo.findOne({ where: { id: newWalletId } });
+          if (newWallet) {
+            newWallet.balance = newType === 'income' 
+              ? Number(newWallet.balance) + newAmount 
+              : Number(newWallet.balance) - newAmount;
+            await this.walletRepo.save(newWallet);
+          }
+        }
+      }
+    }
+
+    if (dto.walletId !== undefined) {
+      transaction.wallet = dto.walletId ? ({ id: dto.walletId } as any) : null;
+    }
+    transaction.amount = newAmount;
+    transaction.type = newType;
 
     await this.transactionRepo.save(transaction);
     await this.invalidateFinancialCache(transaction.user.id, [
@@ -243,10 +312,11 @@ export class TransactionService {
   async findAllByFilter(
     filter: TransactionFilterDto,
   ): Promise<ApiResponse<{ income: Transaction[]; expense: Transaction[] }>> {
-    const { userId, categoryId, startDate, endDate, categoryName, limit } = filter;
+    const { userId, categoryId, walletId, startDate, endDate, categoryName, limit } = filter;
 
     const incomeQuery = this.createBaseQuery(userId, 'income', {
       categoryId,
+      walletId,
       startDate,
       endDate,
       withRelations: true,
@@ -255,6 +325,7 @@ export class TransactionService {
 
     const expenseQuery = this.createBaseQuery(userId, 'expense', {
       categoryId,
+      walletId,
       startDate,
       endDate,
       withRelations: true,
@@ -458,9 +529,21 @@ export class TransactionService {
   async remove(id: number): Promise<ApiResponse<string>> {
     const transaction = await this.transactionRepo.findOne({
       where: { id },
-      relations: ['category', 'category.savingGoal', 'user'],
+      relations: ['category', 'category.savingGoal', 'user', 'wallet'],
     });
     if (!transaction) throw new NotFoundException('Transaction not found');
+    
+    if (transaction.wallet) {
+      const wallet = await this.walletRepo.findOne({ where: { id: transaction.wallet.id } });
+      if (wallet) {
+        const amt = Number(transaction.amount);
+        wallet.balance = transaction.type === 'income' 
+          ? Number(wallet.balance) - amt 
+          : Number(wallet.balance) + amt;
+        await this.walletRepo.save(wallet);
+      }
+    }
+
     await this.transactionRepo.remove(transaction);
     await this.invalidateFinancialCache(transaction.user.id, [
       transaction.category?.savingGoal?.id ?? 0,
@@ -517,12 +600,14 @@ export class TransactionService {
     type: 'income' | 'expense',
     {
       categoryId,
+      walletId,
       startDate,
       endDate,
       withRelations = false,
       categoryName,
     }: {
       categoryId?: number;
+      walletId?: number;
       startDate?: string;
       endDate?: string;
       withRelations?: boolean;
@@ -534,9 +619,11 @@ export class TransactionService {
     if (withRelations) {
       query.leftJoinAndSelect('transaction.category', 'category');
       query.leftJoinAndSelect('transaction.user', 'user');
+      query.leftJoinAndSelect('transaction.wallet', 'wallet');
     } else {
       query.leftJoin('transaction.category', 'category');
       query.leftJoin('transaction.user', 'user');
+      query.leftJoin('transaction.wallet', 'wallet');
     }
 
     query
@@ -545,6 +632,9 @@ export class TransactionService {
 
     if (categoryId) {
       query.andWhere('category.id = :categoryId', { categoryId });
+    }
+    if (walletId) {
+      query.andWhere('wallet.id = :walletId', { walletId });
     }
     if (startDate && startDate !== 'null' && startDate !== 'undefined') {
       const start = new Date(startDate);

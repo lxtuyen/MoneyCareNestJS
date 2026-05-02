@@ -38,6 +38,7 @@ export class TransactionController {
   async findAllByFilter(
     @Param('userId', ParseIntPipe) userId: number,
     @Query('categoryId') categoryId?: any,
+    @Query('walletId') walletId?: any,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
     @Query('limit') limit?: any,
@@ -45,6 +46,7 @@ export class TransactionController {
     const dto: TransactionFilterDto = {
       userId,
       categoryId: (categoryId === 'null' || categoryId === 'undefined') ? undefined : (categoryId ? Number(categoryId) : undefined),
+      walletId: (walletId === 'null' || walletId === 'undefined') ? undefined : (walletId ? Number(walletId) : undefined),
       startDate,
       endDate,
       limit: (limit === 'null' || limit === 'undefined') ? undefined : (limit ? Number(limit) : undefined),

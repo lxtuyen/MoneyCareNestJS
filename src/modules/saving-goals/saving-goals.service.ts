@@ -11,6 +11,7 @@ import { SavingGoalResponseDto } from './dto/goal-response.dto';
 import { plainToInstance } from 'class-transformer';
 import { ApiResponse } from 'src/common/dto/api-response.dto';
 import { SavingGoalStatus } from './enums/saving-goal-status.enum';
+import { Wallet } from 'src/modules/wallets/entities/wallet.entity';
 
 @Injectable()
 export class SavingGoalsService {
@@ -26,6 +27,9 @@ export class SavingGoalsService {
 
     @InjectRepository(Transaction)
     private transactionRepo: Repository<Transaction>,
+
+    @InjectRepository(Wallet)
+    private walletRepo: Repository<Wallet>,
   ) {}
 
   async create(
@@ -44,6 +48,7 @@ export class SavingGoalsService {
       template_key: dto.template_key ?? null,
       start_date: dto.start_date ? new Date(dto.start_date) : new Date(),
       end_date: dto.end_date ? new Date(dto.end_date) : null,
+      wallet: dto.walletId ? { id: dto.walletId } : null,
     } as Partial<SavingGoal>);
 
     if (dto.categoryIds?.length) {
@@ -53,6 +58,18 @@ export class SavingGoalsService {
       goal.categories = categories;
     } else {
       goal.categories = [];
+    }
+
+    if (dto.create_new_wallet) {
+      const newWallet = this.walletRepo.create({
+        name: `Ví ${dto.name}`,
+        user: user,
+        balance: 0,
+        is_active: true,
+        type: 'saving',
+      });
+      const savedWallet = await this.walletRepo.save(newWallet);
+      goal.wallet = savedWallet;
     }
 
     const savedGoal = await this.goalRepo.save(goal);
@@ -67,7 +84,7 @@ export class SavingGoalsService {
   async findAllByUser(userId: number): Promise<ApiResponse<SavingGoal[]>> {
     const goals = await this.goalRepo.find({
       where: { user: { id: userId } },
-      relations: ['categories'],
+      relations: ['categories', 'wallet'],
       order: { created_at: 'DESC' },
     });
 
@@ -78,6 +95,7 @@ export class SavingGoalsService {
           goal.user?.id ?? userId,
           goal.start_date || undefined,
           goal.end_date || undefined,
+          goal.wallet?.id,
         );
         return goal;
       }),
@@ -93,7 +111,7 @@ export class SavingGoalsService {
   async findOne(id: number, userId?: number): Promise<ApiResponse<SavingGoal>> {
     const goal = await this.goalRepo.findOne({
       where: userId ? { id, user: { id: userId } } : { id },
-      relations: ['categories'],
+      relations: ['categories', 'wallet'],
     });
     if (!goal) throw new NotFoundException('Saving goal not found');
     return new ApiResponse({
@@ -110,7 +128,7 @@ export class SavingGoalsService {
   ): Promise<ApiResponse<SavingGoal>> {
     const goal = await this.goalRepo.findOne({
       where: userId ? { id, user: { id: userId } } : { id },
-      relations: ['categories'],
+      relations: ['categories', 'wallet'],
     });
     if (!goal) throw new NotFoundException('Saving goal not found');
 
@@ -124,6 +142,9 @@ export class SavingGoalsService {
     if (dto.start_date) goal.start_date = new Date(dto.start_date);
     if (dto.end_date) goal.end_date = new Date(dto.end_date);
     if (dto.is_completed !== undefined) goal.is_completed = dto.is_completed;
+    if (dto.walletId !== undefined) {
+      goal.wallet = dto.walletId ? ({ id: dto.walletId } as any) : null;
+    }
 
     if (dto.categoryIds && dto.categoryIds.length > 0) {
       const categories = await this.categoryRepo.findBy({
@@ -175,7 +196,7 @@ export class SavingGoalsService {
 
     const goal = await this.goalRepo.findOne({
       where: { id, user: { id: userId } },
-      relations: ['categories'],
+      relations: ['categories', 'wallet'],
     });
 
     if (!goal) throw new NotFoundException('Saving goal not found');
@@ -192,7 +213,7 @@ export class SavingGoalsService {
   async getGoalReport(id: number, userId?: number) {
     const goal = await this.goalRepo.findOne({
       where: userId ? { id, user: { id: userId } } : { id },
-      relations: ['categories', 'user'],
+      relations: ['categories', 'user', 'wallet'],
     });
     if (!goal) throw new NotFoundException('Saving goal not found');
 
@@ -203,6 +224,7 @@ export class SavingGoalsService {
         goal.user.id,
         goal.start_date || undefined,
         goal.end_date || undefined,
+        goal.wallet?.id,
       );
     let current_automated_balance = income - expense;
 
@@ -248,12 +270,19 @@ export class SavingGoalsService {
     );
     const isLastMilestone = currentMilestoneIndex === milestones.length - 1;
 
-    if (current_automated_balance >= target && !goal.is_completed) {
-      if (isLastMilestone) {
-        goal.is_completed = true;
-        goal.status = SavingGoalStatus.COMPLETED;
-        await this.goalRepo.save(goal);
+    const isTargetAchieved = current_automated_balance >= target;
+    const isPastEndDate = goal.end_date ? now >= goal.end_date : false;
+
+    if (isTargetAchieved && !goal.is_completed && isPastEndDate) {
+      goal.is_completed = true;
+      goal.status = SavingGoalStatus.COMPLETED;
+
+      // Deactivate wallet if linked
+      if (goal.wallet) {
+        await this.walletRepo.update(goal.wallet.id, { is_active: false });
       }
+
+      await this.goalRepo.save(goal);
     }
 
     const report = {
@@ -278,6 +307,8 @@ export class SavingGoalsService {
       totalTransactions: transactions.length,
       dailyAverageSpending: expense / daysDiff,
       remainingBudget: income - expense,
+      wallet_name: goal.wallet?.name || null,
+      wallet_balance: goal.wallet?.balance || 0,
     };
 
     return new ApiResponse({
@@ -413,11 +444,16 @@ export class SavingGoalsService {
     userId: number,
     startDate?: Date,
     endDate?: Date,
+    walletId?: number,
   ) {
     const query = this.transactionRepo
       .createQueryBuilder('t')
       .leftJoinAndSelect('t.category', 'category')
       .where('t.userId = :userId', { userId });
+
+    if (walletId) {
+      query.andWhere('t.walletId = :walletId', { walletId });
+    }
 
     if (startDate) {
       query.andWhere('t.transaction_date >= :startDate', { 
@@ -448,6 +484,7 @@ export class SavingGoalsService {
     userId: number,
     startDate?: Date,
     endDate?: Date,
+    walletId?: number,
   ): Promise<number> {
     const query = this.transactionRepo
       .createQueryBuilder('t')
@@ -456,6 +493,10 @@ export class SavingGoalsService {
         'balance',
       )
       .where('t.userId = :userId', { userId });
+
+    if (walletId) {
+      query.andWhere('t.walletId = :walletId', { walletId });
+    }
 
     if (startDate) {
       query.andWhere('t.transaction_date >= :startDate', { 

@@ -1,6 +1,7 @@
 export type CatOption = {
   id: number;
   name: string;
+  type: 'income' | 'expense' | 'others';
 };
 
 export type ChatTransactionResult = {
@@ -9,6 +10,7 @@ export type ChatTransactionResult = {
   description: string | null;
   time: string | null;
   type: 'income' | 'expense';
+  wallet_name: string | null;
   confidence: number;
 };
 

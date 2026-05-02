@@ -12,6 +12,7 @@ import { User, UserRole } from 'src/modules/user/entities/user.entity';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { UserProfile } from 'src/modules/user-profile/entities/user-profile.entity';
+import { Wallet } from 'src/modules/wallets/entities/wallet.entity';
 import { ApiResponse } from 'src/common/dto/api-response.dto';
 import { GoogleLoginDto } from './dto/google-login.dto';
 import { ConfigService } from '@nestjs/config';
@@ -26,6 +27,8 @@ export class AuthService {
     private readonly userRepo: Repository<User>,
     @InjectRepository(UserProfile)
     private readonly profileRepo: Repository<UserProfile>,
+    @InjectRepository(Wallet)
+    private readonly walletRepo: Repository<Wallet>,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
   ) {
@@ -53,6 +56,17 @@ export class AuthService {
       role: dto.role || UserRole.USER,
     });
     await this.userRepo.save(user);
+
+    // Create default wallet
+    const wallet = this.walletRepo.create({
+      name: 'Ví 1',
+      balance: 0,
+      user: user,
+      is_active: true,
+      icon: '💰',
+      color: '#4CAF50',
+    });
+    await this.walletRepo.save(wallet);
 
     return new ApiResponse({
       success: true,
@@ -144,6 +158,17 @@ export class AuthService {
         });
 
         await this.userRepo.save(user);
+
+        // Create default wallet
+        const wallet = this.walletRepo.create({
+          name: 'Ví 1',
+          balance: 0,
+          user: user,
+          is_active: true,
+          icon: '💰',
+          color: '#4CAF50',
+        });
+        await this.walletRepo.save(wallet);
       }
 
       const jwtPayload = {

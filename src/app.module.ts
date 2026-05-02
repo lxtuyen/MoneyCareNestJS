@@ -19,6 +19,7 @@ import { GamificationModule } from './modules/gamification/gamification.module';
 import { SavingGoalsModule } from './modules/saving-goals/saving-goals.module';
 import { AiModule } from './modules/ai/ai.module';
 import { RecurringTransactionsModule } from './modules/recurring-transactions/recurring-transactions.module';
+import { WalletsModule } from './modules/wallets/wallets.module';
 
 @Module({
   imports: [
@@ -61,6 +62,7 @@ import { RecurringTransactionsModule } from './modules/recurring-transactions/re
     GamificationModule,
     AiModule,
     RecurringTransactionsModule,
+    WalletsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -103,13 +103,13 @@ export class FinancialInsightsService {
 
   async getSelectedGoalId(userId: number): Promise<number | null> {
     const selected = await this.goalRepo.findOne({
-      where: { user: { id: userId }, is_selected: true },
+      where: { user: { id: userId }, is_selected: true, is_completed: false },
       order: { updated_at: 'DESC' },
     });
     if (selected) return selected.id;
 
     const fallback = await this.goalRepo.findOne({
-      where: { user: { id: userId } },
+      where: { user: { id: userId }, is_completed: false },
       order: { updated_at: 'DESC' },
     });
 

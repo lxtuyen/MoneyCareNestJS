@@ -7,13 +7,14 @@ import { Category } from 'src/modules/categories/entities/category.entity';
 import { Transaction } from './entities/transaction.entity';
 import { User } from 'src/modules/user/entities/user.entity';
 import { SavingGoal } from 'src/modules/saving-goals/entities/saving-goal.entity';
+import { Wallet } from 'src/modules/wallets/entities/wallet.entity';
 import { NotificationsModule } from 'src/modules/notifications/notifications.module';
 import { MailModule } from '../mailer/mail.module';
 import { TransactionExportService } from './transactions-export.service';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Transaction, Category, User, SavingGoal]),
+    TypeOrmModule.forFeature([Transaction, Category, User, SavingGoal, Wallet]),
     forwardRef(() => UserModule),
     NotificationsModule,
     MailModule,

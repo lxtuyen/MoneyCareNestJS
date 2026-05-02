@@ -5,6 +5,7 @@ import { Category } from 'src/modules/categories/entities/category.entity';
 import { UserProfile } from 'src/modules/user-profile/entities/user-profile.entity';
 import { DeviceToken } from 'src/modules/notifications/entities/device-token.entity';
 import { Notification } from 'src/modules/notifications/entities/notification.entity';
+import { Wallet } from 'src/modules/wallets/entities/wallet.entity';
 import {
   Entity,
   PrimaryGeneratedColumn,
@@ -62,4 +63,7 @@ export class User {
 
   @OneToMany(() => Notification, (notification) => notification.user)
   notifications: Notification[];
+
+  @OneToMany(() => Wallet, (wallet) => wallet.user)
+  wallets: Wallet[];
 }

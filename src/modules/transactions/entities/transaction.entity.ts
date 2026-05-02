@@ -1,5 +1,6 @@
 import { Category } from 'src/modules/categories/entities/category.entity';
 import { User } from 'src/modules/user/entities/user.entity';
+import { Wallet } from 'src/modules/wallets/entities/wallet.entity';
 import {
   Entity,
   PrimaryGeneratedColumn,
@@ -43,4 +44,10 @@ export class Transaction {
     onDelete: 'SET NULL',
   })
   category?: Category | null;
+
+  @ManyToOne(() => Wallet, (wallet) => wallet.transactions, {
+    nullable: true,
+    onDelete: 'SET NULL',
+  })
+  wallet?: Wallet | null;
 }

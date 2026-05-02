@@ -11,6 +11,7 @@ import { User } from 'src/modules/user/entities/user.entity';
 import { Category } from 'src/modules/categories/entities/category.entity';
 import { ColumnNumericTransformer } from 'src/common/transformers/decimal.transformer';
 import { SavingGoalStatus } from '../enums/saving-goal-status.enum';
+import { Wallet } from 'src/modules/wallets/entities/wallet.entity';
 
 @Entity('saving_goals')
 export class SavingGoal {
@@ -77,6 +78,9 @@ export class SavingGoal {
 
   @OneToMany(() => Category, (category) => category.savingGoal)
   categories: Category[];
+
+  @ManyToOne(() => Wallet, { nullable: true, onDelete: 'SET NULL' })
+  wallet?: Wallet | null;
 
   @CreateDateColumn()
   created_at: Date;

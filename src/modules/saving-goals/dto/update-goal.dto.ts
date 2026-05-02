@@ -41,4 +41,8 @@ export class UpdateSavingGoalDto {
   @IsArray()
   @IsNumber({}, { each: true })
   categoryIds?: number[];
+
+  @IsOptional()
+  @IsNumber()
+  walletId?: number;
 }
