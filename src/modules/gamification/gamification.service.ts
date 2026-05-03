@@ -29,9 +29,17 @@ export class GamificationService {
   // Internal helpers
   // ---------------------------------------------------------------------------
 
-  /** Get today's date as YYYY-MM-DD (UTC). */
+  /** Get today's date as YYYY-MM-DD (Vietnam). */
   private todayString(): string {
-    return new Date().toISOString().slice(0, 10);
+    const now = new Date();
+    const vietnamNowStr = now.toLocaleString('en-US', {
+      timeZone: 'Asia/Ho_Chi_Minh',
+    });
+    const vietnamDate = new Date(vietnamNowStr);
+    const year = vietnamDate.getFullYear();
+    const month = String(vietnamDate.getMonth() + 1).padStart(2, '0');
+    const day = String(vietnamDate.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
   }
 
   /**

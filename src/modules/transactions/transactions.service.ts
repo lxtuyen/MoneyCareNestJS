@@ -49,6 +49,11 @@ export class TransactionService {
   ) {}
 
   async create(dto: CreateTransactionDto): Promise<ApiResponse<Transaction>> {
+    console.log('>>> [BE] CreateTransactionDto received:', {
+      ...dto,
+      transactionDate: dto.transactionDate,
+    });
+
     const [user, category] = await Promise.all([
       this.userRepo.findOne({ where: { id: dto.userId } }),
       dto.categoryId
@@ -64,16 +69,29 @@ export class TransactionService {
       throw new NotFoundException('Category not found');
     }
 
+    // Ensure we have a valid date
+    let transactionDate: Date;
+    if (dto.transactionDate) {
+      transactionDate = new Date(dto.transactionDate);
+      if (isNaN(transactionDate.getTime())) {
+        console.warn('>>> [BE] Invalid transactionDate received, falling back to current date');
+        transactionDate = new Date();
+      }
+    } else {
+      transactionDate = new Date();
+    }
+    
+    console.log('>>> [BE] Parsed transaction_date:', transactionDate.toISOString());
+
     const transaction = this.transactionRepo.create({
       amount: dto.amount,
       type: dto.type,
       note: dto.note,
-      transaction_date: dto.transactionDate
-        ? new Date(dto.transactionDate)
-        : new Date(),
+      transaction_date: transactionDate, // Match entity property name
       user,
       category,
       wallet: dto.walletId ? ({ id: dto.walletId } as any) : null,
+      pictuteURL: dto.pictuteURL,
     });
 
     if (dto.walletId) {
@@ -151,10 +169,14 @@ export class TransactionService {
     transaction.note = dto.note ?? transaction.note;
     transaction.pictuteURL = dto.pictuteURL ?? transaction.pictuteURL;
     if (dto.transactionDate) {
-      transaction.transaction_date = new Date(dto.transactionDate);
+      const parsedDate = new Date(dto.transactionDate);
+      if (!isNaN(parsedDate.getTime())) {
+        transaction.transaction_date = parsedDate;
+      } else {
+        console.warn('>>> [BE] Invalid transactionDate received during update');
+      }
     }
 
-    // Handle Wallet Balance Update
     const oldAmount = Number(transaction.amount);
     const newAmount = dto.amount !== undefined ? Number(dto.amount) : oldAmount;
     const oldType = transaction.type;
@@ -336,8 +358,8 @@ export class TransactionService {
     expenseQuery.orderBy('transaction.transaction_date', 'DESC');
 
     if (limit) {
-      incomeQuery.limit(limit);
-      expenseQuery.limit(limit);
+      incomeQuery.take(limit);
+      expenseQuery.take(limit);
     }
 
     const [income, expense] = await Promise.all([
@@ -413,30 +435,46 @@ export class TransactionService {
     }
 
     const now = new Date();
-    const currentYear = now.getFullYear();
-    const currentMonth = now.getMonth();
+    const vietnamNowStr = now.toLocaleString('en-US', {
+      timeZone: 'Asia/Ho_Chi_Minh',
+    });
+    const vietnamNow = new Date(vietnamNowStr);
 
-    const currentMonthStart = new Date(currentYear, currentMonth, 1);
+    const currentYear = vietnamNow.getFullYear();
+    const currentMonth = vietnamNow.getMonth();
+
+    // Function to create a Date object representing 00:00:00 in Vietnam timezone
+    const getVietnamStartOfDay = (y: number, m: number, d: number) => {
+      return new Date(
+        `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}T00:00:00+07:00`,
+      );
+    };
+
+    // Function to create a Date object representing 23:59:59 in Vietnam timezone
+    const getVietnamEndOfDay = (y: number, m: number, d: number) => {
+      return new Date(
+        `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}T23:59:59+07:00`,
+      );
+    };
+
+    const currentMonthStart = getVietnamStartOfDay(currentYear, currentMonth, 1);
     const currentMonthEnd = now;
 
-    const prevMonthStart = new Date(currentYear, currentMonth - 1, 1);
-    const prevMonthEnd = new Date(currentYear, currentMonth, 0);
+    const prevMonthDate = new Date(currentYear, currentMonth, 0);
+    const prevYear = prevMonthDate.getFullYear();
+    const prevMonth = prevMonthDate.getMonth();
+    const prevMonthLastDay = prevMonthDate.getDate();
 
-    const calculationStart = currentMonthStart;
-    const prevCalculationStart = prevMonthStart;
-    const calculationEnd = currentMonthEnd;
+    const prevMonthStart = getVietnamStartOfDay(prevYear, prevMonth, 1);
+    const prevMonthEnd = getVietnamEndOfDay(prevYear, prevMonth, prevMonthLastDay);
 
     const [currentMonthTotals, prevMonthTotals] = await Promise.all([
-      this.getTotalsForRange(
-        userId,
-        calculationStart,
-        calculationEnd,
-      ),
-      this.getTotalsForRange(userId, prevCalculationStart, prevMonthEnd),
+      this.getTotalsForRange(userId, currentMonthStart, currentMonthEnd),
+      this.getTotalsForRange(userId, prevMonthStart, prevMonthEnd),
     ]);
 
-    const daysPassedInCurrentMonth = now.getDate();
-    const daysInPrevMonth = prevMonthEnd.getDate();
+    const daysPassedInCurrentMonth = vietnamNow.getDate();
+    const daysInPrevMonth = prevMonthLastDay;
 
     const currentDailyAverage =
       currentMonthTotals.expense / daysPassedInCurrentMonth;
@@ -568,14 +606,14 @@ export class TransactionService {
 
     const [incomeRes, expenseRes] = await Promise.all([
       incomeQuery
-        .select("DATE(transaction.transaction_date + interval '7 hours')", 'date')
+        .select("DATE(transaction.transaction_date AT TIME ZONE 'Asia/Ho_Chi_Minh')", 'date')
         .addSelect('SUM(transaction.amount)', 'total')
-        .groupBy("DATE(transaction.transaction_date + interval '7 hours')")
+        .groupBy("DATE(transaction.transaction_date AT TIME ZONE 'Asia/Ho_Chi_Minh')")
         .getRawMany<TotalByDate>(),
       expenseQuery
-        .select("DATE(transaction.transaction_date + interval '7 hours')", 'date')
+        .select("DATE(transaction.transaction_date AT TIME ZONE 'Asia/Ho_Chi_Minh')", 'date')
         .addSelect('SUM(transaction.amount)', 'total')
-        .groupBy("DATE(transaction.transaction_date + interval '7 hours')")
+        .groupBy("DATE(transaction.transaction_date AT TIME ZONE 'Asia/Ho_Chi_Minh')")
         .getRawMany<TotalByDate>(),
     ]);
 
@@ -614,6 +652,8 @@ export class TransactionService {
       categoryName?: string;
     } = {},
   ) {
+
+
     const query = this.transactionRepo.createQueryBuilder('transaction');
 
     if (withRelations) {
@@ -631,28 +671,40 @@ export class TransactionService {
       .andWhere('transaction.type = :type', { type });
 
     if (categoryId) {
-      query.andWhere('category.id = :categoryId', { categoryId });
+      query.andWhere('transaction.category = :categoryId', { categoryId });
     }
     if (walletId) {
-      query.andWhere('wallet.id = :walletId', { walletId });
+      query.andWhere('transaction.wallet = :walletId', { walletId });
     }
+    
+    const now = new Date();
+    const offset = 7 * 60; // Vietnam is UTC+7
+    const vnNow = new Date(now.getTime() + (offset + now.getTimezoneOffset()) * 60000);
+    const y = vnNow.getFullYear();
+    const m = vnNow.getMonth();
+
+    let start: Date;
     if (startDate && startDate !== 'null' && startDate !== 'undefined') {
-      const start = new Date(startDate);
-      if (!isNaN(start.getTime())) {
-        start.setHours(0, 0, 0, 0);
-        query.andWhere('transaction.transaction_date >= :start', {
-          start: start.toISOString(),
-        });
-      }
+      start = new Date(startDate);
+    } else {
+      // Start of current month in VN
+      start = new Date(Date.UTC(y, m, 1, -7, 0, 0)); 
     }
+
+    let end: Date;
     if (endDate && endDate !== 'null' && endDate !== 'undefined') {
-      const end = new Date(endDate);
-      if (!isNaN(end.getTime())) {
-        end.setHours(23, 59, 59, 999);
-        query.andWhere('transaction.transaction_date <= :end', {
-          end: end.toISOString(),
-        });
-      }
+      end = new Date(endDate);
+    } else {
+      // End of current month in VN
+      const lastDay = new Date(y, m + 1, 0).getDate();
+      end = new Date(Date.UTC(y, m, lastDay, 16, 59, 59, 999));
+    }
+
+    if (!isNaN(start.getTime())) {
+      query.andWhere('transaction.transaction_date >= :start', { start });
+    }
+    if (!isNaN(end.getTime())) {
+      query.andWhere('transaction.transaction_date <= :end', { end });
     }
     if (categoryName) {
       query.andWhere('category.name LIKE :catName', {

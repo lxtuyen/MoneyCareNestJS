@@ -309,6 +309,20 @@ export class SavingGoalsService {
       remainingBudget: income - expense,
       wallet_name: goal.wallet?.name || null,
       wallet_balance: goal.wallet?.balance || 0,
+      transactions: transactions.map(t => ({
+        id: t.id,
+        amount: t.amount,
+        type: t.type,
+        transaction_date: t.transaction_date,
+        note: t.note,
+        category: t.category ? {
+          id: t.category.id,
+          name: t.category.name,
+          icon: t.category.icon,
+          type: t.category.type,
+        } : null,
+        wallet: t.wallet ? { id: t.wallet.id, name: t.wallet.name } : null,
+      })),
     };
 
     return new ApiResponse({
@@ -449,6 +463,7 @@ export class SavingGoalsService {
     const query = this.transactionRepo
       .createQueryBuilder('t')
       .leftJoinAndSelect('t.category', 'category')
+      .leftJoinAndSelect('t.wallet', 'wallet')
       .where('t.userId = :userId', { userId });
 
     if (walletId) {

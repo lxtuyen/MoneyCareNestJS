@@ -21,8 +21,9 @@ export class CreateTransactionDto {
   @IsString()
   pictuteURL?: string;
 
+  @IsOptional()
   @IsDateString()
-  transactionDate: string;
+  transactionDate?: string;
 
   @IsOptional()
   @IsNumber()

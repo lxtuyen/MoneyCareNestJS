@@ -21,7 +21,7 @@ export class Transaction {
   @Column({ type: 'enum', enum: ['income', 'expense'] })
   type: 'income' | 'expense';
 
-  @Column({ type: 'timestamp', nullable: true })
+  @Column({ type: 'timestamp with time zone', nullable: true })
   transaction_date: Date;
 
   @Column({ nullable: true })

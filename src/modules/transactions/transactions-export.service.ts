@@ -73,7 +73,8 @@ export class TransactionExportService {
       ? `${user.profile.first_name}${user.profile.last_name ? ' ' + user.profile.last_name : ''}`
       : 'bạn';
 
-    const subject = `Báo cáo tài chính MoneyCare - ${new Date().toLocaleDateString('vi-VN')}`;
+    const now = new Date();
+    const subject = `Báo cáo tài chính MoneyCare - ${now.toLocaleDateString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}`;
     const html = `
       <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
         <h2 style="color: #2E7D32; border-bottom: 2px solid #2E7D32; padding-bottom: 10px;">Báo cáo tài chính MoneyCare</h2>
@@ -182,7 +183,7 @@ export class TransactionExportService {
 
         const transDate = t.transaction_date ? new Date(t.transaction_date) : new Date();
         const dateStr = !isNaN(transDate.getTime()) 
-          ? transDate.toLocaleDateString('vi-VN') 
+          ? transDate.toLocaleDateString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }) 
           : 'N/A';
           
         doc.text(dateStr, 50, y);
