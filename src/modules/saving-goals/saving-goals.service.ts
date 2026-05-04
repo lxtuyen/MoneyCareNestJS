@@ -139,7 +139,13 @@ export class SavingGoalsService {
     if (dto.template_key !== undefined) goal.template_key = dto.template_key;
     if (dto.start_date) goal.start_date = new Date(dto.start_date);
     if (dto.end_date) goal.end_date = new Date(dto.end_date);
-    if (dto.is_completed !== undefined) goal.is_completed = dto.is_completed;
+    if (dto.is_completed !== undefined) {
+      goal.is_completed = dto.is_completed;
+      if (dto.is_completed) {
+        goal.is_selected = false;
+        goal.status = SavingGoalStatus.COMPLETED;
+      }
+    }
     if (dto.walletId !== undefined) {
       goal.wallet = dto.walletId ? ({ id: dto.walletId } as any) : null;
     }

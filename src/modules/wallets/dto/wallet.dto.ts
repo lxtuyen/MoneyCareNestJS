@@ -53,4 +53,8 @@ export class TransferDto {
   @IsString()
   @IsOptional()
   note?: string;
+
+  @IsNumber()
+  @IsOptional()
+  categoryId?: number;
 }

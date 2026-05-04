@@ -5,6 +5,7 @@ import { Wallet } from './entities/wallet.entity';
 import { CreateWalletDto, UpdateWalletDto, TransferDto } from './dto/wallet.dto';
 import { User } from 'src/modules/user/entities/user.entity';
 import { Transaction } from '../transactions/entities/transaction.entity';
+import { Category } from '../categories/entities/category.entity';
 
 @Injectable()
 export class WalletsService {
@@ -13,10 +14,11 @@ export class WalletsService {
     private walletRepository: Repository<Wallet>,
     @InjectRepository(Transaction)
     private transactionRepository: Repository<Transaction>,
+    @InjectRepository(Category)
+    private categoryRepository: Repository<Category>,
   ) {}
 
   async create(createWalletDto: CreateWalletDto, user: User): Promise<Wallet> {
-    // Check if this is the user's first wallet
     const existingWallets = await this.walletRepository.find({
       where: { user: { id: user.id } },
     });
@@ -65,10 +67,15 @@ export class WalletsService {
   }
 
   async transfer(transferDto: TransferDto, user: User): Promise<void> {
-    const { fromWalletId, toWalletId, amount, fee = 0, note } = transferDto;
+    const { fromWalletId, toWalletId, amount, fee = 0, note, categoryId } = transferDto;
 
     const fromWallet = await this.findOne(fromWalletId, user);
     const toWallet = await this.findOne(toWalletId, user);
+
+    let category: Category | null = null;
+    if (categoryId) {
+      category = await this.categoryRepository.findOne({ where: { id: categoryId } });
+    }
 
     if (Number(fromWallet.balance) < amount + fee) {
       throw new Error('Số dư không đủ để thực hiện chuyển khoản');
@@ -90,6 +97,7 @@ export class WalletsService {
       note: note || `Chuyển tiền đến ${toWallet.name}`,
       user: user,
       wallet: fromWallet,
+      category: category,
     });
 
     // Incoming transaction to target wallet
@@ -100,6 +108,7 @@ export class WalletsService {
       note: note || `Nhận tiền từ ${fromWallet.name}`,
       user: user,
       wallet: toWallet,
+      category: category,
     });
 
     await this.transactionRepository.save([outgoing, incoming]);
