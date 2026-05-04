@@ -237,28 +237,12 @@ export class AiService {
     });
   }
 
-  private async getCategoriesByGoalId(goalId: number): Promise<Category[]> {
-    return this.categoryRepo.find({
-      where: { savingGoal: { id: goalId } },
-      order: { id: 'ASC' },
-    });
-  }
+
 
   private async getCategories(
     userId: number,
-    goalId?: number,
+    _goalId?: number,
   ): Promise<Category[]> {
-    if (goalId && goalId > 0) {
-      const goalCategories = await this.getCategoriesByGoalId(goalId);
-      if (goalCategories.length > 0) return goalCategories;
-    }
-
-    const selectedGoal = await this.getSelectedGoal(userId);
-    if (selectedGoal) {
-      const goalCategories = await this.getCategoriesByGoalId(selectedGoal.id);
-      if (goalCategories.length > 0) return goalCategories;
-    }
-
     return this.getCategoriesByUserId(userId);
   }
 
@@ -592,11 +576,6 @@ Tin nhan: "${message}"`,
       const user = await this.userRepo.findOne({ where: { id: userId } });
       if (!user) throw new BadRequestException('User not found');
 
-      let savingGoal: SavingGoal | null = null;
-      if (goalId && goalId > 0) {
-        savingGoal = await this.goalRepo.findOne({ where: { id: goalId } });
-      }
-
       const newCat = this.categoryRepo.create({
         name: query.name,
         icon: query.icon ?? '📁',
@@ -604,7 +583,6 @@ Tin nhan: "${message}"`,
         isEssential: query.isEssential ?? true,
         percentage: query.percentage ?? 0,
         user,
-        savingGoal,
       });
 
       const saved = await this.categoryRepo.save(newCat);

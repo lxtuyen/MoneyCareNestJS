@@ -40,6 +40,10 @@ export class SavingGoalsService {
     const user = await this.userRepo.findOne({ where: { id: ownerId } });
     if (!user) throw new NotFoundException('User not found');
 
+    if (!dto.walletId && !dto.create_new_wallet) {
+      throw new Error('Mục tiêu tiết kiệm phải liên kết với một ví (walletId hoặc create_new_wallet = true).');
+    }
+
     const goal = this.goalRepo.create({
       name: dto.name,
       user,
@@ -50,15 +54,6 @@ export class SavingGoalsService {
       end_date: dto.end_date ? new Date(dto.end_date) : null,
       wallet: dto.walletId ? { id: dto.walletId } : null,
     } as Partial<SavingGoal>);
-
-    if (dto.categoryIds?.length) {
-      const categories = await this.categoryRepo.findBy({
-        id: In(dto.categoryIds),
-      });
-      goal.categories = categories;
-    } else {
-      goal.categories = [];
-    }
 
     if (dto.create_new_wallet) {
       const newWallet = this.walletRepo.create({
@@ -73,33 +68,33 @@ export class SavingGoalsService {
     }
 
     const savedGoal = await this.goalRepo.save(goal);
+    // Reload to get wallet relations for response
+    const reloadedGoal = await this.goalRepo.findOne({
+      where: { id: savedGoal.id },
+      relations: ['wallet'],
+    });
+    if (reloadedGoal) {
+      reloadedGoal.saved_amount = reloadedGoal.wallet?.balance || 0;
+    }
 
     return new ApiResponse({
       success: true,
       statusCode: HttpStatus.OK,
-      data: plainToInstance(SavingGoalResponseDto, savedGoal),
+      data: plainToInstance(SavingGoalResponseDto, reloadedGoal),
     });
   }
 
   async findAllByUser(userId: number): Promise<ApiResponse<SavingGoal[]>> {
     const goals = await this.goalRepo.find({
       where: { user: { id: userId } },
-      relations: ['categories', 'wallet'],
+      relations: ['wallet'],
       order: { created_at: 'DESC' },
     });
 
-    const goalsWithBalance = await Promise.all(
-      goals.map(async (goal) => {
-        goal.saved_amount = await this.calculateGoalBalance(
-          goal.id,
-          goal.user?.id ?? userId,
-          goal.start_date || undefined,
-          goal.end_date || undefined,
-          goal.wallet?.id,
-        );
-        return goal;
-      }),
-    );
+    const goalsWithBalance = goals.map(goal => {
+      goal.saved_amount = goal.wallet?.balance || 0;
+      return goal;
+    });
 
     return new ApiResponse({
       success: true,
@@ -111,9 +106,12 @@ export class SavingGoalsService {
   async findOne(id: number, userId?: number): Promise<ApiResponse<SavingGoal>> {
     const goal = await this.goalRepo.findOne({
       where: userId ? { id, user: { id: userId } } : { id },
-      relations: ['categories', 'wallet'],
+      relations: ['wallet'],
     });
     if (!goal) throw new NotFoundException('Saving goal not found');
+    
+    goal.saved_amount = goal.wallet?.balance || 0;
+
     return new ApiResponse({
       success: true,
       statusCode: HttpStatus.OK,
@@ -128,7 +126,7 @@ export class SavingGoalsService {
   ): Promise<ApiResponse<SavingGoal>> {
     const goal = await this.goalRepo.findOne({
       where: userId ? { id, user: { id: userId } } : { id },
-      relations: ['categories', 'wallet'],
+      relations: ['wallet'],
     });
     if (!goal) throw new NotFoundException('Saving goal not found');
 
@@ -146,12 +144,7 @@ export class SavingGoalsService {
       goal.wallet = dto.walletId ? ({ id: dto.walletId } as any) : null;
     }
 
-    if (dto.categoryIds && dto.categoryIds.length > 0) {
-      const categories = await this.categoryRepo.findBy({
-        id: In(dto.categoryIds),
-      });
-      goal.categories = categories;
-    }
+
 
     const updated = await this.goalRepo.save(goal);
     return new ApiResponse({
@@ -196,7 +189,7 @@ export class SavingGoalsService {
 
     const goal = await this.goalRepo.findOne({
       where: { id, user: { id: userId } },
-      relations: ['categories', 'wallet'],
+      relations: ['wallet'],
     });
 
     if (!goal) throw new NotFoundException('Saving goal not found');
@@ -213,11 +206,10 @@ export class SavingGoalsService {
   async getGoalReport(id: number, userId?: number) {
     const goal = await this.goalRepo.findOne({
       where: userId ? { id, user: { id: userId } } : { id },
-      relations: ['categories', 'user', 'wallet'],
+      relations: ['user', 'wallet'],
     });
     if (!goal) throw new NotFoundException('Saving goal not found');
 
-    const categoryIds = goal.categories?.map((c) => c.id) || [];
     const categoryMap = new Map<string, number>();
     const { income, expense, transactions } =
       await this.calculateDetailedBalance(
@@ -226,7 +218,7 @@ export class SavingGoalsService {
         goal.end_date || undefined,
         goal.wallet?.id,
       );
-    let current_automated_balance = income - expense;
+    let current_automated_balance = goal.wallet?.balance || 0;
 
     transactions.forEach((t) => {
       if (t.type === 'expense') {

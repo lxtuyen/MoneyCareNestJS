@@ -1,4 +1,4 @@
-import { SavingGoal } from 'src/modules/saving-goals/entities/saving-goal.entity';
+
 import { Transaction } from 'src/modules/transactions/entities/transaction.entity';
 import { User } from 'src/modules/user/entities/user.entity';
 import {
@@ -37,13 +37,6 @@ export class Category {
   @Column({ default: true })
   isEssential: boolean;
 
-  @ManyToOne(() => SavingGoal, (goal) => goal.categories, {
-    onDelete: 'CASCADE',
-    nullable: true,
-  })
-  savingGoal: SavingGoal | null;
-
-  /// Category thuộc về user trực tiếp (không gắn với quỹ)
   @ManyToOne(() => User, (user) => user.categories, {
     onDelete: 'CASCADE',
     nullable: true,

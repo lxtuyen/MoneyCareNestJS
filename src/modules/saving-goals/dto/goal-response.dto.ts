@@ -1,5 +1,5 @@
 import { Expose, Type } from 'class-transformer';
-import { CategoryResponseDto } from 'src/modules/categories/dto/category-response.dto';
+import { Wallet } from 'src/modules/wallets/entities/wallet.entity';
 
 export class SavingGoalResponseDto {
   @Expose()
@@ -21,8 +21,8 @@ export class SavingGoalResponseDto {
   end_date: Date;
 
   @Expose()
-  @Type(() => CategoryResponseDto)
-  categories: CategoryResponseDto[] = [];
+  @Type(() => Wallet)
+  wallet: Wallet;
 
   @Expose()
   created_at: Date;

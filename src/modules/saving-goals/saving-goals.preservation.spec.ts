@@ -84,7 +84,7 @@ describe('Preservation 1 — Create fund with name, dates, categories (MUST PASS
     const mockSavingGoal = {
       id: 1,
       name: 'Test SavingGoal',
-      balance: 1000000,
+
       target: null,
       start_date: new Date('2024-01-01'),
       end_date: new Date('2024-12-31'),
@@ -121,7 +121,7 @@ describe('Preservation 1 — Create fund with name, dates, categories (MUST PASS
     const mockSavingGoal = {
       id: 1,
       name: 'Test SavingGoal',
-      balance: 1000000,
+
       target: null,
       user: mockUser,
     } as SavingGoal;
@@ -209,7 +209,7 @@ describe('Preservation 2 — Category percentage calculation (MUST PASS on unfix
     const mockSavingGoal = {
       id: 1,
       name: 'Test SavingGoal',
-      balance: 1000000,
+
       target: null,
       categories: [],
     } as any as SavingGoal;
@@ -283,7 +283,7 @@ describe('Preservation 3 — Delete fund works correctly (MUST PASS on unfixed c
     const mockSavingGoal = {
       id: 1,
       name: 'Test SavingGoal',
-      balance: 1000000,
+
       target: null,
     } as any as SavingGoal;
 
@@ -342,7 +342,7 @@ describe('Preservation 4 — Select fund works correctly (MUST PASS on unfixed c
     const mockSavingGoal = {
       id: 1,
       name: 'Test SavingGoal',
-      balance: 1000000,
+
       target: null,
       is_selected: false,
       user: { id: 1 },
@@ -420,7 +420,7 @@ describe('PBT Preservation — Create fund with random valid data', () => {
       fc.asyncProperty(
         fc.record({
           name: fc.string({ minLength: 1, maxLength: 100 }),
-          balance: fc.integer({ min: 0, max: 1000000000 }),
+
           target: fc.option(fc.integer({ min: 0, max: 1000000000 })),
           start_date: fc.date(),
           end_date: fc.date(),
@@ -529,7 +529,7 @@ describe('PBT Preservation — Category percentage calculation', () => {
           const mockSavingGoal = {
             id: 1,
             name: 'Test SavingGoal',
-            balance: 1000000,
+      
             target: null,
             categories: [],
           } as any as SavingGoal;

@@ -38,11 +38,6 @@ export class UpdateSavingGoalDto {
   end_date?: string;
 
   @IsOptional()
-  @IsArray()
-  @IsNumber({}, { each: true })
-  categoryIds?: number[];
-
-  @IsOptional()
   @IsNumber()
   walletId?: number;
 }

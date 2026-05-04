@@ -59,7 +59,6 @@ export class TransactionService {
       dto.categoryId
         ? this.categoryRepo.findOne({
             where: { id: dto.categoryId },
-            relations: ['savingGoal'],
           })
         : Promise.resolve(null),
     ]);
@@ -105,36 +104,20 @@ export class TransactionService {
       }
     }
 
-    let currentExpenseTotal = 0;
-    if (dto.type === 'expense' && category?.savingGoal) {
-      const currentExpenseRes = await this.transactionRepo
-        .createQueryBuilder('t')
-        .where('t.category.id = :categoryId', { categoryId: category.id })
-        .andWhere('t.type = :type', { type: 'expense' })
-        .select('SUM(t.amount)', 'total')
-        .getRawOne<{ total: string }>();
+    // Budget alerts will be refactored to be wallet-based if needed
 
-      currentExpenseTotal = Number(currentExpenseRes?.total || 0);
-    }
 
     await this.transactionRepo.save(transaction);
-    await this.invalidateFinancialCache(user.id, [category?.savingGoal?.id ?? 0]);
-
-    if (dto.type === 'expense' && category?.savingGoal) {
-      const limitBase = Number(category.savingGoal.target || 0);
-      const budgetLimit = (limitBase * Number(category.percentage)) / 100;
-      const sumExpensesAfter = currentExpenseTotal + Number(dto.amount);
-
-      if (budgetLimit > 0 && currentExpenseTotal <= budgetLimit && sumExpensesAfter > budgetLimit) {
-        await this.notificationsService.sendPushNotification(
-          user,
-          'Cảnh báo ngân sách',
-          `Khoản chi vừa rồi đã khiến mục "${category.name}" vượt quá ngân sách dự kiến (${budgetLimit.toLocaleString('vi-VN')} đ)!`,
-          undefined,
-          NotificationType.ALERT,
-        );
-      }
+    
+    // Invalidate cache for goals linked to this wallet
+    let affectedGoalIds: number[] = [];
+    if (dto.walletId) {
+      const goals = await this.goalRepo.find({ where: { wallet: { id: dto.walletId } } });
+      affectedGoalIds = goals.map(g => g.id);
     }
+    await this.invalidateFinancialCache(user.id, affectedGoalIds);
+
+
 
     return new ApiResponse({
       success: true,
@@ -149,15 +132,20 @@ export class TransactionService {
   ): Promise<ApiResponse<Transaction>> {
     const transaction = await this.transactionRepo.findOne({
       where: { id },
-      relations: ['category', 'category.savingGoal', 'user', 'wallet'],
+      relations: ['category', 'user', 'wallet'],
     });
     if (!transaction) throw new NotFoundException('Transaction not found');
-    const previousGoalId = transaction.category?.savingGoal?.id ?? 0;
+    
+    // Find goals linked to the old wallet
+    let oldGoalIds: number[] = [];
+    if (transaction.wallet) {
+      const oldGoals = await this.goalRepo.find({ where: { wallet: { id: transaction.wallet.id } } });
+      oldGoalIds = oldGoals.map(g => g.id);
+    }
 
     if (dto.categoryId) {
       const category = await this.categoryRepo.findOne({
         where: { id: dto.categoryId },
-        relations: ['savingGoal'],
       });
       if (!category) throw new NotFoundException('Category not found');
       transaction.category = category;
@@ -231,9 +219,17 @@ export class TransactionService {
     transaction.type = newType;
 
     await this.transactionRepo.save(transaction);
+    
+    // Find goals linked to the new/current wallet
+    let newGoalIds: number[] = [];
+    if (transaction.wallet) {
+      const newGoals = await this.goalRepo.find({ where: { wallet: { id: transaction.wallet.id } } });
+      newGoalIds = newGoals.map(g => g.id);
+    }
+
     await this.invalidateFinancialCache(transaction.user.id, [
-      previousGoalId,
-      transaction.category?.savingGoal?.id ?? 0,
+      ...oldGoalIds,
+      ...newGoalIds,
     ]);
 
     return new ApiResponse({
@@ -567,7 +563,7 @@ export class TransactionService {
   async remove(id: number): Promise<ApiResponse<string>> {
     const transaction = await this.transactionRepo.findOne({
       where: { id },
-      relations: ['category', 'category.savingGoal', 'user', 'wallet'],
+      relations: ['category', 'user', 'wallet'],
     });
     if (!transaction) throw new NotFoundException('Transaction not found');
     
@@ -583,9 +579,13 @@ export class TransactionService {
     }
 
     await this.transactionRepo.remove(transaction);
-    await this.invalidateFinancialCache(transaction.user.id, [
-      transaction.category?.savingGoal?.id ?? 0,
-    ]);
+    // Invalidate cache for goals linked to this wallet
+    let affectedGoalIds: number[] = [];
+    if (transaction.wallet) {
+      const goals = await this.goalRepo.find({ where: { wallet: { id: transaction.wallet.id } } });
+      affectedGoalIds = goals.map(g => g.id);
+    }
+    await this.invalidateFinancialCache(transaction.user.id, affectedGoalIds);
     return new ApiResponse({
       success: true,
       statusCode: HttpStatus.OK,

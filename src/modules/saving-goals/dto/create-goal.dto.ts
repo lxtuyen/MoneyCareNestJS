@@ -28,8 +28,6 @@ export class CreateSavingGoalDto {
   @IsDateString()
   end_date?: string;
 
-  @IsOptional()
-  categoryIds?: number[];
 
   @IsNumber()
   @IsOptional()

@@ -29,7 +29,6 @@ export class CategoriesService {
         percentage: dto.percentage ?? 0,
         type: dto.type,
         isEssential: dto.isEssential ?? true,
-        savingGoal: null,
         user,
       }),
     );

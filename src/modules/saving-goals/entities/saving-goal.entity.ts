@@ -25,15 +25,6 @@ export class SavingGoal {
     type: 'decimal',
     precision: 15,
     scale: 2,
-    default: 0,
-    transformer: new ColumnNumericTransformer(),
-  })
-  balance: number;
-
-  @Column({
-    type: 'decimal',
-    precision: 15,
-    scale: 2,
     nullable: true,
     transformer: new ColumnNumericTransformer(),
   })
@@ -76,11 +67,8 @@ export class SavingGoal {
   @ManyToOne(() => User, (user) => user.savingGoals, { onDelete: 'CASCADE' })
   user: User;
 
-  @OneToMany(() => Category, (category) => category.savingGoal)
-  categories: Category[];
-
-  @ManyToOne(() => Wallet, { nullable: true, onDelete: 'SET NULL' })
-  wallet?: Wallet | null;
+  @ManyToOne(() => Wallet, { nullable: false, onDelete: 'CASCADE' })
+  wallet: Wallet;
 
   @CreateDateColumn()
   created_at: Date;
