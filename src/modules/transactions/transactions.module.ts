@@ -11,6 +11,7 @@ import { Wallet } from 'src/modules/wallets/entities/wallet.entity';
 import { NotificationsModule } from 'src/modules/notifications/notifications.module';
 import { MailModule } from '../mailer/mail.module';
 import { TransactionExportService } from './transactions-export.service';
+import { SavingGoalsModule } from 'src/modules/saving-goals/saving-goals.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { TransactionExportService } from './transactions-export.service';
     forwardRef(() => UserModule),
     NotificationsModule,
     MailModule,
+    SavingGoalsModule,
   ],
   controllers: [TransactionController],
   providers: [TransactionService, TransactionExportService],

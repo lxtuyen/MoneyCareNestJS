@@ -10,6 +10,10 @@ export class ExportTransactionDto {
   savingGoalId?: number;
 
   @IsOptional()
+  @IsNumber()
+  walletId?: number;
+
+  @IsOptional()
   @IsDateString()
   startDate?: string;
 
