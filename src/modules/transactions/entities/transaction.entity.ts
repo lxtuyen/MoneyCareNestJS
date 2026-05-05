@@ -28,7 +28,7 @@ export class Transaction {
   note: string;
 
   @Column({ nullable: true })
-  pictuteURL: string;
+  pictureURL: string;
 
   @CreateDateColumn()
   created_at: Date;

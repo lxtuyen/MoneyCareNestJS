@@ -6,6 +6,7 @@ import { UserProfile } from 'src/modules/user-profile/entities/user-profile.enti
 import { DeviceToken } from 'src/modules/notifications/entities/device-token.entity';
 import { Notification } from 'src/modules/notifications/entities/notification.entity';
 import { Wallet } from 'src/modules/wallets/entities/wallet.entity';
+import { GamificationEntity } from 'src/modules/gamification/entities/gamification.entity';
 import {
   Entity,
   PrimaryGeneratedColumn,
@@ -30,9 +31,6 @@ export class User {
 
   @Column({ nullable: true, select: false })
   password: string;
-
-  @Column({ default: false })
-  isVip: boolean;
 
   @Column({ type: 'enum', enum: UserRole, default: UserRole.USER })
   role: UserRole;
@@ -66,4 +64,7 @@ export class User {
 
   @OneToMany(() => Wallet, (wallet) => wallet.user)
   wallets: Wallet[];
+
+  @OneToOne(() => GamificationEntity, (gamification) => gamification.user)
+  gamification: GamificationEntity;
 }

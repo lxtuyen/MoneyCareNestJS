@@ -4,7 +4,10 @@ import {
   Column,
   CreateDateColumn,
   UpdateDateColumn,
+  OneToOne,
+  JoinColumn,
 } from 'typeorm';
+import { User } from 'src/modules/user/entities/user.entity';
 
 export interface BadgeEntity {
   key: 'streak_7' | 'streak_30' | 'goal_completed';
@@ -23,6 +26,10 @@ export class GamificationEntity {
 
   @Column({ unique: true })
   userId: number;
+
+  @OneToOne(() => User, (user) => user.gamification, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'userId' })
+  user: User;
 
   /**
    * Number of consecutive days the user has recorded at least 1 transaction.

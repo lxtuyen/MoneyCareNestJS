@@ -45,10 +45,10 @@ export class SavingGoal {
   @Column({ type: 'varchar', nullable: true })
   template_key: string | null;
 
-  @Column({ type: 'timestamp', nullable: true })
+  @Column({ type: 'timestamp with time zone', nullable: true })
   start_date: Date | null;
 
-  @Column({ type: 'timestamp', nullable: true })
+  @Column({ type: 'timestamp with time zone', nullable: true })
   end_date: Date | null;
 
   @Column({

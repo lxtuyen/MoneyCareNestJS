@@ -9,6 +9,7 @@ import {
   UpdateDateColumn,
   CreateDateColumn,
   OneToMany,
+  DeleteDateColumn,
 } from 'typeorm';
 
 export enum CategoryType {
@@ -51,4 +52,7 @@ export class Category {
 
   @UpdateDateColumn()
   updated_at: Date;
+
+  @DeleteDateColumn()
+  deleted_at?: Date;
 }

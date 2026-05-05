@@ -12,9 +12,7 @@ import { UserModule } from './modules/user/user.module';
 import { OtpModule } from './modules/otp/otp.module';
 import { MailModule } from './modules/mailer/mail.module';
 import { ScheduleModule } from '@nestjs/schedule';
-import { PaymentsModule } from './modules/payment/payment.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
-import { FinanceModeModule } from './modules/finance-mode/finance-mode.module';
 import { GamificationModule } from './modules/gamification/gamification.module';
 import { SavingGoalsModule } from './modules/saving-goals/saving-goals.module';
 import { AiModule } from './modules/ai/ai.module';
@@ -56,9 +54,7 @@ import { WalletsModule } from './modules/wallets/wallets.module';
     UserModule,
     OtpModule,
     MailModule,
-    PaymentsModule,
     NotificationsModule,
-    FinanceModeModule,
     GamificationModule,
     AiModule,
     RecurringTransactionsModule,

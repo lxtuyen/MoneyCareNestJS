@@ -57,7 +57,6 @@ export class AuthService {
     });
     await this.userRepo.save(user);
 
-    // Create default wallet
     const wallet = this.walletRepo.create({
       name: 'Ví 1',
       balance: 0,
@@ -110,7 +109,6 @@ export class AuthService {
         user: {
           id: user.id,
           email: user.email,
-          isVip: user.isVip,
           profile: user.profile,
           savingGoal: selectedGoal || null,
           hasCategories: user.categories?.length > 0,
@@ -159,7 +157,6 @@ export class AuthService {
 
         await this.userRepo.save(user);
 
-        // Create default wallet
         const wallet = this.walletRepo.create({
           name: 'Ví 1',
           balance: 0,
@@ -189,7 +186,6 @@ export class AuthService {
           user: {
             id: user.id,
             email: user.email,
-            isVip: user.isVip,
             profile: user.profile,
             savingGoal: selectedGoal,
             hasCategories: user.categories?.length > 0,
