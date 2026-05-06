@@ -12,9 +12,6 @@ export class CategoryResponseDto {
   icon: string;
 
   @Expose()
-  percentage: number;
-
-  @Expose()
   type: CategoryType;
 
   @Expose()

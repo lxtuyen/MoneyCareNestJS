@@ -455,7 +455,6 @@ QUY TAC TRICH XUAT:
    - 'others': neu khac.
 4. icon: Bieu tuong emoji phu hop (vd: 🍔 cho an uong, 🚗 cho di lai). Neu nguoi dung khong noi, hay TU DONG GOI Y icon phu hop theo ten danh muc.
 5. isEssential: true neu la nhu cau thiet yeu (an, o, di chuyen), false neu la huong thu/khac. Mac dinh true.
-6. percentage: null hoac con so % neu co de cap.
 
 Hom nay la ${new Date().toISOString()}.
 Tin nhan: "${message}"`,
@@ -493,16 +492,6 @@ Tin nhan: "${message}"`,
                         description: 'Emoji dai dien',
                         nullable: true,
                       },
-                      isEssential: {
-                        type: Type.BOOLEAN,
-                        description: 'Co phai thiet yeu khong',
-                        nullable: true,
-                      },
-                      percentage: {
-                        type: Type.NUMBER,
-                        description: 'Phan tram ngan sach',
-                        nullable: true,
-                      },
                     },
                     required: ['action'],
                   },
@@ -523,8 +512,6 @@ Tin nhan: "${message}"`,
         name: args.name ?? null,
         type: args.type ?? 'expense',
         icon: args.icon ?? null,
-        isEssential: args.isEssential ?? true,
-        percentage: args.percentage ?? null,
       };
     } catch (error) {
       this.logger.error('Parse category query failed', error);
@@ -533,8 +520,6 @@ Tin nhan: "${message}"`,
         name: null,
         type: 'expense',
         icon: null,
-        isEssential: true,
-        percentage: null,
       };
     }
   }
@@ -558,7 +543,6 @@ Tin nhan: "${message}"`,
             name: c.name,
             icon: c.icon,
             type: c.type,
-            isEssential: c.isEssential,
           })),
         })}`,
       };
@@ -580,12 +564,11 @@ Tin nhan: "${message}"`,
         name: query.name,
         icon: query.icon ?? '📁',
         type: query.type as any,
-        isEssential: query.isEssential ?? true,
-        percentage: query.percentage ?? 0,
         user,
       });
 
       const saved = await this.categoryRepo.save(newCat);
+      const savedEntity = Array.isArray(saved) ? saved[0] : saved;
 
       return {
         success: true,
@@ -593,10 +576,10 @@ Tin nhan: "${message}"`,
         message: `${MSG_PREFIX.CATEGORY_CREATED}${JSON.stringify({
           action: 'add_category',
           category: {
-            id: saved.id,
-            name: saved.name,
-            icon: saved.icon,
-            type: saved.type,
+            id: savedEntity.id,
+            name: savedEntity.name,
+            icon: savedEntity.icon,
+            type: savedEntity.type,
           },
         })}`,
       };

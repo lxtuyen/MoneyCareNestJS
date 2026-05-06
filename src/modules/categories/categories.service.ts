@@ -26,7 +26,6 @@ export class CategoriesService {
       this.categoryRepo.create({
         name: dto.name,
         icon: dto.icon,
-        percentage: dto.percentage ?? 0,
         type: dto.type,
         isEssential: dto.isEssential ?? true,
         user,
@@ -65,7 +64,6 @@ export class CategoriesService {
     if (dto.icon) category.icon = dto.icon;
     if (dto.isEssential !== undefined) category.isEssential = dto.isEssential;
     if (dto.type) category.type = dto.type;
-    if (dto.percentage !== undefined) category.percentage = dto.percentage;
 
     const saved = await this.categoryRepo.save(category);
 

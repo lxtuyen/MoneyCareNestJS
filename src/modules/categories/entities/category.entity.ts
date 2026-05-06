@@ -29,9 +29,6 @@ export class Category {
   @Column({ nullable: true })
   icon: string;
 
-  @Column({ type: 'float', default: 0 })
-  percentage: number;
-
   @Column({ type: 'enum', enum: CategoryType, default: CategoryType.EXPENSE })
   type: CategoryType;
 

@@ -90,7 +90,7 @@ export class TransactionService {
       user,
       category,
       wallet: dto.walletId ? ({ id: dto.walletId } as any) : null,
-      pictuteURL: dto.pictuteURL,
+      pictureURL: dto.pictureURL,
     });
 
     if (dto.walletId) {
@@ -155,7 +155,7 @@ export class TransactionService {
     transaction.amount = dto.amount ?? transaction.amount;
     transaction.type = dto.type ?? transaction.type;
     transaction.note = dto.note ?? transaction.note;
-    transaction.pictuteURL = dto.pictuteURL ?? transaction.pictuteURL;
+    transaction.pictureURL = dto.pictureURL ?? transaction.pictureURL;
     if (dto.transactionDate) {
       const parsedDate = new Date(dto.transactionDate);
       if (!isNaN(parsedDate.getTime())) {
@@ -246,7 +246,6 @@ export class TransactionService {
       .createQueryBuilder('category')
       .select('category.id', 'categoryId')
       .addSelect('category.name', 'categoryName')
-      .addSelect('category.percentage', 'percentage')
       .addSelect('category.icon', 'categoryIcon');
 
     categoryQuery
@@ -281,17 +280,20 @@ export class TransactionService {
       .groupBy('category.id');
 
     const [categories, totals] = await Promise.all([
-      categoryQuery.getRawMany<{
-        categoryId: number;
-        categoryName: string;
-        percentage: number;
-        categoryIcon: string;
-        target: string | null;
-      }>(),
-      transactionQuery.getRawMany<{
-        categoryId: number | null;
-        total: string;
-      }>(),
+      categoryQuery.getRawMany() as Promise<
+        Array<{
+          categoryId: number;
+          categoryName: string;
+          categoryIcon: string;
+          target: string | null;
+        }>
+      >,
+      transactionQuery.getRawMany() as Promise<
+        Array<{
+          categoryId: number | null;
+          total: string;
+        }>
+      >,
     ]);
 
     const totalMap = new Map(
@@ -312,10 +314,8 @@ export class TransactionService {
         category_id: Number(cat.categoryId),
         categoryName: cat.categoryName,
         categoryIcon: cat.categoryIcon,
-        percentage: Number(cat.percentage),
         spendingPercentage:
           grandTotal > 0 ? Math.round((spent / grandTotal) * 100) : 0,
-        limit: (Number(cat.percentage) * Number(cat.target || 0)) / 100,
         total: spent,
       };
     });
@@ -391,10 +391,10 @@ export class TransactionService {
     const [incomeTotalRes, expenseTotalRes] = await Promise.all([
       incomeQuery
         .select('SUM(transaction.amount)', 'total')
-        .getRawOne<{ total: string }>(),
+        .getRawOne() as Promise<{ total: string } | undefined>,
       expenseQuery
         .select('SUM(transaction.amount)', 'total')
-        .getRawOne<{ total: string }>(),
+        .getRawOne() as Promise<{ total: string } | undefined>,
     ]);
 
     const goal = null;
@@ -648,6 +648,7 @@ export class TransactionService {
       walletId?: number;
       startDate?: string;
       endDate?: string;
+      pictureURL?: string;
       withRelations?: boolean;
       categoryName?: string;
     } = {},
@@ -678,7 +679,7 @@ export class TransactionService {
     }
     
     const now = new Date();
-    const offset = 7 * 60; // Vietnam is UTC+7
+    const offset = 7 * 60;
     const vnNow = new Date(now.getTime() + (offset + now.getTimezoneOffset()) * 60000);
     const y = vnNow.getFullYear();
     const m = vnNow.getMonth();
@@ -687,7 +688,6 @@ export class TransactionService {
     if (startDate && startDate !== 'null' && startDate !== 'undefined') {
       start = new Date(startDate);
     } else {
-      // Start of current month in VN
       start = new Date(Date.UTC(y, m, 1, -7, 0, 0)); 
     }
 
@@ -695,7 +695,6 @@ export class TransactionService {
     if (endDate && endDate !== 'null' && endDate !== 'undefined') {
       end = new Date(endDate);
     } else {
-      // End of current month in VN
       const lastDay = new Date(y, m + 1, 0).getDate();
       end = new Date(Date.UTC(y, m, lastDay, 16, 59, 59, 999));
     }

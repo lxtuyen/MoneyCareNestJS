@@ -10,12 +10,6 @@ export class CreateCategoryDto {
   icon?: string;
 
   @IsOptional()
-  @IsNumber()
-  @Min(0)
-  @Max(100)
-  percentage?: number;
-
-  @IsOptional()
   @IsEnum(CategoryType)
   type?: CategoryType;
 

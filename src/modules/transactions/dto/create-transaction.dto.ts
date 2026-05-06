@@ -19,7 +19,7 @@ export class CreateTransactionDto {
 
   @IsOptional()
   @IsString()
-  pictuteURL?: string;
+  pictureURL?: string;
 
   @IsOptional()
   @IsDateString()

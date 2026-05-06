@@ -67,8 +67,6 @@ export type CategoryQuery = {
   name: string | null;
   type: 'income' | 'expense' | 'others';
   icon: string | null;
-  isEssential: boolean | null;
-  percentage: number | null;
 };
 
 export type CategoryQueryResult = {
