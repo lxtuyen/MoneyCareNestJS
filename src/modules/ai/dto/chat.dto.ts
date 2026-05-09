@@ -8,5 +8,11 @@ export class ChatDto {
   @IsNumber()
   userId: number;
 
-}
+  @IsOptional()
+  @IsString()
+  ocrText?: string;
 
+  @IsOptional()
+  @IsString()
+  ocrLines?: string;
+}

@@ -31,7 +31,6 @@ import {
   buildAiAnalysisRegistryKey,
 } from 'src/common/cache/financial-cache.util';
 
-//const DEFAULT_MODEL = 'gemma-4-26b-a4b-it';
 const DEFAULT_MODEL = 'gemini-2.5-flash-lite';
 const AI_ANALYSIS_TTL_SECONDS = 300;
 const AI_ANALYSIS_REGISTRY_TTL_SECONDS = 300;
@@ -44,6 +43,47 @@ const MSG_PREFIX = {
   CATEGORY_LIST: '__CATEGORY_LIST__',
   CATEGORY_CREATED: '__CATEGORY_CREATED__',
 };
+
+interface ReceiptOcrLine {
+  text: string;
+  x?: number;
+  y?: number;
+  w?: number;
+  h?: number;
+}
+
+interface ReceiptRuleCandidate {
+  merchantName?: string;
+  transactionDate?: string;
+  totalAmount?: number;
+  currency?: string;
+  confidence?: number;
+  warnings?: string[];
+}
+
+export interface ScanReceiptModel {
+  rawText: string;
+  merchantName: string;
+  address: string;
+  date: string;
+  totalAmount: number;
+  currency: string;
+  categoryKey: string;
+  categoryName: string;
+  suggestedNote?: string;
+}
+
+export interface ScanReceiptResponse {
+  raw_text: string;
+  merchant_name: string;
+  address: string;
+  date: string;
+  total_amount: number;
+  currency: string;
+  category_key: string;
+  category_name: string;
+  suggested_note?: string;
+}
 
 function normalizeAmount(amount: number | null): number | null {
   if (!amount || amount <= 0) return null;
@@ -63,6 +103,57 @@ function isValidDate(dateStr: string | null | undefined): boolean {
   if (!dateStr) return false;
   const d = new Date(dateStr);
   return d instanceof Date && !isNaN(d.getTime());
+}
+
+function todayIsoDate(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function normalizeIsoDate(value: unknown): string | null {
+  if (typeof value !== 'string' || !value.trim()) return null;
+
+  const trimmed = value.trim();
+  const direct = /^(\d{4})-(\d{2})-(\d{2})$/.exec(trimmed);
+  if (direct) {
+    const date = new Date(`${trimmed}T00:00:00.000Z`);
+    if (
+      date.getUTCFullYear() === Number(direct[1]) &&
+      date.getUTCMonth() + 1 === Number(direct[2]) &&
+      date.getUTCDate() === Number(direct[3])
+    ) {
+      return trimmed;
+    }
+    return null;
+  }
+
+  const parsed = new Date(trimmed);
+  if (!Number.isNaN(parsed.getTime())) {
+    return parsed.toISOString().slice(0, 10);
+  }
+
+  const vnDate = /^(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})$/.exec(trimmed);
+  if (!vnDate) return null;
+
+  const day = vnDate[1].padStart(2, '0');
+  const month = vnDate[2].padStart(2, '0');
+  const year =
+    vnDate[3].length === 2 ? `20${vnDate[3]}` : vnDate[3].padStart(4, '0');
+  return normalizeIsoDate(`${year}-${month}-${day}`);
+}
+
+function coerceString(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function coerceAmount(value: unknown): number {
+  const numeric =
+    typeof value === 'number'
+      ? value
+      : typeof value === 'string'
+        ? Number(value.replace(/[^\d.-]/g, ''))
+        : 0;
+  if (!Number.isFinite(numeric) || numeric <= 0) return 0;
+  return Math.round(numeric);
 }
 
 @Injectable()
@@ -127,6 +218,249 @@ export class AiService {
       model,
       contents: [{ role: 'user', parts }],
     });
+  }
+
+  private safeJsonParse<T>(value: unknown, fallback: T): T {
+    if (typeof value !== 'string' || !value.trim()) return fallback;
+    try {
+      return JSON5.parse(value) as T;
+    } catch {
+      return fallback;
+    }
+  }
+
+  private parseReceiptLines(value: unknown): ReceiptOcrLine[] {
+    const parsed = this.safeJsonParse<unknown>(value, []);
+    if (!Array.isArray(parsed)) return [];
+
+    return parsed
+      .map<ReceiptOcrLine | null>((item) => {
+        if (!item || typeof item !== 'object') return null;
+        const line = item as Record<string, unknown>;
+        const text = coerceString(line.text);
+        if (!text) return null;
+        const parsedLine: ReceiptOcrLine = {
+          text,
+          x: Number.isFinite(Number(line.x)) ? Number(line.x) : undefined,
+          y: Number.isFinite(Number(line.y)) ? Number(line.y) : undefined,
+          w: Number.isFinite(Number(line.w)) ? Number(line.w) : undefined,
+          h: Number.isFinite(Number(line.h)) ? Number(line.h) : undefined,
+        };
+        return parsedLine;
+      })
+      .filter((line): line is ReceiptOcrLine => line !== null);
+  }
+
+  private parseRuleCandidate(value: unknown): ReceiptRuleCandidate {
+    const parsed = this.safeJsonParse<unknown>(value, {});
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return {};
+    }
+
+    const raw = parsed as Record<string, unknown>;
+    const warnings = Array.isArray(raw.warnings)
+      ? raw.warnings
+          .map((warning) => coerceString(warning))
+          .filter((warning) => warning.length > 0)
+      : undefined;
+
+    return {
+      merchantName: coerceString(raw.merchantName),
+      transactionDate: coerceString(raw.transactionDate),
+      totalAmount: coerceAmount(raw.totalAmount),
+      currency: coerceString(raw.currency),
+      confidence:
+        Number.isFinite(Number(raw.confidence)) ? Number(raw.confidence) : 0,
+      warnings,
+    };
+  }
+
+  private extractJsonObject(rawText: string): Record<string, unknown> {
+    let raw = (rawText || '').trim();
+    if (raw.startsWith('```')) {
+      raw = raw
+        .replace(/```[\w]*\n?/g, '')
+        .replace(/```$/, '')
+        .trim();
+    }
+
+    try {
+      const parsed = JSON5.parse(raw);
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+        ? (parsed as Record<string, unknown>)
+        : {};
+    } catch {
+      const start = raw.indexOf('{');
+      const end = raw.lastIndexOf('}');
+      if (start < 0 || end <= start) return {};
+      try {
+        const parsed = JSON5.parse(raw.slice(start, end + 1));
+        return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+          ? (parsed as Record<string, unknown>)
+          : {};
+      } catch {
+        return {};
+      }
+    }
+  }
+
+  private validateReceiptResult(
+    raw: Record<string, unknown>,
+    rawText: string,
+    ruleCandidate: ReceiptRuleCandidate,
+  ): ScanReceiptModel {
+    const fallbackDate =
+      normalizeIsoDate(ruleCandidate.transactionDate) ?? todayIsoDate();
+    const date = normalizeIsoDate(raw.date) ?? fallbackDate;
+    const parsedAmount = coerceAmount(raw.totalAmount);
+    const ruleAmount = coerceAmount(ruleCandidate.totalAmount);
+
+    return {
+      rawText: rawText || coerceString(raw.rawText),
+      merchantName: coerceString(raw.merchantName),
+      address: coerceString(raw.address),
+      date,
+      totalAmount: parsedAmount > 0 ? parsedAmount : ruleAmount,
+      currency: coerceString(raw.currency) || ruleCandidate.currency || 'VND',
+      categoryKey: coerceString(raw.categoryKey),
+      categoryName: coerceString(raw.categoryName),
+    };
+  }
+
+  private toScanReceiptResponse(result: ScanReceiptModel): ScanReceiptResponse {
+    return {
+      raw_text: result.rawText,
+      merchant_name: result.merchantName,
+      address: result.address,
+      date: result.date,
+      total_amount: result.totalAmount,
+      currency: result.currency,
+      category_key: result.categoryKey,
+      category_name: result.categoryName,
+      suggested_note: result.suggestedNote,
+    };
+  }
+
+  private buildReceiptPrompt(
+    rawText: string,
+    ocrLines: ReceiptOcrLine[],
+    ruleCandidate: ReceiptRuleCandidate,
+    hasExternalOcr: boolean,
+    categories: Category[],
+  ): string {
+    const ocrLinesBlock = ocrLines.length
+      ? JSON.stringify(ocrLines)
+      : '[]';
+    const ruleBlock = JSON.stringify(ruleCandidate);
+    const categoryNames = categories.map(c => c.name).join(', ');
+
+    return `
+ Ban la parser hoa don tieng Viet cho ung dung Money Care.
+ Ban la mot chuyen gia ve trich xuat du lieu tu anh/text hoa don.
+ 
+ NHIEM VU: Trich xuat thong tin hoa don va chi tra ve JSON hop le, dung schema.
+ 
+ SCHEMA BAT BUOC:
+ {
+   "rawText": string,
+   "merchantName": string,
+   "address": string,
+   "date": "YYYY-MM-DD",
+   "totalAmount": integer,
+   "currency": "VND",
+   "categoryKey": string,
+   "categoryName": string,
+   "suggestedNote": string
+ }
+ 
+ NGUON DU LIEU:
+ - Co OCR text/lines tu frontend: ${hasExternalOcr ? 'co' : 'khong'}.
+ - rawText OCR:
+ ${rawText || '(khong co raw text)'}
+ - ocrLines JSON:
+ ${ocrLinesBlock}
+ - ruleCandidate JSON:
+ ${ruleBlock}
+ 
+ QUY TAC PHAN LOAI:
+ - Hay chon categoryName phu hop nhat tu danh sach nay: [${categoryNames}].
+ - Neu khong tim thay ten cua hang, hay nhin vao danh sach cac mon hang (items) de phan loai.
+ - Vi du: Neu co "Oc huong", "Cua hap", "Budweiser", "Hau nuong" -> CHAC CHAN la "An uong".
+ - Neu la sieu thi, cho, thuc pham tuoi song -> Chon "Di cho" hoac "Mua sam".
+ - Neu khong co cai nao hop le, hay tra ve "Khac".
+ 
+ QUY TAC TRICH XUAT:
+ 1. Khong duoc tu bia du lieu. 
+ 2. totalAmount phai la so nguyen duong. Neu thay nhieu con so, hay tim "Tong cong", "Thanh tien", "Total", "Tong thanh toan".
+ 3. Neu khong co ten cua hang ro rang, hay de merchantName la "Cua hang" hoac ten mon do dau tien.
+ 4. currency mac dinh la "VND".
+ 5. date phai la YYYY-MM-DD. Neu khong co nam, hay lay nam hien tai (2024).
+ 6. suggestedNote: Tao mot ghi chu ngan gon, tu nhien. Neu co ten mon an thi ghi "An [ten mon dau tien]...", neu khong thi ghi "Mua sam tai [ten cua hang]".
+ 7. Chi tra ve mot JSON object duy nhat, khong co text giai thich, khong markdown.
+ `.trim();
+  }
+
+  async scanReceipt(
+    file: Express.Multer.File | undefined,
+    body: Record<string, string | undefined>,
+    categories: Category[] = [],
+  ): Promise<ApiResponse<ScanReceiptResponse>> {
+    const ocrText = coerceString(body?.ocrText);
+    const ocrLines = this.parseReceiptLines(body?.ocrLines);
+    const ruleCandidate = this.parseRuleCandidate(body?.ruleCandidate);
+    const hasExternalOcr = Boolean(ocrText || ocrLines.length);
+
+    if (!hasExternalOcr && !file?.buffer) {
+      throw new BadRequestException('Receipt image or OCR text is required.');
+    }
+
+    const rawText = ocrText || ocrLines.map((line) => line.text).join('\n');
+    
+    // If categories are not provided (e.g. from direct API call), try to fetch them if userId exists
+    let activeCategories = categories;
+    const userId = Number(body?.userId);
+    if (activeCategories.length === 0 && !isNaN(userId)) {
+      activeCategories = await this.getCategories(userId);
+    }
+
+    const prompt = this.buildReceiptPrompt(
+      rawText,
+      ocrLines,
+      ruleCandidate,
+      hasExternalOcr,
+      activeCategories,
+    );
+
+    try {
+      const result = await this.generateContent(
+        prompt,
+        hasExternalOcr ? undefined : file?.buffer,
+        hasExternalOcr ? undefined : file?.mimetype,
+        this.parseModel,
+      );
+      const parsed = this.extractJsonObject(result.text || '');
+      const data = this.toScanReceiptResponse(
+        this.validateReceiptResult(parsed, rawText, ruleCandidate),
+      );
+
+      return {
+        success: true,
+        statusCode: HttpStatus.OK,
+        data,
+        message: 'Scan receipt successfully',
+      };
+    } catch (error) {
+      this.logger.error('Scan receipt failed', error);
+      const data = this.toScanReceiptResponse(
+        this.validateReceiptResult({}, rawText, ruleCandidate),
+      );
+      return {
+        success: true,
+        statusCode: HttpStatus.OK,
+        data,
+        message: 'Scan receipt fallback result',
+      };
+    }
   }
 
   private buildChatCacheKey(message: string): string {
@@ -236,8 +570,6 @@ export class AiService {
       order: { id: 'ASC' },
     });
   }
-
-
 
   private async getCategories(
     userId: number,
@@ -666,10 +998,17 @@ Tin nhan: "${message}"`,
   async handle(
     message: string | undefined,
     userIdRaw: unknown,
+    file?: Express.Multer.File,
+    ocrText?: string,
+    ocrLines?: string,
   ): Promise<ApiResponse<string>> {
     const userId = Number(userIdRaw);
     if (!Number.isFinite(userId)) {
       throw new BadRequestException('userId must be a number');
+    }
+
+    if (ocrText) {
+      return this.handleReceiptOcr(userId, ocrText, ocrLines);
     }
 
     const goalId = (await this.financialInsightsService.getSelectedGoalId(userId)) ?? 0;
@@ -794,6 +1133,7 @@ Tin nhan: "${message}"`,
             }),
             walletName: selectedWallet?.name,
             note: dto.note,
+            isAutoFromReceipt: true,
           })}`,
         };
       }
@@ -1069,5 +1409,145 @@ Cau hoi: "${text}"`,
         (w) => norm(w.name).includes(normalized) || normalized.includes(norm(w.name)),
       );
     return match?.id;
+  }
+
+  private async handleReceiptOcr(
+    userId: number,
+    ocrText: string,
+    ocrLines?: string,
+  ): Promise<ApiResponse<string>> {
+    this.logger.log(`[handleReceiptOcr] Starting for userId=${userId}`);
+    try {
+      const goalId = (await this.financialInsightsService.getSelectedGoalId(userId)) ?? 0;
+      const categories = await this.getCategories(userId, goalId);
+      const wallets = await this.walletRepo.find({
+        where: { user: { id: userId }, is_active: true },
+      });
+
+      // 1. Scan receipt using Gemini
+      this.logger.log(`[handleReceiptOcr] Scanning receipt with Gemini...`);
+      const scanBody = { ocrText, ocrLines };
+      const scanResult = await this.scanReceipt(undefined, scanBody, categories);
+
+      if (!scanResult.success || !scanResult.data) {
+        this.logger.warn(`[handleReceiptOcr] Scan failed: ${scanResult.message}`);
+        return {
+          success: false,
+          statusCode: 400,
+          message: 'Không thể xử lý hóa đơn này. Vui lòng thử lại.',
+        };
+      }
+
+      const data = scanResult.data;
+      let amount = data.total_amount;
+      this.logger.log(`[handleReceiptOcr] Extracted amount from AI: ${amount}, merchant: ${data.merchant_name}`);
+
+      // Fallback: If AI failed to find amount, try a regex search for the last large number
+      if (amount <= 0 && ocrText) {
+        this.logger.log(`[handleReceiptOcr] AI found 0, attempting regex fallback...`);
+        const lines = ocrText.split('\n');
+        for (let i = lines.length - 1; i >= 0; i--) {
+          const line = lines[i].replace(/[,.]/g, '');
+          const match = line.match(/(\d{4,10})/);
+          if (match) {
+            amount = parseInt(match[1], 10);
+            this.logger.log(`[handleReceiptOcr] Regex fallback found amount: ${amount} at line ${i}`);
+            break;
+          }
+        }
+      }
+
+      if (amount <= 0) {
+        return {
+          success: true,
+          statusCode: 200,
+          message: 'Tôi đã đọc hóa đơn nhưng không tìm thấy số tiền hợp lệ. Bạn vui lòng kiểm tra lại ảnh nhé.',
+        };
+      }
+
+      // 2. Automatic Categorization
+      let pickedCategory = this.pickCategoryByName(
+        categories,
+        data.category_name || data.merchant_name,
+        'expense',
+      );
+
+      if (data.category_name) {
+        const aiMatch = categories.find(c => 
+          norm(c.name).includes(norm(data.category_name)) || 
+          norm(data.category_name).includes(norm(c.name))
+        );
+        if (aiMatch) pickedCategory = aiMatch;
+      }
+
+      if (!pickedCategory) {
+        const fallback = await this.getFallbackCategoryFromDB(userId, 'expense');
+        if (fallback) pickedCategory = fallback;
+      }
+      this.logger.log(`[handleReceiptOcr] Picked category: ${pickedCategory?.name || 'None'}`);
+
+      // 3. Resolve Wallet
+      let walletId: number | undefined;
+      let selectedWallet: Wallet | null = null;
+
+      if (goalId > 0) {
+        const selectedGoal = await this.goalRepo.findOne({
+          where: { id: goalId },
+          relations: ['wallet'],
+        });
+        if (selectedGoal?.wallet && selectedGoal.wallet.is_active) {
+          walletId = selectedGoal.wallet.id;
+          selectedWallet = selectedGoal.wallet;
+        }
+      }
+
+      if (!walletId && wallets.length > 0) {
+        walletId = wallets[0].id;
+        selectedWallet = wallets[0];
+      }
+      this.logger.log(`[handleReceiptOcr] Using wallet: ${selectedWallet?.name || 'None'}`);
+
+      // 4. Save Transaction
+      const dto: CreateTransactionDto = {
+        userId,
+        type: 'expense',
+        amount,
+        note: data.suggested_note || `Hóa đơn tại ${data.merchant_name || 'Cửa hàng'}`,
+        transactionDate: data.date && isValidDate(data.date)
+          ? new Date(data.date).toISOString()
+          : new Date().toISOString(),
+        categoryId: pickedCategory?.id,
+        walletId: walletId,
+      };
+
+      this.logger.log(`[handleReceiptOcr] Saving transaction...`);
+      await this.transactionService.create(dto);
+      this.logger.log(`[handleReceiptOcr] Transaction saved successfully.`);
+
+      return {
+        success: true,
+        statusCode: 200,
+        message: `${MSG_PREFIX.TRANSACTION_SAVED}${JSON.stringify({
+          ...this.mapToAiTransaction({
+            ...dto,
+            id: undefined,
+            category: {
+              name: pickedCategory?.name,
+              icon: pickedCategory?.icon,
+            },
+          }),
+          walletName: selectedWallet?.name,
+          note: dto.note,
+          isAutoFromReceipt: true,
+        })}`,
+      };
+    } catch (error) {
+      this.logger.error('[handleReceiptOcr] Error', error);
+      return {
+        success: false,
+        statusCode: 500,
+        message: `Có lỗi xảy ra khi tự động lưu hóa đơn: ${error.message}`,
+      };
+    }
   }
 }
