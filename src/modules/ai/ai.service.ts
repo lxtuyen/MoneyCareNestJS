@@ -388,6 +388,7 @@ export class AiService {
  - Vi du: Neu co "Oc huong", "Cua hap", "Budweiser", "Hau nuong" -> CHAC CHAN la "An uong".
  - Neu la sieu thi, cho, thuc pham tuoi song -> Chon "Di cho" hoac "Mua sam".
  - Neu khong co cai nao hop le, hay tra ve "Khac".
+ - Luu y: Neu day khong phai la hoa don (vd: trang sach, van ban khong lien quan), hay tra ve JSON voi totalAmount: 0.
  
  QUY TAC TRICH XUAT:
  1. Khong duoc tu bia du lieu. 
@@ -1416,7 +1417,6 @@ Cau hoi: "${text}"`,
     ocrText: string,
     ocrLines?: string,
   ): Promise<ApiResponse<string>> {
-    this.logger.log(`[handleReceiptOcr] Starting for userId=${userId}`);
     try {
       const goalId = (await this.financialInsightsService.getSelectedGoalId(userId)) ?? 0;
       const categories = await this.getCategories(userId, goalId);
@@ -1425,7 +1425,6 @@ Cau hoi: "${text}"`,
       });
 
       // 1. Scan receipt using Gemini
-      this.logger.log(`[handleReceiptOcr] Scanning receipt with Gemini...`);
       const scanBody = { ocrText, ocrLines };
       const scanResult = await this.scanReceipt(undefined, scanBody, categories);
 
@@ -1440,18 +1439,14 @@ Cau hoi: "${text}"`,
 
       const data = scanResult.data;
       let amount = data.total_amount;
-      this.logger.log(`[handleReceiptOcr] Extracted amount from AI: ${amount}, merchant: ${data.merchant_name}`);
 
-      // Fallback: If AI failed to find amount, try a regex search for the last large number
       if (amount <= 0 && ocrText) {
-        this.logger.log(`[handleReceiptOcr] AI found 0, attempting regex fallback...`);
         const lines = ocrText.split('\n');
         for (let i = lines.length - 1; i >= 0; i--) {
           const line = lines[i].replace(/[,.]/g, '');
           const match = line.match(/(\d{4,10})/);
           if (match) {
             amount = parseInt(match[1], 10);
-            this.logger.log(`[handleReceiptOcr] Regex fallback found amount: ${amount} at line ${i}`);
             break;
           }
         }
@@ -1484,9 +1479,7 @@ Cau hoi: "${text}"`,
         const fallback = await this.getFallbackCategoryFromDB(userId, 'expense');
         if (fallback) pickedCategory = fallback;
       }
-      this.logger.log(`[handleReceiptOcr] Picked category: ${pickedCategory?.name || 'None'}`);
 
-      // 3. Resolve Wallet
       let walletId: number | undefined;
       let selectedWallet: Wallet | null = null;
 
@@ -1505,9 +1498,7 @@ Cau hoi: "${text}"`,
         walletId = wallets[0].id;
         selectedWallet = wallets[0];
       }
-      this.logger.log(`[handleReceiptOcr] Using wallet: ${selectedWallet?.name || 'None'}`);
 
-      // 4. Save Transaction
       const dto: CreateTransactionDto = {
         userId,
         type: 'expense',
@@ -1520,9 +1511,7 @@ Cau hoi: "${text}"`,
         walletId: walletId,
       };
 
-      this.logger.log(`[handleReceiptOcr] Saving transaction...`);
       await this.transactionService.create(dto);
-      this.logger.log(`[handleReceiptOcr] Transaction saved successfully.`);
 
       return {
         success: true,
