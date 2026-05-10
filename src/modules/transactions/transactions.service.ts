@@ -251,7 +251,7 @@ export class TransactionService {
     categoryQuery
       .leftJoin('category.user', 'user')
       .addSelect('NULL', 'target')
-      .where('user.id = :userId', { userId: dto.userId });
+      .where('(user.id = :userId OR category.is_system = true)', { userId: dto.userId });
 
     if (dto.type) {
       categoryQuery.andWhere(

@@ -35,6 +35,9 @@ export class Category {
   @Column({ default: true })
   isEssential: boolean;
 
+  @Column({ default: false })
+  is_system: boolean;
+
   @ManyToOne(() => User, (user) => user.categories, {
     onDelete: 'CASCADE',
     nullable: true,

@@ -383,7 +383,9 @@ export class AiService {
  ${ruleBlock}
  
  QUY TAC PHAN LOAI:
- - Hay chon categoryName phu hop nhat tu danh sach nay: [${categoryNames}].
+ - He thong su dung bo danh muc CO DINH.
+ - Ban CHI DUOC PHEP chon categoryName phu hop nhat tu danh sach nay: [${categoryNames}].
+ - TUYET DOI KHONG tu y tao ra ten danh muc moi hoac thay doi ten trong danh sach.
  - Neu khong tim thay ten cua hang, hay nhin vao danh sach cac mon hang (items) de phan loai.
  - Vi du: Neu co "Oc huong", "Cua hap", "Budweiser", "Hau nuong" -> CHAC CHAN la "An uong".
  - Neu la sieu thi, cho, thuc pham tuoi song -> Chon "Di cho" hoac "Mua sam".
@@ -567,8 +569,8 @@ export class AiService {
 
   private async getCategoriesByUserId(userId: number): Promise<Category[]> {
     return this.categoryRepo.find({
-      where: { user: { id: userId } },
-      order: { id: 'ASC' },
+      where: [{ user: { id: userId } }, { is_system: true }],
+      order: { is_system: 'DESC', id: 'ASC' },
     });
   }
 
@@ -876,45 +878,17 @@ Tin nhan: "${message}"`,
             name: c.name,
             icon: c.icon,
             type: c.type,
+            is_system: c.is_system,
           })),
         })}`,
       };
     }
 
     if (query.action === 'add_category') {
-      if (!query.name) {
-        return {
-          success: true,
-          statusCode: 200,
-          message: 'Vui lòng cung cấp tên danh mục bạn muốn thêm.',
-        };
-      }
-
-      const user = await this.userRepo.findOne({ where: { id: userId } });
-      if (!user) throw new BadRequestException('User not found');
-
-      const newCat = this.categoryRepo.create({
-        name: query.name,
-        icon: query.icon ?? '📁',
-        type: query.type as any,
-        user,
-      });
-
-      const saved = await this.categoryRepo.save(newCat);
-      const savedEntity = Array.isArray(saved) ? saved[0] : saved;
-
       return {
         success: true,
         statusCode: 200,
-        message: `${MSG_PREFIX.CATEGORY_CREATED}${JSON.stringify({
-          action: 'add_category',
-          category: {
-            id: savedEntity.id,
-            name: savedEntity.name,
-            icon: savedEntity.icon,
-            type: savedEntity.type,
-          },
-        })}`,
+        message: 'Hiện tại hệ thống chỉ hỗ trợ các danh mục chuẩn để đảm bảo báo cáo chính xác nhất. Bạn vui lòng sử dụng các danh mục có sẵn nhé!',
       };
     }
 
@@ -1238,7 +1212,7 @@ QUY TAC:
 3. Loai giao dich (type) phai chinh xac: 'income' cho thu nhap/luong, 'expense' cho chi tiêu.
 4. Neu khong co thoi gian, tra ve null cho time.
 5. Ghi chú (description) phải ngắn gọn, tập trung vào nội dung chính. TUYỆT ĐỐI KHÔNG lặp lại số tiền trong phần ghi chú này.
-6. category_name: CHỈ BẮT BUỘC chọn từ danh sách: [${options.map((o) => o.name).join(', ')}].
+6. category_name: He thong su dung bo danh muc CO DINH. Ban CHI DUOC PHEP chon tu danh sach: [${options.map((o) => o.name).join(', ')}]. TUYET DOI KHONG tu y tao ra ten danh muc moi.
 7. wallet_name: Neu nguoi dung co nhac den ten vi (vd: "vi ATM", "tien mat", "Momo"), hay trich xuat ten vi do tu danh sach: [${wallets.map((w) => w.name).join(', ')}]. Neu khong nhac den, tra ve null.
 
 Hom nay la: ${new Date().toISOString()}. 

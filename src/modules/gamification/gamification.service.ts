@@ -47,17 +47,24 @@ export class GamificationService {
    * Ensures exactly one record per userId.
    */
   private async findOrCreate(userId: number): Promise<GamificationEntity> {
-    let record = await this.gamificationRepo.findOne({ where: { userId } });
-    if (!record) {
-      record = this.gamificationRepo.create({
+    const record = await this.gamificationRepo.findOne({ where: { userId } });
+    if (record) return record;
+
+    try {
+      const newRecord = this.gamificationRepo.create({
         userId,
         currentStreak: 0,
         lastTransactionDate: null,
         badges: [],
       });
-      record = await this.gamificationRepo.save(record);
+      return await this.gamificationRepo.save(newRecord);
+    } catch (error) {
+      // If error is duplicate key, try finding it one last time
+      if (error.code === '23505') {
+        return await this.gamificationRepo.findOne({ where: { userId } }) as GamificationEntity;
+      }
+      throw error;
     }
-    return record;
   }
 
   /**
