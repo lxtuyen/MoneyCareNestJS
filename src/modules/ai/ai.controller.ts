@@ -28,6 +28,8 @@ export class AiController {
       undefined,
       dto.ocrText,
       dto.ocrLines,
+      dto.latitude,
+      dto.longitude,
     );
   }
 

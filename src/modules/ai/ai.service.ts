@@ -14,6 +14,7 @@ import { Category } from 'src/modules/categories/entities/category.entity';
 import { SavingGoal } from 'src/modules/saving-goals/entities/saving-goal.entity';
 import { User } from 'src/modules/user/entities/user.entity';
 import { TransactionService } from 'src/modules/transactions/transactions.service';
+import { RecommendationsService } from 'src/modules/recommendations/recommendations.service';
 import { Wallet } from 'src/modules/wallets/entities/wallet.entity';
 import { CreateTransactionDto } from 'src/modules/transactions/dto/create-transaction.dto';
 import {
@@ -42,6 +43,7 @@ const MSG_PREFIX = {
   STRUCTURED_ANALYSIS: '__STRUCTURED_ANALYSIS__',
   CATEGORY_LIST: '__CATEGORY_LIST__',
   CATEGORY_CREATED: '__CATEGORY_CREATED__',
+  RECOMMENDATION_LIST: '__RECOMMENDATION_LIST__',
 };
 
 interface ReceiptOcrLine {
@@ -167,6 +169,7 @@ export class AiService {
   constructor(
     private readonly transactionService: TransactionService,
     private readonly financialInsightsService: FinancialInsightsService,
+    private readonly recommendationsService: RecommendationsService,
     private readonly cacheService: CacheService,
     @InjectRepository(SavingGoal)
     private readonly goalRepo: Repository<SavingGoal>,
@@ -976,6 +979,8 @@ Tin nhan: "${message}"`,
     file?: Express.Multer.File,
     ocrText?: string,
     ocrLines?: string,
+    latitude?: number | null,
+    longitude?: number | null,
   ): Promise<ApiResponse<string>> {
     const userId = Number(userIdRaw);
     if (!Number.isFinite(userId)) {
@@ -1005,6 +1010,15 @@ Tin nhan: "${message}"`,
 
     if (this.isGetTransactionRequest(message ?? '')) {
       return this.handleGetTransactions(message ?? '', userId, goalId);
+    }
+
+    if (this.isRecommendationRequest(message ?? '')) {
+      return this.handleRecommendationRequest(
+        message ?? '',
+        userId,
+        latitude,
+        longitude,
+      );
     }
 
     const wallets = await this.walletRepo.find({
@@ -1092,15 +1106,15 @@ Tin nhan: "${message}"`,
           categoryId: pickedCategory?.id,
           walletId: walletId,
         };
-        await this.transactionService.create(dto);
+        const createdTransaction = await this.transactionService.create(dto);
+        const savedTransaction = createdTransaction.data;
 
         return {
           success: true,
           statusCode: 200,
           message: `${MSG_PREFIX.TRANSACTION_SAVED}${JSON.stringify({
             ...this.mapToAiTransaction({
-              ...dto,
-              id: undefined,
+              ...(savedTransaction ?? dto),
               category: {
                 name: pickedCategory?.name,
                 icon: pickedCategory?.icon,
@@ -1485,15 +1499,15 @@ Cau hoi: "${text}"`,
         walletId: walletId,
       };
 
-      await this.transactionService.create(dto);
+      const createdTransaction = await this.transactionService.create(dto);
+      const savedTransaction = createdTransaction.data;
 
       return {
         success: true,
         statusCode: 200,
         message: `${MSG_PREFIX.TRANSACTION_SAVED}${JSON.stringify({
           ...this.mapToAiTransaction({
-            ...dto,
-            id: undefined,
+            ...(savedTransaction ?? dto),
             category: {
               name: pickedCategory?.name,
               icon: pickedCategory?.icon,
@@ -1512,5 +1526,185 @@ Cau hoi: "${text}"`,
         message: `Có lỗi xảy ra khi tự động lưu hóa đơn: ${error.message}`,
       };
     }
+  }
+
+  private isRecommendationRequest(message: string): boolean {
+    const normalized = norm(message || '');
+    if (!normalized) return false;
+
+    const keywords = [
+      'gan day',
+      'cho nao',
+      'quan nao',
+      'goi y',
+      'tiem',
+      'cua hang',
+      'sieu thi',
+      'nha hang',
+      'cafe',
+      'cat toc',
+      'lam dep',
+      'uong o dau',
+      'an o dau',
+    ];
+
+    // Tranh trung lap voi yeu cau xem lich su giao dich
+    const getKeywords = ['lich su', 'da chi', 'da thu', 'bao nhieu'];
+    if (getKeywords.some((kw) => normalized.includes(kw))) return false;
+
+    return keywords.some((kw) => normalized.includes(kw));
+  }
+
+  private async parseRecommendationQuery(message: string): Promise<any> {
+    try {
+      const categories = await this.categoryRepo.find({
+        where: { is_system: true },
+      });
+      const response = await this.genAI.models.generateContent({
+        model: this.parseModel,
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              {
+                text: `Ban la tro ly tai chinh thong minh.
+NHIEM VU: Trich xuat thong tin tim kiem dia diem tu tin nhan cua nguoi dung.
+
+QUY TAC TRICH XUAT:
+1. categoryId: Tim ID phu hop nhat tu danh sach: [${categories.map((c) => `${c.id}: ${c.name}`).join(', ')}]. Tra ve null neu khong ro.
+2. radius: Ban kinh tim kiem (met). Mac dinh 1000.
+3. maxPrice: Muc gia (PRICE_LEVEL_INEXPENSIVE, PRICE_LEVEL_MODERATE, PRICE_LEVEL_EXPENSIVE, PRICE_LEVEL_VERY_EXPENSIVE). Tra ve null neu khong ro.
+
+Tin nhan: "${message}"`,
+              },
+            ],
+          },
+        ],
+        config: {
+          tools: [
+            {
+              functionDeclarations: [
+                {
+                  name: 'search_nearby',
+                  description: 'Tim kiem dia diem xung quanh',
+                  parameters: {
+                    type: Type.OBJECT,
+                    properties: {
+                      categoryId: { type: Type.NUMBER, nullable: true },
+                      radius: { type: Type.NUMBER, nullable: true },
+                      maxPrice: { type: Type.STRING, nullable: true },
+                    },
+                  },
+                },
+              ],
+            },
+          ],
+          toolConfig: { functionCallingConfig: { mode: 'ANY' as any } },
+        },
+      });
+
+      const calls = (response as any).functionCalls as any[] | undefined;
+      const query = calls?.[0]?.args || {};
+      return this.applyRecommendationFallback(message, query, categories);
+    } catch (error) {
+      const categories = await this.categoryRepo.find({
+        where: { is_system: true },
+      });
+      return this.applyRecommendationFallback(message, {}, categories);
+    }
+  }
+
+  private applyRecommendationFallback(
+    message: string,
+    query: any,
+    categories: Category[],
+  ): any {
+    const normalized = norm(message || '');
+
+    if (!query.categoryId && this.isFoodRecommendationMessage(normalized)) {
+      const foodCategory = categories.find(
+        (category) => norm(category.name) === 'an uong',
+      );
+      if (foodCategory) {
+        query.categoryId = foodCategory.id;
+      }
+    }
+
+    return {
+      categoryId: query.categoryId ? Number(query.categoryId) : undefined,
+      radius: query.radius ? Number(query.radius) : undefined,
+      maxPrice: query.maxPrice ?? undefined,
+    };
+  }
+
+  private isFoodRecommendationMessage(normalizedMessage: string): boolean {
+    const foodKeywords = [
+      'quan an',
+      'nha hang',
+      'an o dau',
+      'an gi',
+      'bun',
+      'pho',
+      'com',
+      'mi quang',
+      'do an',
+      'mon an',
+    ];
+
+    return foodKeywords.some((keyword) => normalizedMessage.includes(keyword));
+  }
+
+  private async handleRecommendationRequest(
+    message: string,
+    userId: number,
+    latitude?: number | null,
+    longitude?: number | null,
+  ): Promise<ApiResponse<string>> {
+    if (
+      typeof latitude !== 'number' ||
+      typeof longitude !== 'number' ||
+      !Number.isFinite(latitude) ||
+      !Number.isFinite(longitude) ||
+      latitude < -90 ||
+      latitude > 90 ||
+      longitude < -180 ||
+      longitude > 180
+    ) {
+      return {
+        success: true,
+        statusCode: 200,
+        message:
+          'Để tôi có thể tìm kiếm địa điểm chính xác nhất, bạn vui lòng bật vị trí của mình lên nhé!',
+      };
+    }
+
+    const query = await this.parseRecommendationQuery(message);
+    const result = await this.recommendationsService.getNearby(
+      {
+        latitude,
+        longitude,
+        categoryId: query.categoryId,
+        radius: query.radius,
+        maxPrice: query.maxPrice,
+      },
+      userId,
+    );
+
+    if (!result.success || !result.data || result.data.length === 0) {
+      return {
+        success: true,
+        statusCode: 200,
+        message:
+          'Rất tiếc, tôi không tìm thấy địa điểm nào phù hợp quanh đây. Bạn thử thay đổi yêu cầu hoặc mở rộng bán kính xem sao nhé!',
+      };
+    }
+
+    return {
+      success: true,
+      statusCode: 200,
+      message: `${MSG_PREFIX.RECOMMENDATION_LIST}${JSON.stringify({
+        places: result.data,
+      })}`,
+    };
   }
 }

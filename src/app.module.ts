@@ -18,6 +18,8 @@ import { SavingGoalsModule } from './modules/saving-goals/saving-goals.module';
 import { AiModule } from './modules/ai/ai.module';
 import { RecurringTransactionsModule } from './modules/recurring-transactions/recurring-transactions.module';
 import { WalletsModule } from './modules/wallets/wallets.module';
+import { RecommendationsModule } from './modules/recommendations/recommendations.module';
+import { AdminModule } from './modules/admin/admin.module';
 
 @Module({
   imports: [
@@ -71,6 +73,8 @@ import { WalletsModule } from './modules/wallets/wallets.module';
     AiModule,
     RecurringTransactionsModule,
     WalletsModule,
+    RecommendationsModule,
+    AdminModule,
   ],
   controllers: [AppController],
   providers: [AppService],

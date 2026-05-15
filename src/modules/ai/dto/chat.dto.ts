@@ -15,4 +15,12 @@ export class ChatDto {
   @IsOptional()
   @IsString()
   ocrLines?: string;
+
+  @IsOptional()
+  @IsNumber()
+  latitude?: number | null;
+
+  @IsOptional()
+  @IsNumber()
+  longitude?: number | null;
 }
