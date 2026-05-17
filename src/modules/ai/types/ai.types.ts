@@ -62,16 +62,3 @@ export type GetTransactionQuery = {
   limit: number | null;
 };
 
-export type CategoryQuery = {
-  action: 'get_categories' | 'add_category';
-  name: string | null;
-  type: 'income' | 'expense' | 'others';
-  icon: string | null;
-};
-
-export type CategoryQueryResult = {
-  action: 'get_categories' | 'add_category';
-  categories?: any[];
-  category?: any;
-  message?: string;
-};

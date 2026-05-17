@@ -12,6 +12,7 @@ import { plainToInstance } from 'class-transformer';
 import { ApiResponse } from 'src/common/dto/api-response.dto';
 import { SavingGoalStatus } from './enums/saving-goal-status.enum';
 import { Wallet } from 'src/modules/wallets/entities/wallet.entity';
+import { SpendingPlansService } from 'src/modules/spending-plans/spending-plans.service';
 
 @Injectable()
 export class SavingGoalsService {
@@ -30,6 +31,8 @@ export class SavingGoalsService {
 
     @InjectRepository(Wallet)
     private walletRepo: Repository<Wallet>,
+
+    private readonly spendingPlansService: SpendingPlansService,
   ) {}
 
   async create(
@@ -283,6 +286,43 @@ export class SavingGoalsService {
       await this.goalRepo.save(goal);
     }
 
+    // --- Projection calculation ---
+    const capacity = await this.spendingPlansService.getMonthlySavingCapacity(goal.user.id);
+    let projection: any = null;
+    if (capacity && capacity.monthlySavingCapacity > 0 && target > 0) {
+      const remainingTarget = Math.max(0, target - current_automated_balance);
+      const monthsRemaining = Math.ceil(remainingTarget / capacity.monthlySavingCapacity);
+      const projectedDate = new Date();
+      projectedDate.setMonth(projectedDate.getMonth() + monthsRemaining);
+
+      let isOnTrack = true;
+      let monthsDiff = 0;
+      if (goal.end_date) {
+        const endDate = new Date(goal.end_date);
+        const projectedMs = projectedDate.getTime() - endDate.getTime();
+        monthsDiff = Math.round(projectedMs / (1000 * 60 * 60 * 24 * 30));
+        isOnTrack = projectedDate <= endDate;
+      }
+
+      projection = {
+        monthlySavingCapacity: capacity.monthlySavingCapacity,
+        monthsRemaining,
+        projectedDate: projectedDate.toISOString(),
+        isOnTrack,
+        monthsDiff: Math.abs(monthsDiff),
+        hasPlan: true,
+      };
+    } else {
+      projection = {
+        monthlySavingCapacity: capacity?.monthlySavingCapacity ?? 0,
+        monthsRemaining: null,
+        projectedDate: null,
+        isOnTrack: null,
+        monthsDiff: null,
+        hasPlan: !!capacity,
+      };
+    }
+
     const report = {
       id: goal.id,
       name: goal.name,
@@ -307,6 +347,7 @@ export class SavingGoalsService {
       remainingBudget: income - expense,
       wallet_name: goal.wallet?.name || null,
       wallet_balance: goal.wallet?.balance || 0,
+      projection,
       transactions: transactions.map(t => ({
         id: t.id,
         amount: t.amount,

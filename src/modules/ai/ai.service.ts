@@ -18,7 +18,6 @@ import { Wallet } from 'src/modules/wallets/entities/wallet.entity';
 import { CreateTransactionDto } from 'src/modules/transactions/dto/create-transaction.dto';
 import {
   CatOption,
-  CategoryQuery,
   ChatTransactionResult,
   FinancialAnalysisResult,
   FinancialInsightSnapshot,
@@ -30,6 +29,8 @@ import {
   buildAiAnalysisCacheKey,
   buildAiAnalysisRegistryKey,
 } from 'src/common/cache/financial-cache.util';
+import { SpendingPlansService } from 'src/modules/spending-plans/spending-plans.service';
+import { SavingGoalsService } from 'src/modules/saving-goals/saving-goals.service';
 
 const DEFAULT_MODEL = 'gemini-2.5-flash-lite';
 const AI_ANALYSIS_TTL_SECONDS = 300;
@@ -40,8 +41,8 @@ const MSG_PREFIX = {
   TRANSACTION_LIST: '__TRANSACTION_LIST__',
   TRANSACTION_SAVED: '__TRANSACTION_SAVED__',
   STRUCTURED_ANALYSIS: '__STRUCTURED_ANALYSIS__',
-  CATEGORY_LIST: '__CATEGORY_LIST__',
-  CATEGORY_CREATED: '__CATEGORY_CREATED__',
+  SAVING_GOAL_CREATED: '__SAVING_GOAL_CREATED__',
+  SAVING_GOAL_PROPOSAL: '__SAVING_GOAL_PROPOSAL__',
 };
 
 interface ReceiptOcrLine {
@@ -176,6 +177,8 @@ export class AiService {
     private readonly userRepo: Repository<User>,
     @InjectRepository(Wallet)
     private readonly walletRepo: Repository<Wallet>,
+    private readonly spendingPlansService: SpendingPlansService,
+    private readonly savingGoalsService: SavingGoalsService,
   ) {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
@@ -269,8 +272,9 @@ export class AiService {
       transactionDate: coerceString(raw.transactionDate),
       totalAmount: coerceAmount(raw.totalAmount),
       currency: coerceString(raw.currency),
-      confidence:
-        Number.isFinite(Number(raw.confidence)) ? Number(raw.confidence) : 0,
+      confidence: Number.isFinite(Number(raw.confidence))
+        ? Number(raw.confidence)
+        : 0,
       warnings,
     };
   }
@@ -348,11 +352,9 @@ export class AiService {
     hasExternalOcr: boolean,
     categories: Category[],
   ): string {
-    const ocrLinesBlock = ocrLines.length
-      ? JSON.stringify(ocrLines)
-      : '[]';
+    const ocrLinesBlock = ocrLines.length ? JSON.stringify(ocrLines) : '[]';
     const ruleBlock = JSON.stringify(ruleCandidate);
-    const categoryNames = categories.map(c => c.name).join(', ');
+    const categoryNames = categories.map((c) => c.name).join(', ');
 
     return `
  Ban la parser hoa don tieng Viet cho ung dung Money Care.
@@ -418,7 +420,7 @@ export class AiService {
     }
 
     const rawText = ocrText || ocrLines.map((line) => line.text).join('\n');
-    
+
     // If categories are not provided (e.g. from direct API call), try to fetch them if userId exists
     let activeCategories = categories;
     const userId = Number(body?.userId);
@@ -747,158 +749,6 @@ Tin nhan: "${message}"`,
     }
   }
 
-  private isCategoryRequest(message: string): boolean {
-    const normalized = norm(message || '');
-    if (!normalized) return false;
-
-    const keywords = [
-      'danh muc',
-      'hang muc',
-      'loai chi tieu',
-      'loai thu nhap',
-      'them danh muc',
-      'tao danh muc',
-      'xem danh muc',
-      'liet ke danh muc',
-      'co nhung danh muc nao',
-      'co nhung hang muc nao',
-    ];
-
-    return keywords.some((kw) => normalized.includes(kw));
-  }
-
-  private async parseCategoryQuery(message: string): Promise<CategoryQuery> {
-    try {
-      const response = await this.genAI.models.generateContent({
-        model: this.parseModel,
-        contents: [
-          {
-            role: 'user',
-            parts: [
-              {
-                text: `Ban la tro ly tai chinh thong minh.
-NHIEM VU: Trich xuat thong tin lien quan den danh muc (category) tu tin nhan cua nguoi dung.
-
-QUY TAC TRICH XUAT:
-1. action: 
-   - 'add_category': neu nguoi dung muon them moi hoac tao mot danh muc.
-   - 'get_categories': neu nguoi dung muon xem danh sach, liet ke cac danh muc dang co.
-2. name: Ten danh muc muon them. Tra ve null neu khong phai lenh add.
-3. type: 
-   - 'income': neu lien quan den thu nhap.
-   - 'expense': neu lien quan den chi tieu (mac dinh).
-   - 'others': neu khac.
-4. icon: Bieu tuong emoji phu hop (vd: 🍔 cho an uong, 🚗 cho di lai). Neu nguoi dung khong noi, hay TU DONG GOI Y icon phu hop theo ten danh muc.
-5. isEssential: true neu la nhu cau thiet yeu (an, o, di chuyen), false neu la huong thu/khac. Mac dinh true.
-
-Hom nay la ${new Date().toISOString()}.
-Tin nhan: "${message}"`,
-              },
-            ],
-          },
-        ],
-        config: {
-          tools: [
-            {
-              functionDeclarations: [
-                {
-                  name: 'manage_category',
-                  description: 'Quan ly danh muc cua nguoi dung',
-                  parameters: {
-                    type: Type.OBJECT,
-                    properties: {
-                      action: {
-                        type: Type.STRING,
-                        description: 'Hanh dong (get_categories/add_category)',
-                        enum: ['get_categories', 'add_category'],
-                      },
-                      name: {
-                        type: Type.STRING,
-                        description: 'Ten danh muc',
-                        nullable: true,
-                      },
-                      type: {
-                        type: Type.STRING,
-                        description: 'Loai (income/expense/others)',
-                        enum: ['income', 'expense', 'others'],
-                      },
-                      icon: {
-                        type: Type.STRING,
-                        description: 'Emoji dai dien',
-                        nullable: true,
-                      },
-                    },
-                    required: ['action'],
-                  },
-                },
-              ],
-            },
-          ],
-          toolConfig: { functionCallingConfig: { mode: 'ANY' as any } },
-        },
-      });
-
-      const calls = (response as any).functionCalls as any[] | undefined;
-      const args = calls?.[0]?.args;
-      if (!args) throw new Error('Khong nhan duoc function call');
-
-      return {
-        action: args.action,
-        name: args.name ?? null,
-        type: args.type ?? 'expense',
-        icon: args.icon ?? null,
-      };
-    } catch (error) {
-      this.logger.error('Parse category query failed', error);
-      return {
-        action: 'get_categories',
-        name: null,
-        type: 'expense',
-        icon: null,
-      };
-    }
-  }
-
-  private async handleCategoryRequest(
-    message: string,
-    userId: number,
-    goalId?: number,
-  ): Promise<ApiResponse<string>> {
-    const query = await this.parseCategoryQuery(message);
-
-    if (query.action === 'get_categories') {
-      const categories = await this.getCategories(userId, goalId);
-      return {
-        success: true,
-        statusCode: 200,
-        message: `${MSG_PREFIX.CATEGORY_LIST}${JSON.stringify({
-          action: 'get_categories',
-          categories: categories.map((c) => ({
-            id: c.id,
-            name: c.name,
-            icon: c.icon,
-            type: c.type,
-            is_system: c.is_system,
-          })),
-        })}`,
-      };
-    }
-
-    if (query.action === 'add_category') {
-      return {
-        success: true,
-        statusCode: 200,
-        message: 'Hiện tại hệ thống chỉ hỗ trợ các danh mục chuẩn để đảm bảo báo cáo chính xác nhất. Bạn vui lòng sử dụng các danh mục có sẵn nhé!',
-      };
-    }
-
-    return {
-      success: true,
-      statusCode: 200,
-      message: 'Tôi chưa hiểu yêu cầu về danh mục của bạn.',
-    };
-  }
-
   private async handleGetTransactions(
     message: string,
     userId: number,
@@ -982,11 +832,19 @@ Tin nhan: "${message}"`,
       throw new BadRequestException('userId must be a number');
     }
 
+    if (message && message.startsWith('/confirm_saving_goal')) {
+      return this.handleConfirmSavingGoal(message, userId);
+    }
+    if (message && message.startsWith('/change_saving_goal_duration')) {
+      return this.handleChangeSavingGoalDuration(message, userId);
+    }
+
     if (ocrText) {
       return this.handleReceiptOcr(userId, ocrText, ocrLines);
     }
 
-    const goalId = (await this.financialInsightsService.getSelectedGoalId(userId)) ?? 0;
+    const goalId =
+      (await this.financialInsightsService.getSelectedGoalId(userId)) ?? 0;
 
     const lowerMessage = norm(message || '');
     const isAnalysisRequest =
@@ -999,8 +857,8 @@ Tin nhan: "${message}"`,
       return this.handleAnalysis(message ?? '', userId, goalId);
     }
 
-    if (this.isCategoryRequest(message ?? '')) {
-      return this.handleCategoryRequest(message ?? '', userId, goalId);
+    if (this.isSavingGoalRequest(message ?? '')) {
+      return this.handleSavingGoalRequest(message ?? '', userId);
     }
 
     if (this.isGetTransactionRequest(message ?? '')) {
@@ -1025,9 +883,9 @@ Tin nhan: "${message}"`,
 
     const walletOptions = wallets.map((w) => ({ id: w.id, name: w.name }));
     const parsedTrans = await this.parseTransaction(
-      message ?? '', 
+      message ?? '',
       options,
-      walletOptions
+      walletOptions,
     );
 
     if (parsedTrans.amount) {
@@ -1059,7 +917,7 @@ Tin nhan: "${message}"`,
         if (parsedTrans.wallet_name) {
           walletId = this.findWalletIdByName(wallets, parsedTrans.wallet_name);
           if (walletId) {
-            selectedWallet = wallets.find(w => w.id === walletId) || null;
+            selectedWallet = wallets.find((w) => w.id === walletId) || null;
           }
         }
 
@@ -1381,7 +1239,9 @@ Cau hoi: "${text}"`,
     const match =
       wallets.find((w) => norm(w.name) === normalized) ||
       wallets.find(
-        (w) => norm(w.name).includes(normalized) || normalized.includes(norm(w.name)),
+        (w) =>
+          norm(w.name).includes(normalized) ||
+          normalized.includes(norm(w.name)),
       );
     return match?.id;
   }
@@ -1392,7 +1252,8 @@ Cau hoi: "${text}"`,
     ocrLines?: string,
   ): Promise<ApiResponse<string>> {
     try {
-      const goalId = (await this.financialInsightsService.getSelectedGoalId(userId)) ?? 0;
+      const goalId =
+        (await this.financialInsightsService.getSelectedGoalId(userId)) ?? 0;
       const categories = await this.getCategories(userId, goalId);
       const wallets = await this.walletRepo.find({
         where: { user: { id: userId }, is_active: true },
@@ -1400,10 +1261,16 @@ Cau hoi: "${text}"`,
 
       // 1. Scan receipt using Gemini
       const scanBody = { ocrText, ocrLines };
-      const scanResult = await this.scanReceipt(undefined, scanBody, categories);
+      const scanResult = await this.scanReceipt(
+        undefined,
+        scanBody,
+        categories,
+      );
 
       if (!scanResult.success || !scanResult.data) {
-        this.logger.warn(`[handleReceiptOcr] Scan failed: ${scanResult.message}`);
+        this.logger.warn(
+          `[handleReceiptOcr] Scan failed: ${scanResult.message}`,
+        );
         return {
           success: false,
           statusCode: 400,
@@ -1430,7 +1297,8 @@ Cau hoi: "${text}"`,
         return {
           success: true,
           statusCode: 200,
-          message: 'Tôi đã đọc hóa đơn nhưng không tìm thấy số tiền hợp lệ. Bạn vui lòng kiểm tra lại ảnh nhé.',
+          message:
+            'Tôi đã đọc hóa đơn nhưng không tìm thấy số tiền hợp lệ. Bạn vui lòng kiểm tra lại ảnh nhé.',
         };
       }
 
@@ -1442,15 +1310,19 @@ Cau hoi: "${text}"`,
       );
 
       if (data.category_name) {
-        const aiMatch = categories.find(c => 
-          norm(c.name).includes(norm(data.category_name)) || 
-          norm(data.category_name).includes(norm(c.name))
+        const aiMatch = categories.find(
+          (c) =>
+            norm(c.name).includes(norm(data.category_name)) ||
+            norm(data.category_name).includes(norm(c.name)),
         );
         if (aiMatch) pickedCategory = aiMatch;
       }
 
       if (!pickedCategory) {
-        const fallback = await this.getFallbackCategoryFromDB(userId, 'expense');
+        const fallback = await this.getFallbackCategoryFromDB(
+          userId,
+          'expense',
+        );
         if (fallback) pickedCategory = fallback;
       }
 
@@ -1477,10 +1349,13 @@ Cau hoi: "${text}"`,
         userId,
         type: 'expense',
         amount,
-        note: data.suggested_note || `Hóa đơn tại ${data.merchant_name || 'Cửa hàng'}`,
-        transactionDate: data.date && isValidDate(data.date)
-          ? new Date(data.date).toISOString()
-          : new Date().toISOString(),
+        note:
+          data.suggested_note ||
+          `Hóa đơn tại ${data.merchant_name || 'Cửa hàng'}`,
+        transactionDate:
+          data.date && isValidDate(data.date)
+            ? new Date(data.date).toISOString()
+            : new Date().toISOString(),
         categoryId: pickedCategory?.id,
         walletId: walletId,
       };
@@ -1510,6 +1385,435 @@ Cau hoi: "${text}"`,
         success: false,
         statusCode: 500,
         message: `Có lỗi xảy ra khi tự động lưu hóa đơn: ${error.message}`,
+      };
+    }
+  }
+
+  private formatVnd(amount: number): string {
+    return Math.round(amount).toLocaleString('vi-VN') + 'đ';
+  }
+
+  private buildSavingGoalRecommendation(
+    target: number,
+    monthlyCapacity: number,
+  ): {
+    months: number;
+    suggestedMonthlySaving: number;
+    maxMonthlySaving: number;
+    rawMonths: number;
+    rawDurationText: string;
+    safetyRatio: number;
+  } {
+    const maxMonthlySaving = Math.max(0, monthlyCapacity);
+    if (target <= 0 || maxMonthlySaving <= 0) {
+      return {
+        months: 6,
+        suggestedMonthlySaving: target > 0 ? Math.round(target / 6) : 0,
+        maxMonthlySaving,
+        rawMonths: 0,
+        rawDurationText: '6 tháng',
+        safetyRatio: 0,
+      };
+    }
+
+    const rawMonths = target / maxMonthlySaving;
+    let months = Math.max(1, Math.ceil(rawMonths));
+    let suggestedMonthlySaving = Math.ceil(target / months);
+
+    const safeLimit = maxMonthlySaving * 0.9;
+    if (months > 1 && suggestedMonthlySaving > safeLimit) {
+      months += 1;
+      suggestedMonthlySaving = Math.ceil(target / months);
+    }
+
+    return {
+      months,
+      suggestedMonthlySaving,
+      maxMonthlySaving,
+      rawMonths,
+      rawDurationText: this.formatDurationFromMonths(rawMonths),
+      safetyRatio:
+        maxMonthlySaving > 0 ? suggestedMonthlySaving / maxMonthlySaving : 0,
+    };
+  }
+
+  private formatDurationFromMonths(monthsValue: number): string {
+    const wholeMonths = Math.floor(monthsValue);
+    const days = Math.round((monthsValue - wholeMonths) * 30);
+
+    if (wholeMonths > 0 && days > 0) {
+      return `${wholeMonths} tháng ${days} ngày`;
+    }
+    if (wholeMonths > 0) {
+      return `${wholeMonths} tháng`;
+    }
+    return `${Math.max(1, days)} ngày`;
+  }
+
+  private buildDurationOptions(target: number, recommendedMonths: number) {
+    const normalizedMonths = Math.max(1, recommendedMonths || 1);
+    const fasterMonths = Math.max(1, normalizedMonths - 1);
+    const optionMonths = Array.from(
+      new Set([fasterMonths, normalizedMonths, normalizedMonths + 1]),
+    );
+
+    return optionMonths.map((months) => {
+      const type =
+        months < normalizedMonths
+          ? 'faster'
+          : months === normalizedMonths
+            ? 'recommended'
+            : 'relaxed';
+
+      return {
+        type,
+        label:
+          type === 'faster'
+            ? 'Gấp'
+            : type === 'recommended'
+              ? 'Khuyến nghị'
+              : 'Thoải mái',
+        months,
+        monthlySaving: Math.ceil(target / months),
+        isRecommended: type === 'recommended',
+      };
+    });
+  }
+
+  private isSavingGoalRequest(message: string): boolean {
+    const normalized = norm(message || '');
+    if (!normalized) return false;
+
+    const savingKeywords = [
+      'tiet kiem',
+      'gom tien',
+      'muc tieu',
+      'muon mua',
+      'de danh',
+      'gop tien',
+      'saving',
+      'goal',
+    ];
+
+    const hasAmount =
+      /\d/.test(normalized) ||
+      /\b(k|nghin|ngan|tr|trieu|cu|dong|vnd)\b/.test(normalized);
+
+    return savingKeywords.some((kw) => normalized.includes(kw)) && hasAmount;
+  }
+
+  private async handleSavingGoalRequest(
+    message: string,
+    userId: number,
+  ): Promise<ApiResponse<string>> {
+    try {
+      const capacity =
+        await this.spendingPlansService.getMonthlySavingCapacity(userId);
+
+      const capacityContext = capacity
+        ? `Nguoi dung co Ke hoach chi tieu dang hoat dong:
+  - Tong ngan sach (Thu nhap): ${capacity.totalAmount} VND/thang
+  - Chi phi co dinh: ${capacity.fixedExpenseTotal} VND/thang
+  - Kha nang tiet kiem du kien: ${capacity.monthlySavingCapacity} VND/thang
+  - So du linh hoat con lai du kien cuoi thang: ${capacity.projectedEndBalance} VND`
+        : 'Nguoi dung CHUA co ke hoach chi tieu. Hay khuyen ho tao ke hoach truoc.';
+
+      const response = await this.genAI.models.generateContent({
+        model: this.parseModel,
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              {
+                text: `Ban la tro ly tai chinh thong minh cua app Money Care.
+NHIEM VU: Trich xuat thong tin muc tieu tiet kiem tu tin nhan nguoi dung.
+
+THONG TIN TAI CHINH HIEN TAI:
+${capacityContext}
+
+QUY TAC:
+1. name: Ten muc tieu (vd: "Mua dien thoai", "Du lich Da Nang").
+2. target: So tien muc tieu (VND). Neu nguoi dung noi "3 trieu" -> 3000000, "500k" -> 500000.
+3. requested_months: So thang nguoi dung noi ro trong tin nhan. Vi du "trong 5 thang", "5 thang nua", "trong vong 5 thang" -> 5. Neu nguoi dung KHONG noi thoi gian cu the thi tra ve null.
+4. months_estimate: Uoc tinh so thang can thiet = target / kha_nang_tiet_kiem_moi_thang. Lam tron len.
+   Neu khong co ke hoach chi tieu, hay uoc tinh khoang 6 thang. Neu co requested_months thi months_estimate van co the bang requested_months.
+
+Hom nay la ${new Date().toISOString()}.
+Tin nhan: "${message}"`,
+              },
+            ],
+          },
+        ],
+        config: {
+          tools: [
+            {
+              functionDeclarations: [
+                {
+                  name: 'propose_saving_goal',
+                  description: 'De xuat muc tieu tiet kiem moi cho nguoi dung',
+                  parameters: {
+                    type: Type.OBJECT,
+                    properties: {
+                      name: {
+                        type: Type.STRING,
+                        description: 'Ten muc tieu tiet kiem',
+                      },
+                      target: {
+                        type: Type.NUMBER,
+                        description: 'So tien muc tieu (VND)',
+                      },
+                      months_estimate: {
+                        type: Type.NUMBER,
+                        description:
+                          'So thang uoc tinh de hoan thanh (lam tron len)',
+                      },
+                      requested_months: {
+                        type: Type.NUMBER,
+                        description:
+                          'So thang nguoi dung yeu cau ro trong tin nhan; null neu khong co',
+                        nullable: true,
+                      },
+                    },
+                    required: ['name', 'target', 'months_estimate'],
+                  },
+                },
+              ],
+            },
+          ],
+          toolConfig: { functionCallingConfig: { mode: 'ANY' as any } },
+        },
+      });
+
+      const calls = (response as any).functionCalls as any[] | undefined;
+      const args = calls?.[0]?.args;
+      if (!args) {
+        return {
+          success: true,
+          statusCode: 200,
+          message:
+            'Tôi chưa hiểu rõ mục tiêu tiết kiệm của bạn. Bạn có thể nói rõ hơn không? Ví dụ: "Tôi muốn tiết kiệm 3 triệu mua điện thoại".',
+        };
+      }
+
+      const name = args.name || 'Mục tiêu tiết kiệm';
+      const target = Number(args.target) || 0;
+      const requestedMonths = Number(args.requested_months) || 0;
+      const hasRequestedMonths = requestedMonths > 0;
+      let monthsEstimate = Number(args.months_estimate) || 6;
+      let aiMessage = '';
+      let suggestedMonthlySaving = Math.round(target / monthsEstimate);
+      let maxMonthlySaving = capacity?.monthlySavingCapacity ?? 0;
+      let isWarning = false;
+
+      if (hasRequestedMonths) {
+        monthsEstimate = Math.max(1, Math.round(requestedMonths));
+        suggestedMonthlySaving = Math.ceil(target / monthsEstimate);
+        maxMonthlySaving = capacity?.monthlySavingCapacity ?? 0;
+
+        if (!capacity) {
+          aiMessage = `Tôi đã ghi nhận mục tiêu "${name}" với số tiền "${this.formatVnd(target)}" trong "${monthsEstimate} tháng", tương đương khoảng "${this.formatVnd(suggestedMonthlySaving)}/tháng". Vì bạn chưa thiết lập Kế hoạch chi tiêu, tôi chưa thể đánh giá chính xác mức độ khả thi.`;
+        } else {
+          const income = capacity.totalAmount;
+          const fixedExpense = capacity.fixedExpenseTotal;
+          const maxPossibleSaving = income - fixedExpense;
+
+          if (suggestedMonthlySaving > maxPossibleSaving) {
+            isWarning = true;
+            aiMessage = `⚠️ Cảnh báo: Bạn muốn hoàn thành mục tiêu "${name}" trong "${monthsEstimate} tháng", cần tiết kiệm khoảng "${this.formatVnd(suggestedMonthlySaving)}/tháng". Nhưng với thu nhập hiện tại là "${this.formatVnd(income)}" và chi phí cố định là "${this.formatVnd(fixedExpense)}", mức tối đa hiện tại chỉ khoảng "${this.formatVnd(maxPossibleSaving)}/tháng". Bạn vẫn có thể tạo mục tiêu này nếu muốn thử thách bản thân.`;
+          } else if (suggestedMonthlySaving > capacity.monthlySavingCapacity) {
+            isWarning = true;
+            const extraNeeded =
+              suggestedMonthlySaving - capacity.monthlySavingCapacity;
+            aiMessage = `⚠️ Để hoàn thành mục tiêu "${name}" trong "${monthsEstimate} tháng", bạn cần tiết kiệm khoảng "${this.formatVnd(suggestedMonthlySaving)}/tháng", cao hơn khả năng hiện tại khoảng "${this.formatVnd(extraNeeded)}/tháng". Bạn vẫn có thể tạo mục tiêu nếu chấp nhận điều chỉnh chi tiêu.`;
+          } else {
+            aiMessage = `Tôi đã ghi nhận mục tiêu "${name}" trong "${monthsEstimate} tháng". Với mức cần tiết kiệm khoảng "${this.formatVnd(suggestedMonthlySaving)}/tháng", kế hoạch này nằm trong khả năng tiết kiệm hiện tại "${this.formatVnd(capacity.monthlySavingCapacity)}/tháng" của bạn.`;
+          }
+        }
+      } else if (capacity && capacity.monthlySavingCapacity > 0) {
+        const capacityVal = capacity.monthlySavingCapacity;
+        const recommendation = this.buildSavingGoalRecommendation(
+          target,
+          capacityVal,
+        );
+        monthsEstimate = recommendation.months;
+        suggestedMonthlySaving = recommendation.suggestedMonthlySaving;
+        maxMonthlySaving = recommendation.maxMonthlySaving;
+
+        aiMessage = `Với khả năng tiết kiệm tối đa hiện tại là "${this.formatVnd(recommendation.maxMonthlySaving)}/tháng", nếu dùng hết số dư bạn sẽ cần khoảng "${recommendation.rawDurationText}" để tích lũy đủ "${this.formatVnd(target)}" cho mục tiêu "${name}".\n\n💡 Để kế hoạch dễ theo dõi và không dùng hết toàn bộ số dư mỗi tháng, tôi đề xuất mốc "${recommendation.months} tháng", tương đương khoảng "${this.formatVnd(recommendation.suggestedMonthlySaving)}/tháng". Bạn vẫn có thể đổi thời gian nếu muốn hoàn thành nhanh hơn hoặc thoải mái hơn.`;
+      } else {
+        monthsEstimate = 6;
+        suggestedMonthlySaving = Math.round(target / 6);
+        aiMessage = `Tôi đã ghi nhận đề xuất tích lũy "${this.formatVnd(target)}" cho mục tiêu "${name}". Vì bạn chưa thiết lập Kế hoạch chi tiêu, tôi đề xuất thời gian tích lũy là "6 tháng" (tương đương khoảng "${this.formatVnd(Math.round(target / 6))}/tháng"). Bạn hãy lập Kế hoạch chi tiêu để theo dõi chính xác hơn nhé!`;
+      }
+
+      const endDate = new Date();
+      endDate.setMonth(endDate.getMonth() + monthsEstimate);
+      const durationOptions = hasRequestedMonths
+        ? []
+        : this.buildDurationOptions(target, monthsEstimate);
+
+      return {
+        success: true,
+        statusCode: 200,
+        message: `${MSG_PREFIX.SAVING_GOAL_PROPOSAL}${JSON.stringify({
+          name,
+          target,
+          monthsEstimate,
+          endDate: endDate.toISOString(),
+          monthlySavingCapacity: capacity?.monthlySavingCapacity ?? 0,
+          suggestedMonthlySaving,
+          maxMonthlySaving,
+          durationOptions,
+          hasPlan: !!capacity,
+          isImpossible: false,
+          isWarning,
+          isRequestedDuration: hasRequestedMonths,
+          aiMessage,
+        })}`,
+      };
+    } catch (error) {
+      this.logger.error('Handle saving goal request failed', error);
+      return {
+        success: true,
+        statusCode: 200,
+        message:
+          'Tôi gặp lỗi khi đề xuất mục tiêu tiết kiệm. Bạn vui lòng thử lại nhé!',
+      };
+    }
+  }
+
+  private async handleConfirmSavingGoal(
+    message: string,
+    userId: number,
+  ): Promise<ApiResponse<string>> {
+    try {
+      const payloadStr = message.replace('/confirm_saving_goal', '').trim();
+      const payload = JSON.parse(payloadStr);
+
+      const { name, target, months } = payload;
+      const monthsEstimate = Number(months) || 6;
+      const endDate = new Date();
+      endDate.setMonth(endDate.getMonth() + monthsEstimate);
+
+      const createResult = await this.savingGoalsService.create(
+        {
+          name: name || 'Mục tiêu tiết kiệm',
+          target: Number(target) || 0,
+          start_date: new Date().toISOString(),
+          end_date: endDate.toISOString(),
+          create_new_wallet: true,
+        },
+        userId,
+      );
+
+      const createdGoal = createResult.data;
+      const capacity =
+        await this.spendingPlansService.getMonthlySavingCapacity(userId);
+      const suggestedMonthlySaving = Math.round(
+        Number(target) / monthsEstimate,
+      );
+
+      const aiMessage = `Tuyệt vời! Tôi đã tạo thành công mục tiêu "${name}" với số tiền cần tích lũy là "${this.formatVnd(target)}" trong vòng "${monthsEstimate} tháng". Một ví mục tiêu mới cũng đã được kích hoạt để bạn bắt đầu tích lũy!`;
+
+      return {
+        success: true,
+        statusCode: 200,
+        message: `${MSG_PREFIX.SAVING_GOAL_CREATED}${JSON.stringify({
+          goalId: createdGoal?.id,
+          name,
+          target: Number(target),
+          monthsEstimate,
+          endDate: endDate.toISOString(),
+          monthlySavingCapacity: capacity?.monthlySavingCapacity ?? 0,
+          suggestedMonthlySaving,
+          maxMonthlySaving: capacity?.monthlySavingCapacity ?? 0,
+          hasPlan: !!capacity,
+          aiMessage,
+        })}`,
+      };
+    } catch (error) {
+      this.logger.error('Confirm saving goal failed', error);
+      return {
+        success: true,
+        statusCode: 200,
+        message:
+          'Có lỗi xảy ra khi xác nhận tạo mục tiêu tiết kiệm. Vui lòng thử lại!',
+      };
+    }
+  }
+
+  private async handleChangeSavingGoalDuration(
+    message: string,
+    userId: number,
+  ): Promise<ApiResponse<string>> {
+    try {
+      const payloadStr = message
+        .replace('/change_saving_goal_duration', '')
+        .trim();
+      const payload = JSON.parse(payloadStr);
+
+      const { name, target, months } = payload;
+      const requestedMonths = Math.max(1, Number(months));
+
+      const capacity =
+        await this.spendingPlansService.getMonthlySavingCapacity(userId);
+      const requiredPerMonth = Math.round(target / requestedMonths);
+      const maxMonthlySaving = capacity?.monthlySavingCapacity ?? 0;
+
+      let aiMessage = '';
+      let isWarning = false;
+
+      if (!capacity) {
+        aiMessage = `Bạn muốn hoàn thành mục tiêu "${name}" (${this.formatVnd(target)}) trong vòng "${requestedMonths} tháng" (cần tích lũy khoảng "${this.formatVnd(requiredPerMonth)}/tháng"). Hãy tạo kế hoạch chi tiêu trước để xem chi tiết mức độ khả thi nhé!`;
+      } else {
+        const income = capacity.totalAmount;
+        const fixedExpense = capacity.fixedExpenseTotal;
+        const maxPossibleSaving = income - fixedExpense;
+
+        if (requiredPerMonth > maxPossibleSaving) {
+          isWarning = true;
+          aiMessage = `⚠️ Cảnh báo: Để hoàn thành trong "${requestedMonths} tháng", bạn cần tiết kiệm đến "${this.formatVnd(requiredPerMonth)}/tháng". Nhưng với thu nhập hiện tại của bạn là "${this.formatVnd(income)}" và chi phí cố định là "${this.formatVnd(fixedExpense)}", mức tối đa hiện tại chỉ khoảng "${this.formatVnd(maxPossibleSaving)}/tháng". Bạn vẫn có thể tạo mục tiêu này nếu muốn thử thách bản thân, nhưng nên chuẩn bị phương án tăng thu nhập hoặc giảm thêm chi phí.`;
+        } else if (requiredPerMonth > capacity.monthlySavingCapacity) {
+          isWarning = true;
+          const extraNeeded = requiredPerMonth - capacity.monthlySavingCapacity;
+          aiMessage = `⚠️ Cần điều chỉnh chi tiêu linh hoạt! Để hoàn thành trong "${requestedMonths} tháng", bạn cần tiết kiệm "${this.formatVnd(requiredPerMonth)}/tháng". Khả năng hiện tại của bạn là "${this.formatVnd(capacity.monthlySavingCapacity)}/tháng", nghĩa là bạn cần cắt giảm thêm khoảng "${this.formatVnd(extraNeeded)}/tháng" từ các khoản chi tiêu linh hoạt trong kế hoạch của mình. Bạn vẫn có thể tạo mục tiêu nếu chấp nhận mức thử thách này.`;
+        } else {
+          aiMessage = `✨ Tuyệt vời! Kế hoạch tài chính hiện tại của bạn dư sức đạt được mục tiêu này trong "${requestedMonths} tháng" với mức tiết kiệm chỉ "${this.formatVnd(requiredPerMonth)}/tháng" (thấp hơn khả năng tiết kiệm tối đa "${this.formatVnd(capacity.monthlySavingCapacity)}/tháng" của bạn).`;
+        }
+      }
+
+      const endDate = new Date();
+      endDate.setMonth(endDate.getMonth() + requestedMonths);
+      const durationOptions = this.buildDurationOptions(
+        target,
+        requestedMonths,
+      );
+
+      return {
+        success: true,
+        statusCode: 200,
+        message: `${MSG_PREFIX.SAVING_GOAL_PROPOSAL}${JSON.stringify({
+          name,
+          target,
+          monthsEstimate: requestedMonths,
+          monthlySavingCapacity: capacity?.monthlySavingCapacity ?? 0,
+          suggestedMonthlySaving: requiredPerMonth,
+          maxMonthlySaving,
+          durationOptions,
+          hasPlan: !!capacity,
+          isImpossible: false,
+          isWarning,
+          aiMessage,
+          endDate: endDate.toISOString(),
+        })}`,
+      };
+    } catch (error) {
+      this.logger.error('Change saving goal duration failed', error);
+      return {
+        success: true,
+        statusCode: 200,
+        message:
+          'Có lỗi xảy ra khi điều chỉnh thời gian mục tiêu. Vui lòng thử lại!',
       };
     }
   }

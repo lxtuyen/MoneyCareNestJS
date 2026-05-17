@@ -9,12 +9,16 @@ import { TransactionsModule } from 'src/modules/transactions/transactions.module
 import { Transaction } from 'src/modules/transactions/entities/transaction.entity';
 import { Wallet } from 'src/modules/wallets/entities/wallet.entity';
 import { FinancialInsightsService } from './financial-insights.service';
+import { SpendingPlansModule } from 'src/modules/spending-plans/spending-plans.module';
+import { SavingGoalsModule } from 'src/modules/saving-goals/saving-goals.module';
 
 @Global()
 @Module({
   imports: [
     TypeOrmModule.forFeature([SavingGoal, Category, User, Transaction, Wallet]),
     TransactionsModule,
+    SpendingPlansModule,
+    SavingGoalsModule,
   ],
   controllers: [AiController],
   providers: [AiService, FinancialInsightsService],

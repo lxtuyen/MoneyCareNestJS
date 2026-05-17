@@ -16,8 +16,8 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
 import { GamificationModule } from './modules/gamification/gamification.module';
 import { SavingGoalsModule } from './modules/saving-goals/saving-goals.module';
 import { AiModule } from './modules/ai/ai.module';
-import { RecurringTransactionsModule } from './modules/recurring-transactions/recurring-transactions.module';
 import { WalletsModule } from './modules/wallets/wallets.module';
+import { SpendingPlansModule } from './modules/spending-plans/spending-plans.module';
 
 @Module({
   imports: [
@@ -69,8 +69,8 @@ import { WalletsModule } from './modules/wallets/wallets.module';
     NotificationsModule,
     GamificationModule,
     AiModule,
-    RecurringTransactionsModule,
     WalletsModule,
+    SpendingPlansModule,
   ],
   controllers: [AppController],
   providers: [AppService],
