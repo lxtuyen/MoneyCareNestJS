@@ -8,6 +8,7 @@ import {
   Min,
 } from 'class-validator';
 import { SpendingPlanExpenseFrequency } from '../entities/spending-plan.enums';
+import { SpendingPlanTrackingType } from '../entities/spending-plan.enums';
 
 export class UpdateFixedExpenseDto {
   @IsOptional()
@@ -20,8 +21,30 @@ export class UpdateFixedExpenseDto {
 
   @IsOptional()
   @IsNumber()
+  categoryId?: number | null;
+
+  @IsOptional()
+  @IsNumber()
+  subCategoryId?: number | null;
+
+  @IsOptional()
+  @IsEnum(SpendingPlanTrackingType)
+  trackingType?: SpendingPlanTrackingType;
+
+  @IsOptional()
+  @IsNumber()
   @Min(0)
   amount?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  monthlyLimit?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  dailyLimit?: number | null;
 
   @IsOptional()
   @IsEnum(SpendingPlanExpenseFrequency)

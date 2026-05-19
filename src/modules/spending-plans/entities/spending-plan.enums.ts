@@ -1,6 +1,7 @@
 export enum SpendingPlanStatus {
   DRAFT = 'draft',
   ACTIVE = 'active',
+  PAUSED = 'paused',
   ARCHIVED = 'archived',
 }
 
@@ -15,4 +16,9 @@ export enum SpendingPlanExpenseFrequency {
   WEEKLY = 'weekly',
   MONTHLY = 'monthly',
   ONCE = 'once',
+}
+
+export enum SpendingPlanTrackingType {
+  BUDGET = 'budget',
+  FIXED_BILL = 'fixed_bill',
 }

@@ -1,0 +1,131 @@
+---
+description: Backend rules for the Money Care NestJS API
+globs: be/**
+alwaysApply: false
+---
+
+# Money Care BE Rules
+
+Apply these rules when changing files under `be/`.
+
+## Project Context
+
+- This backend is a NestJS 11 API written in TypeScript.
+- The database layer uses TypeORM with PostgreSQL.
+- Configuration is loaded through `@nestjs/config` from `.env`.
+- Auth uses Passport JWT and `JwtAuthGuard`.
+- Validation uses a global `ValidationPipe` with `whitelist`, `forbidNonWhitelisted`, and `transform` enabled.
+- API docs are served through Swagger at `api/docs`.
+- Scheduled jobs use `@nestjs/schedule`.
+
+## Module Structure
+
+- Keep code organized by Nest module under `src/modules/<module>`.
+- Follow the existing module shape:
+  - `<module>.module.ts`
+  - `<module>.controller.ts`
+  - `<module>.service.ts`
+  - `dto/*.dto.ts`
+  - `entities/*.entity.ts`
+  - optional focused helper services such as calculator, export, cron, or scheduler services
+- Put shared DTOs, decorators, interfaces, cache, transformers, errors, and utilities under `src/common`.
+- Do not put feature-specific business logic into `src/common`.
+- Do not edit `dist`, `node_modules`, temporary logs, or generated build output.
+
+## Controllers
+
+- Keep controllers thin: route definitions, guards, pipes, `@Body`, `@Param`, `@Query`, and `@User` extraction only.
+- Put business rules, database reads/writes, and cross-entity updates in services.
+- Use `ParseIntPipe` for numeric route params.
+- Protected user endpoints must use `@UseGuards(JwtAuthGuard)` and derive the user id from `@User('sub')`.
+- Never trust `userId`, `ownerId`, or role values from request body/query for ownership-sensitive operations.
+- Keep route paths stable for FE/Admin clients. If a route changes, update the matching frontend API route/model code in the same task.
+
+## DTOs and Validation
+
+- Define request shapes with DTO classes in `dto/*.dto.ts`.
+- Use `class-validator` decorators for all request fields.
+- Use `class-transformer` `@Type()` for nested DTOs, arrays, dates, and numeric conversion when needed.
+- Prefer explicit optionality with `@IsOptional()` and TypeScript `?`.
+- Avoid accepting loose `any` bodies in controllers. If a partial update is needed, create or update an `Update*.Dto`.
+- Keep DTO field names aligned with FE request models unless a coordinated API contract change is requested.
+
+## Services and Business Logic
+
+- Services own business invariants and persistence.
+- Throw Nest exceptions such as `BadRequestException`, `UnauthorizedException`, `ForbiddenException`, `NotFoundException`, and `ConflictException` for failure cases.
+- Use TypeORM repositories via `@InjectRepository`.
+- Use `DataSource.transaction()` for multi-step writes that must stay consistent.
+- Scope reads/writes by authenticated user for user-owned data.
+- Keep financial calculations centralized in focused services when available, such as calculator services.
+- For date/month calculations that affect user-facing finance data, preserve the app's Vietnam timezone behavior unless the feature explicitly requires otherwise.
+
+## TypeORM and Data
+
+- Define database tables with TypeORM entities in `entities/*.entity.ts`.
+- Use `ColumnNumericTransformer` for decimal money columns that need to be returned as numbers.
+- Use explicit relations and load only needed relations for each service method.
+- Be deliberate with cascade and `onDelete`; match nearby entities unless changing lifecycle behavior is the task.
+- Do not introduce schema-breaking entity changes without considering existing data, FE models, Admin UI, and any SQL scripts under `sql/`.
+- Avoid raw SQL unless TypeORM query builder/repository APIs cannot express the query cleanly.
+
+## API Responses
+
+- Match the existing `ApiResponse<T>` shape for normal API responses:
+
+```ts
+{
+  success: boolean;
+  statusCode: number;
+  data?: T;
+  message?: string;
+}
+```
+
+- Prefer returning `new ApiResponse({ success: true, statusCode: HttpStatus.OK, data, message })` or the module's existing `ok()` helper.
+- Keep response payloads stable and serializable.
+- Do not return TypeORM entities with sensitive fields such as passwords or secrets.
+- Use response DTOs when an endpoint should hide fields, reshape data, or remain stable across entity changes.
+
+## Auth, Secrets, and External Services
+
+- Never commit new secrets, tokens, private keys, service account JSON, or real `.env` values.
+- Use `ConfigService` for configuration values.
+- Keep JWT payload assumptions aligned with `src/common/interfaces/jwt-payload.interface.ts`.
+- Passwords must be hashed with bcrypt before persistence.
+- Do not log tokens, passwords, OTPs, service account contents, or full third-party payloads.
+- For Firebase, Google, mailer, Redis/cache, AI, OCR, PDF/export, and notification changes, keep setup in the owning module/service and mock external calls in tests.
+
+## Imports and Style
+
+- Use `src/...` absolute imports for project modules, matching the current `tsconfig` path alias.
+- Follow existing Prettier style: single quotes, semicolons, trailing commas.
+- Keep comments sparse and only for non-obvious logic.
+- Prefer typed interfaces or DTOs over unstructured objects where the shape is reused.
+- Avoid broad refactors while implementing a targeted backend change.
+
+## Tests
+
+- Add or update focused Jest tests when changing business rules, auth behavior, calculations, schedules, or cross-entity writes.
+- Existing tests live next to modules as `*.spec.ts`, with e2e tests under `test/`.
+- Mock repositories and external services rather than calling real databases or third-party APIs in unit tests.
+- Preserve regression/preservation specs unless the intended behavior changed.
+
+## Quality Checks
+
+- Before finishing backend changes, run the narrowest useful checks from `be/`:
+
+```powershell
+npm run lint
+npm test
+npm run build
+```
+
+- For a focused test run, prefer:
+
+```powershell
+npm test -- <name-or-path>
+```
+
+- If an endpoint contract changed, also verify FE/Admin callers that consume it.
+- Report any command that could not be run and why.

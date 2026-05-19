@@ -2,16 +2,24 @@ export type CatOption = {
   id: number;
   name: string;
   type: 'income' | 'expense' | 'others';
+  subCategories?: Array<{
+    id: number;
+    name: string;
+    icon: string | null;
+  }>;
 };
 
 export type ChatTransactionResult = {
   amount: number | null;
   category_name: string | null;
+  sub_category_name: string | null;
   description: string | null;
   time: string | null;
   type: 'income' | 'expense';
   wallet_name: string | null;
   confidence: number;
+  needs_clarification?: boolean;
+  suggested_sub_categories?: string[];
 };
 
 export type BudgetPlanItem = {

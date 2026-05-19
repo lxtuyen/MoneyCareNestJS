@@ -11,6 +11,7 @@ import { createHash } from 'crypto';
 import { GoogleGenAI, Type } from '@google/genai';
 import { ApiResponse } from 'src/common/dto/api-response.dto';
 import { Category } from 'src/modules/categories/entities/category.entity';
+import { SubCategory } from 'src/modules/categories/entities/sub-category.entity';
 import { SavingGoal } from 'src/modules/saving-goals/entities/saving-goal.entity';
 import { User } from 'src/modules/user/entities/user.entity';
 import { TransactionService } from 'src/modules/transactions/transactions.service';
@@ -173,6 +174,8 @@ export class AiService {
     private readonly goalRepo: Repository<SavingGoal>,
     @InjectRepository(Category)
     private readonly categoryRepo: Repository<Category>,
+    @InjectRepository(SubCategory)
+    private readonly subCategoryRepo: Repository<SubCategory>,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
     @InjectRepository(Wallet)
@@ -199,6 +202,8 @@ export class AiService {
       date: t.transaction_date,
       category: t.category?.name ?? 'Chưa phân loại',
       categoryIcon: t.category?.icon ?? '💰',
+      subCategory: t.subCategory?.name ?? null,
+      subCategoryIcon: t.subCategory?.icon ?? null,
     };
   }
 
@@ -572,8 +577,23 @@ export class AiService {
   private async getCategoriesByUserId(userId: number): Promise<Category[]> {
     return this.categoryRepo.find({
       where: [{ user: { id: userId } }, { is_system: true }],
+      relations: ['subCategories'],
       order: { is_system: 'DESC', id: 'ASC' },
     });
+  }
+
+  private pickSubCategoryByName(
+    category: Category | undefined,
+    name: string | null,
+  ): SubCategory | undefined {
+    if (!category || !name) return undefined;
+    const normalized = norm(name);
+    return (category.subCategories ?? []).find(
+      (subCategory) =>
+        norm(subCategory.name) === normalized ||
+        norm(subCategory.name).includes(normalized) ||
+        normalized.includes(norm(subCategory.name)),
+    );
   }
 
   private async getCategories(
@@ -874,6 +894,11 @@ Tin nhan: "${message}"`,
       id: c.id,
       name: c.name,
       type: c.type as any,
+      subCategories: (c.subCategories ?? []).map((subCategory) => ({
+        id: subCategory.id,
+        name: subCategory.name,
+        icon: subCategory.icon,
+      })),
     }));
 
     if (!this.isLikelyTransactionMessage(message ?? '', categories)) {
@@ -902,6 +927,29 @@ Tin nhan: "${message}"`,
           parsedTrans.type as 'income' | 'expense',
         );
         if (fallback) pickedCategory = fallback;
+      }
+      const pickedSubCategory = this.pickSubCategoryByName(
+        pickedCategory,
+        parsedTrans.sub_category_name,
+      );
+
+      if (parsedTrans.needs_clarification) {
+        return {
+          success: true,
+          statusCode: 200,
+          message: `${MSG_PREFIX.TRANSACTION_SAVED}${JSON.stringify({
+            amount,
+            type: parsedTrans.type,
+            category: pickedCategory?.name ?? 'Hóa đơn',
+            categoryIcon: pickedCategory?.icon ?? '🧾',
+            subCategory: null,
+            note: parsedTrans.description,
+            needsClarification: true,
+            suggestedSubCategories:
+              parsedTrans.suggested_sub_categories ??
+              (pickedCategory?.subCategories ?? []).map((item) => item.name),
+          })}`,
+        };
       }
 
       if (amount) {
@@ -948,6 +996,7 @@ Tin nhan: "${message}"`,
             ? new Date(parsedTrans.time!).toISOString()
             : new Date().toISOString(),
           categoryId: pickedCategory?.id,
+          subCategoryId: pickedSubCategory?.id,
           walletId: walletId,
         };
         await this.transactionService.create(dto);
@@ -963,6 +1012,12 @@ Tin nhan: "${message}"`,
                 name: pickedCategory?.name,
                 icon: pickedCategory?.icon,
               },
+              subCategory: pickedSubCategory
+                ? {
+                    name: pickedSubCategory.name,
+                    icon: pickedSubCategory.icon,
+                  }
+                : null,
             }),
             walletName: selectedWallet?.name,
             note: dto.note,
@@ -1055,6 +1110,14 @@ Tin nhan: "${message}"`,
     wallets: Array<{ id: number; name: string }> = [],
   ): Promise<ChatTransactionResult> {
     try {
+      const subCategoryRules = options
+        .map(
+          (option) =>
+            `${option.name}: ${(option.subCategories ?? [])
+              .map((subCategory) => subCategory.name)
+              .join(', ') || 'khong co'}`,
+        )
+        .join('\n');
       const response = await this.genAI.models.generateContent({
         model: this.parseModel,
         contents: [
@@ -1071,7 +1134,13 @@ QUY TAC:
 4. Neu khong co thoi gian, tra ve null cho time.
 5. Ghi chú (description) phải ngắn gọn, tập trung vào nội dung chính. TUYỆT ĐỐI KHÔNG lặp lại số tiền trong phần ghi chú này.
 6. category_name: He thong su dung bo danh muc CO DINH. Ban CHI DUOC PHEP chon tu danh sach: [${options.map((o) => o.name).join(', ')}]. TUYET DOI KHONG tu y tao ra ten danh muc moi.
-7. wallet_name: Neu nguoi dung co nhac den ten vi (vd: "vi ATM", "tien mat", "Momo"), hay trich xuat ten vi do tu danh sach: [${wallets.map((w) => w.name).join(', ')}]. Neu khong nhac den, tra ve null.
+7. sub_category_name: Chi duoc chon tu danh sach sub category co san ben duoi. Khong tu tao sub category moi.
+Danh sach sub category:
+${subCategoryRules}
+8. Neu tin nhan mo ho nhu "tra hoa don 400k" thi needs_clarification=true, category_name="Hoa don", sub_category_name=null, suggested_sub_categories gom cac sub category phu hop.
+9. Neu noi ro "tien dien", "tien nuoc", "hoc phi", "an trua" thi chon dung sub_category_name va needs_clarification=false.
+10. Neu noi "dien nuoc 400k" nhung khong tach tien, needs_clarification=true.
+11. wallet_name: Neu nguoi dung co nhac den ten vi (vd: "vi ATM", "tien mat", "Momo"), hay trich xuat ten vi do tu danh sach: [${wallets.map((w) => w.name).join(', ')}]. Neu khong nhac den, tra ve null.
 
 Hom nay la: ${new Date().toISOString()}. 
 Tin nhan nguoi dung: "${message}"`,
@@ -1105,6 +1174,12 @@ Tin nhan nguoi dung: "${message}"`,
                         description: 'Ten hang muc giao dich',
                         enum: [...options.map((option) => option.name), 'Khac'],
                       },
+                      sub_category_name: {
+                        type: Type.STRING,
+                        description:
+                          'Ten danh muc con. Chi chon tu danh sach co san; null neu khong ro.',
+                        nullable: true,
+                      },
                       description: {
                         type: Type.STRING,
                         description:
@@ -1120,6 +1195,17 @@ Tin nhan nguoi dung: "${message}"`,
                         type: Type.STRING,
                         description: 'Ten vi nguoi dung nhac den',
                         nullable: true,
+                      },
+                      needs_clarification: {
+                        type: Type.BOOLEAN,
+                        description:
+                          'true neu can hoi user xac nhan sub category truoc khi luu',
+                      },
+                      suggested_sub_categories: {
+                        type: Type.ARRAY,
+                        items: { type: Type.STRING },
+                        description:
+                          'Danh sach goi y sub category khi needs_clarification=true',
                       },
                     },
                     required: ['type', 'category_name', 'description'],
@@ -1142,10 +1228,15 @@ Tin nhan nguoi dung: "${message}"`,
         amount: args.amount ?? null,
         type: args.type ?? 'expense',
         category_name: args.category_name ?? 'Khac',
+        sub_category_name: args.sub_category_name ?? null,
         description: args.description ?? message,
         time: args.time ?? null,
         wallet_name: args.wallet_name ?? null,
         confidence: args.amount ? 1.0 : 0.0,
+        needs_clarification: args.needs_clarification === true,
+        suggested_sub_categories: Array.isArray(args.suggested_sub_categories)
+          ? args.suggested_sub_categories
+          : [],
       };
     } catch (error) {
       this.logger.error('Parse transaction failed', error);
@@ -1153,10 +1244,13 @@ Tin nhan nguoi dung: "${message}"`,
         amount: null,
         type: 'expense',
         category_name: null,
+        sub_category_name: null,
         description: null,
         time: null,
         wallet_name: null,
         confidence: 0,
+        needs_clarification: false,
+        suggested_sub_categories: [],
       };
     }
   }

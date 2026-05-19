@@ -11,6 +11,7 @@ import { CreateTransactionDto } from './dto/create-transaction.dto';
 import { UpdateTransactionDto } from './dto/update-transaction.dto';
 import { User } from 'src/modules/user/entities/user.entity';
 import { Category } from 'src/modules/categories/entities/category.entity';
+import { SubCategory } from 'src/modules/categories/entities/sub-category.entity';
 import { SavingGoal } from 'src/modules/saving-goals/entities/saving-goal.entity';
 import { Wallet } from 'src/modules/wallets/entities/wallet.entity';
 import { TransactionFilterDto } from './dto/transaction-filter.dto';
@@ -40,6 +41,8 @@ export class TransactionService {
     private userRepo: Repository<User>,
     @InjectRepository(Category)
     private categoryRepo: Repository<Category>,
+    @InjectRepository(SubCategory)
+    private subCategoryRepo: Repository<SubCategory>,
     @InjectRepository(SavingGoal)
     private goalRepo: Repository<SavingGoal>,
     @InjectRepository(Wallet)
@@ -54,18 +57,35 @@ export class TransactionService {
       transactionDate: dto.transactionDate,
     });
 
-    const [user, category] = await Promise.all([
+    const [user, requestedCategory, subCategory] = await Promise.all([
       this.userRepo.findOne({ where: { id: dto.userId } }),
       dto.categoryId
         ? this.categoryRepo.findOne({
             where: { id: dto.categoryId },
           })
         : Promise.resolve(null),
+      dto.subCategoryId
+        ? this.subCategoryRepo.findOne({
+            where: { id: dto.subCategoryId },
+            relations: ['category'],
+          })
+        : Promise.resolve(null),
     ]);
 
     if (!user) throw new NotFoundException('User not found');
-    if (dto.categoryId && !category) {
+    if (dto.categoryId && !requestedCategory) {
       throw new NotFoundException('Category not found');
+    }
+    if (dto.subCategoryId && !subCategory) {
+      throw new NotFoundException('Sub category not found');
+    }
+    const category = requestedCategory ?? subCategory?.category ?? null;
+    if (
+      requestedCategory &&
+      subCategory &&
+      subCategory.category?.id !== requestedCategory.id
+    ) {
+      throw new BadRequestException('Sub category does not belong to category');
     }
 
     // Ensure we have a valid date
@@ -89,6 +109,7 @@ export class TransactionService {
       transaction_date: transactionDate, // Match entity property name
       user,
       category,
+      subCategory,
       wallet: dto.walletId ? ({ id: dto.walletId } as any) : null,
       pictureURL: dto.pictureURL,
     });
@@ -132,7 +153,7 @@ export class TransactionService {
   ): Promise<ApiResponse<Transaction>> {
     const transaction = await this.transactionRepo.findOne({
       where: { id },
-      relations: ['category', 'user', 'wallet'],
+      relations: ['category', 'subCategory', 'user', 'wallet'],
     });
     if (!transaction) throw new NotFoundException('Transaction not found');
     
@@ -151,6 +172,23 @@ export class TransactionService {
       transaction.category = category;
     } else if (dto.categoryId === null) {
       transaction.category = null;
+    }
+    if (dto.subCategoryId) {
+      const subCategory = await this.subCategoryRepo.findOne({
+        where: { id: dto.subCategoryId },
+        relations: ['category'],
+      });
+      if (!subCategory) throw new NotFoundException('Sub category not found');
+      const nextCategory = dto.categoryId
+        ? transaction.category
+        : subCategory.category;
+      if (nextCategory && subCategory.category?.id !== nextCategory.id) {
+        throw new BadRequestException('Sub category does not belong to category');
+      }
+      transaction.subCategory = subCategory;
+      transaction.category = nextCategory;
+    } else if (dto.subCategoryId === null) {
+      transaction.subCategory = null;
     }
     transaction.amount = dto.amount ?? transaction.amount;
     transaction.type = dto.type ?? transaction.type;
@@ -308,17 +346,19 @@ export class TransactionService {
       0,
     );
 
-    const formatted: TotalByCategory[] = categories.map((cat) => {
-      const spent = totalMap.get(Number(cat.categoryId)) ?? 0;
-      return {
-        category_id: Number(cat.categoryId),
-        categoryName: cat.categoryName,
-        categoryIcon: cat.categoryIcon,
-        spendingPercentage:
-          grandTotal > 0 ? Math.round((spent / grandTotal) * 100) : 0,
-        total: spent,
-      };
-    });
+    const formatted: TotalByCategory[] = categories
+      .map((cat) => {
+        const spent = totalMap.get(Number(cat.categoryId)) ?? 0;
+        return {
+          category_id: Number(cat.categoryId),
+          categoryName: cat.categoryName,
+          categoryIcon: cat.categoryIcon,
+          spendingPercentage:
+            grandTotal > 0 ? Math.round((spent / grandTotal) * 100) : 0,
+          total: spent,
+        };
+      })
+      .filter((c) => c.total > 0);
 
     return new ApiResponse({
       success: true,
@@ -330,10 +370,11 @@ export class TransactionService {
   async findAllByFilter(
     filter: TransactionFilterDto,
   ): Promise<ApiResponse<{ income: Transaction[]; expense: Transaction[] }>> {
-    const { userId, categoryId, walletId, startDate, endDate, categoryName, limit } = filter;
+    const { userId, categoryId, subCategoryId, walletId, startDate, endDate, categoryName, limit } = filter;
 
     const incomeQuery = this.createBaseQuery(userId, 'income', {
       categoryId,
+      subCategoryId,
       walletId,
       startDate,
       endDate,
@@ -343,6 +384,7 @@ export class TransactionService {
 
     const expenseQuery = this.createBaseQuery(userId, 'expense', {
       categoryId,
+      subCategoryId,
       walletId,
       startDate,
       endDate,
@@ -638,6 +680,7 @@ export class TransactionService {
     type: 'income' | 'expense',
     {
       categoryId,
+      subCategoryId,
       walletId,
       startDate,
       endDate,
@@ -645,6 +688,7 @@ export class TransactionService {
       categoryName,
     }: {
       categoryId?: number;
+      subCategoryId?: number;
       walletId?: number;
       startDate?: string;
       endDate?: string;
@@ -659,10 +703,12 @@ export class TransactionService {
 
     if (withRelations) {
       query.leftJoinAndSelect('transaction.category', 'category');
+      query.leftJoinAndSelect('transaction.subCategory', 'subCategory');
       query.leftJoinAndSelect('transaction.user', 'user');
       query.leftJoinAndSelect('transaction.wallet', 'wallet');
     } else {
       query.leftJoin('transaction.category', 'category');
+      query.leftJoin('transaction.subCategory', 'subCategory');
       query.leftJoin('transaction.user', 'user');
       query.leftJoin('transaction.wallet', 'wallet');
     }
@@ -672,7 +718,10 @@ export class TransactionService {
       .andWhere('transaction.type = :type', { type });
 
     if (categoryId) {
-      query.andWhere('transaction.category = :categoryId', { categoryId });
+      query.andWhere('category.id = :categoryId', { categoryId });
+    }
+    if (subCategoryId) {
+      query.andWhere('subCategory.id = :subCategoryId', { subCategoryId });
     }
     if (walletId) {
       query.andWhere('transaction.wallet = :walletId', { walletId });

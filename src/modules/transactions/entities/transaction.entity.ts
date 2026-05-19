@@ -1,4 +1,5 @@
 import { Category } from 'src/modules/categories/entities/category.entity';
+import { SubCategory } from 'src/modules/categories/entities/sub-category.entity';
 import { User } from 'src/modules/user/entities/user.entity';
 import { Wallet } from 'src/modules/wallets/entities/wallet.entity';
 import {
@@ -44,6 +45,12 @@ export class Transaction {
     onDelete: 'SET NULL',
   })
   category?: Category | null;
+
+  @ManyToOne(() => SubCategory, (subCategory) => subCategory.transactions, {
+    nullable: true,
+    onDelete: 'SET NULL',
+  })
+  subCategory?: SubCategory | null;
 
   @ManyToOne(() => Wallet, (wallet) => wallet.transactions, {
     nullable: true,

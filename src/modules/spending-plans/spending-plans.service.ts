@@ -17,14 +17,22 @@ import { UpdateFixedExpenseDto } from './dto/update-fixed-expense.dto';
 import { UpdateSpendingPlanDto } from './dto/update-spending-plan.dto';
 import { FixedExpense } from './entities/fixed-expense.entity';
 import { SpendingPlan } from './entities/spending-plan.entity';
-import { SpendingPlanStatus } from './entities/spending-plan.enums';
+import {
+  SpendingPlanStatus,
+  SpendingPlanTrackingType,
+} from './entities/spending-plan.enums';
 import { SpendingPlanCalculatorService } from './spending-plan-calculator.service';
 import { Category } from 'src/modules/categories/entities/category.entity';
+import { SubCategory } from 'src/modules/categories/entities/sub-category.entity';
 
 interface SpendingPlanFilters {
   month?: number;
   year?: number;
   status?: SpendingPlanStatus;
+}
+
+interface TrackingTypeInput {
+  trackingType?: SpendingPlanTrackingType | null;
 }
 
 export interface DailySeriesItem {
@@ -49,6 +57,8 @@ export class SpendingPlansService {
 
     @InjectRepository(Category)
     private readonly categoryRepo: Repository<Category>,
+    @InjectRepository(SubCategory)
+    private readonly subCategoryRepo: Repository<SubCategory>,
 
     private readonly dataSource: DataSource,
     private readonly calculator: SpendingPlanCalculatorService,
@@ -62,15 +72,16 @@ export class SpendingPlansService {
 
     const fixedExpenses = await Promise.all(
       (dto.fixedExpenses ?? []).map(async (expense) => {
-        const category = expense.category
-          ? await this.categoryRepo.findOne({
-              where: { name: expense.category },
-            })
-          : null;
+        const { category, subCategory } =
+          await this.resolvePlanItemCategories(expense);
         return this.fixedExpenseRepo.create({
           name: this.resolveFixedExpenseName(expense),
           category,
+          subCategory,
+          trackingType: this.resolveTrackingType(expense, category),
           amount: expense.amount,
+          monthlyLimit: expense.monthlyLimit ?? expense.amount,
+          dailyLimit: expense.dailyLimit ?? null,
           frequencyType: expense.frequencyType,
           frequencyValue: expense.frequencyValue,
           dueDay: expense.dueDay ?? null,
@@ -109,7 +120,7 @@ export class SpendingPlansService {
 
     const saved = await this.planRepo.save(plan);
     const reloaded = await this.loadPlanForUser(saved.id, userId);
-    return this.ok(reloaded);
+    return this.ok(await this.enrichPlanUsageForResponse(reloaded, userId));
   }
 
   async findAll(userId: number, filters: SpendingPlanFilters) {
@@ -123,13 +134,17 @@ export class SpendingPlansService {
       relations: ['fixedExpenses'],
       order: { year: 'DESC', month: 'DESC', createdAt: 'DESC' },
     });
+    plans.forEach((plan) => this.applyCalculation(plan));
+    const enrichedPlans = await Promise.all(
+      plans.map((plan) => this.enrichPlanUsageForResponse(plan, userId)),
+    );
 
-    return this.ok(plans);
+    return this.ok(enrichedPlans);
   }
 
   async findOne(id: number, userId: number) {
     const plan = await this.loadPlanForUser(id, userId);
-    return this.ok(plan);
+    return this.ok(await this.enrichPlanUsageForResponse(plan, userId));
   }
 
   async findActive(userId: number) {
@@ -138,8 +153,13 @@ export class SpendingPlansService {
       relations: ['fixedExpenses'],
       order: { activatedAt: 'DESC' },
     });
+    if (plan) {
+      this.applyCalculation(plan);
+    }
 
-    return this.ok(plan ?? null);
+    return this.ok(
+      plan ? await this.enrichPlanUsageForResponse(plan, userId) : null,
+    );
   }
 
   async update(id: number, userId: number, dto: UpdateSpendingPlanDto) {
@@ -160,15 +180,16 @@ export class SpendingPlansService {
 
       plan.fixedExpenses = await Promise.all(
         dto.fixedExpenses.map(async (expense) => {
-          const category = expense.category
-            ? await this.categoryRepo.findOne({
-                where: { name: expense.category },
-              })
-            : null;
+          const { category, subCategory } =
+            await this.resolvePlanItemCategories(expense);
           return this.fixedExpenseRepo.create({
             name: this.resolveFixedExpenseName(expense),
             category,
+            subCategory,
+            trackingType: this.resolveTrackingType(expense, category),
             amount: expense.amount,
+            monthlyLimit: expense.monthlyLimit ?? expense.amount,
+            dailyLimit: expense.dailyLimit ?? null,
             frequencyType: expense.frequencyType,
             frequencyValue: expense.frequencyValue,
             dueDay: expense.dueDay ?? null,
@@ -186,7 +207,7 @@ export class SpendingPlansService {
     this.applyCalculation(plan);
     await this.planRepo.save(plan);
     const reloaded = await this.loadPlanForUser(id, userId);
-    return this.ok(reloaded);
+    return this.ok(await this.enrichPlanUsageForResponse(reloaded, userId));
   }
 
   async activate(id: number, userId: number) {
@@ -211,8 +232,7 @@ export class SpendingPlansService {
 
       for (const activePlan of activePlans) {
         if (activePlan.id !== plan.id) {
-          activePlan.status = SpendingPlanStatus.ARCHIVED;
-          activePlan.archivedAt = now;
+          activePlan.status = SpendingPlanStatus.PAUSED;
           await manager.save(activePlan);
         }
       }
@@ -224,7 +244,28 @@ export class SpendingPlansService {
     });
 
     const reloaded = await this.loadPlanForUser(activated.id, userId);
-    return this.ok(reloaded);
+    return this.ok(await this.enrichPlanUsageForResponse(reloaded, userId));
+  }
+
+  async pause(id: number, userId: number) {
+    const plan = await this.loadPlanForUser(id, userId);
+    if (plan.status === SpendingPlanStatus.ARCHIVED) {
+      throw new BadRequestException('Archived spending plan cannot be paused');
+    }
+    if (
+      plan.status !== SpendingPlanStatus.ACTIVE &&
+      plan.status !== SpendingPlanStatus.PAUSED
+    ) {
+      throw new BadRequestException('Only active spending plan can be paused');
+    }
+
+    if (plan.status !== SpendingPlanStatus.PAUSED) {
+      plan.status = SpendingPlanStatus.PAUSED;
+      plan.archivedAt = null;
+      await this.planRepo.save(plan);
+    }
+
+    return this.ok(await this.enrichPlanUsageForResponse(plan, userId));
   }
 
   async archive(id: number, userId: number) {
@@ -235,7 +276,7 @@ export class SpendingPlansService {
       await this.planRepo.save(plan);
     }
 
-    return this.ok(plan);
+    return this.ok(await this.enrichPlanUsageForResponse(plan, userId));
   }
 
   async remove(id: number, userId: number) {
@@ -281,17 +322,29 @@ export class SpendingPlansService {
 
     const saved = await this.planRepo.save(clone);
     const reloaded = await this.loadPlanForUser(saved.id, userId);
-    return this.ok(reloaded);
+    return this.ok(await this.enrichPlanUsageForResponse(reloaded, userId));
   }
 
   async findFixedExpenses(planId: number, userId: number) {
-    await this.loadPlanForUser(planId, userId);
+    const plan = await this.loadPlanForUser(planId, userId);
     const fixedExpenses = await this.fixedExpenseRepo.find({
       where: { spendingPlan: { id: planId }, user: { id: userId } },
       order: { dueDay: 'ASC', createdAt: 'ASC' },
     });
 
-    return this.ok(fixedExpenses);
+    const context = await this.buildExpenseContext(plan, userId, {
+      month: plan.month,
+      year: plan.year,
+    });
+
+    return this.ok(
+      fixedExpenses.map((expense) => {
+        const enriched = context.planItems.find(
+          (item) => item.id === expense.id,
+        );
+        return enriched ?? expense;
+      }),
+    );
   }
 
   async createFixedExpense(
@@ -302,14 +355,16 @@ export class SpendingPlansService {
     const plan = await this.loadPlanForUser(planId, userId);
     this.assertPlanEditable(plan);
 
-    const category = dto.category
-      ? await this.categoryRepo.findOne({ where: { name: dto.category } })
-      : null;
+    const { category, subCategory } = await this.resolvePlanItemCategories(dto);
 
     const expense = this.fixedExpenseRepo.create({
       name: this.resolveFixedExpenseName(dto),
       category,
+      subCategory,
+      trackingType: this.resolveTrackingType(dto, category),
       amount: dto.amount,
+      monthlyLimit: dto.monthlyLimit ?? dto.amount,
+      dailyLimit: dto.dailyLimit ?? null,
       frequencyType: dto.frequencyType,
       frequencyValue: dto.frequencyValue,
       dueDay: dto.dueDay ?? null,
@@ -323,7 +378,7 @@ export class SpendingPlansService {
 
     await this.fixedExpenseRepo.save(expense);
     const reloaded = await this.recalculateAndReload(planId, userId);
-    return this.ok(reloaded);
+    return this.ok(await this.enrichPlanUsageForResponse(reloaded, userId));
   }
 
   async updateFixedExpense(
@@ -342,7 +397,32 @@ export class SpendingPlansService {
         ? await this.categoryRepo.findOne({ where: { name: dto.category } })
         : null;
     }
+    if (dto.categoryId !== undefined) {
+      expense.category = dto.categoryId
+        ? await this.categoryRepo.findOne({ where: { id: dto.categoryId } })
+        : null;
+    }
+    if (dto.subCategoryId !== undefined) {
+      expense.subCategory = dto.subCategoryId
+        ? await this.subCategoryRepo.findOne({
+            where: { id: dto.subCategoryId },
+            relations: ['category'],
+          })
+        : null;
+      if (
+        expense.category &&
+        expense.subCategory &&
+        expense.subCategory.category?.id !== expense.category.id
+      ) {
+        throw new BadRequestException(
+          'Sub category does not belong to category',
+        );
+      }
+    }
+    if (dto.trackingType !== undefined) expense.trackingType = dto.trackingType;
     if (dto.amount !== undefined) expense.amount = dto.amount;
+    if (dto.monthlyLimit !== undefined) expense.monthlyLimit = dto.monthlyLimit;
+    if (dto.dailyLimit !== undefined) expense.dailyLimit = dto.dailyLimit;
     if (dto.frequencyType !== undefined)
       expense.frequencyType = dto.frequencyType;
     if (dto.frequencyValue !== undefined)
@@ -358,7 +438,7 @@ export class SpendingPlansService {
 
     await this.fixedExpenseRepo.save(expense);
     const reloaded = await this.recalculateAndReload(planId, userId);
-    return this.ok(reloaded);
+    return this.ok(await this.enrichPlanUsageForResponse(reloaded, userId));
   }
 
   async deleteFixedExpense(planId: number, expenseId: number, userId: number) {
@@ -368,7 +448,7 @@ export class SpendingPlansService {
 
     await this.fixedExpenseRepo.remove(expense);
     const reloaded = await this.recalculateAndReload(planId, userId);
-    return this.ok(reloaded);
+    return this.ok(await this.enrichPlanUsageForResponse(reloaded, userId));
   }
 
   async markFixedExpensePaid(
@@ -394,7 +474,7 @@ export class SpendingPlansService {
     expense.isPaid = true;
     await this.fixedExpenseRepo.save(expense);
     const reloaded = await this.loadPlanForUser(planId, userId);
-    return this.ok(reloaded);
+    return this.ok(await this.enrichPlanUsageForResponse(reloaded, userId));
   }
 
   async getActiveHomeSummary(userId: number) {
@@ -454,19 +534,25 @@ export class SpendingPlansService {
       mealLimit: 0,
       availableSpendingAmount: plan.availableSpendingAmount,
       spentFlexibleAmount: context.spentFlexibleAmount,
+      spentFixedAmount: context.spentFixedAmount,
       remainingAmount: context.remainingAmount,
       daysLeft,
       projectedEndBalance: context.projectedEndBalance,
       dailySeries,
+      fixedExpenses: context.planItems,
     });
   }
 
   private async findActivePlanEntity(userId: number) {
-    return this.planRepo.findOne({
+    const plan = await this.planRepo.findOne({
       where: { user: { id: userId }, status: SpendingPlanStatus.ACTIVE },
       relations: ['fixedExpenses', 'user'],
       order: { activatedAt: 'DESC' },
     });
+    if (plan) {
+      this.applyCalculation(plan);
+    }
+    return plan;
   }
 
   private async buildExpenseContext(
@@ -478,6 +564,8 @@ export class SpendingPlansService {
     const expenses = await this.transactionRepo
       .createQueryBuilder('transaction')
       .leftJoin('transaction.user', 'user')
+      .leftJoinAndSelect('transaction.category', 'category')
+      .leftJoinAndSelect('transaction.subCategory', 'subCategory')
       .where('user.id = :userId', { userId })
       .andWhere('transaction.type = :type', { type: 'expense' })
       .andWhere('transaction.transaction_date >= :start', { start })
@@ -490,19 +578,57 @@ export class SpendingPlansService {
         .filter((id): id is number => typeof id === 'number'),
     );
     const dailySpentMap = new Map<string, number>();
+    const todayKey = this.formatPlanDay(
+      period.year,
+      period.month,
+      this.getReportDay(period),
+    );
     let spentFlexibleAmount = 0;
     let spentFixedAmount = 0;
+    const planItemTotals = new Map<
+      number,
+      { spentThisMonth: number; todaySpent: number }
+    >();
 
     for (const transaction of expenses) {
       const amount = Number(transaction.amount ?? 0);
-      if (fixedTransactionIds.has(transaction.id)) {
+      const transactionDateKey = this.formatDateKey(
+        transaction.transaction_date,
+      );
+      let matchesPlanItem = false;
+
+      for (const item of plan.fixedExpenses ?? []) {
+        const matchesSubCategory =
+          item.subCategory?.id &&
+          transaction.subCategory?.id === item.subCategory.id;
+        const matchesCategory =
+          !item.subCategory?.id &&
+          item.category?.id &&
+          transaction.category?.id === item.category.id;
+        if (!matchesSubCategory && !matchesCategory) continue;
+
+        const totals = planItemTotals.get(item.id) ?? {
+          spentThisMonth: 0,
+          todaySpent: 0,
+        };
+        totals.spentThisMonth += amount;
+        if (transactionDateKey === todayKey) {
+          totals.todaySpent += amount;
+        }
+        planItemTotals.set(item.id, totals);
+        matchesPlanItem = true;
+      }
+
+      if (fixedTransactionIds.has(transaction.id) || matchesPlanItem) {
         spentFixedAmount += amount;
         continue;
       }
 
       spentFlexibleAmount += amount;
-      const dateKey = this.formatDateKey(transaction.transaction_date);
-      dailySpentMap.set(dateKey, (dailySpentMap.get(dateKey) ?? 0) + amount);
+      dailySpentMap.set(
+        transactionDateKey,
+        (dailySpentMap.get(transactionDateKey) ?? 0) + amount,
+      );
     }
 
     const remainingAmount = this.roundMoney(
@@ -524,6 +650,33 @@ export class SpendingPlansService {
       spentFixedAmount: this.roundMoney(spentFixedAmount),
       remainingAmount,
       projectedEndBalance,
+      planItems: (plan.fixedExpenses ?? []).map((item) => {
+        const totals = planItemTotals.get(item.id) ?? {
+          spentThisMonth: 0,
+          todaySpent: 0,
+        };
+        const trackingType = this.resolveTrackingType(item, item.category);
+        const monthlyLimit = Number(item.monthlyLimit || item.amount || 0);
+        const dailyLimit =
+          item.dailyLimit == null ? null : Number(item.dailyLimit);
+        const todaySpent = this.roundMoney(totals.todaySpent);
+        return {
+          ...item,
+          trackingType,
+          monthlyLimit,
+          dailyLimit,
+          spentThisMonth: this.roundMoney(totals.spentThisMonth),
+          todaySpent,
+          monthlyProgress:
+            monthlyLimit > 0
+              ? Math.round((totals.spentThisMonth / monthlyLimit) * 1000) / 10
+              : 0,
+          dailyOverAmount:
+            dailyLimit && todaySpent > dailyLimit
+              ? this.roundMoney(todaySpent - dailyLimit)
+              : 0,
+        };
+      }),
     };
   }
 
@@ -555,12 +708,68 @@ export class SpendingPlansService {
     return this.loadPlanForUser(planId, userId);
   }
 
+  private async enrichPlanUsageForResponse(plan: SpendingPlan, userId: number) {
+    const context = await this.buildExpenseContext(plan, userId, {
+      month: plan.month,
+      year: plan.year,
+    });
+
+    return {
+      ...plan,
+      fixedExpenses: context.planItems,
+    };
+  }
+
+  private async resolvePlanItemCategories(
+    dto: CreateFixedExpenseDto | UpdateFixedExpenseDto,
+  ) {
+    let category: Category | null = null;
+    if (dto.categoryId) {
+      category = await this.categoryRepo.findOne({
+        where: { id: dto.categoryId },
+      });
+    } else if (dto.category) {
+      category = await this.categoryRepo.findOne({
+        where: { name: dto.category },
+      });
+    }
+
+    let subCategory: SubCategory | null = null;
+    if (dto.subCategoryId) {
+      subCategory = await this.subCategoryRepo.findOne({
+        where: { id: dto.subCategoryId },
+        relations: ['category'],
+      });
+      if (!subCategory) throw new NotFoundException('Sub category not found');
+      if (category && subCategory.category?.id !== category.id) {
+        throw new BadRequestException(
+          'Sub category does not belong to category',
+        );
+      }
+      category = category ?? subCategory.category;
+    }
+
+    return { category, subCategory };
+  }
+
+  private resolveTrackingType(
+    dto: TrackingTypeInput,
+    category: Category | null,
+  ): SpendingPlanTrackingType {
+    void category;
+    if (dto.trackingType) {
+      return dto.trackingType;
+    }
+    return SpendingPlanTrackingType.FIXED_BILL;
+  }
+
   private applyCalculation(plan: SpendingPlan) {
     const calculation = this.calculator.calculate({
       totalAmount: plan.totalAmount,
       savingTargetAmount: plan.savingTargetAmount,
       fixedExpenses: plan.fixedExpenses ?? [],
-      ...this.getCurrentPeriod(),
+      month: plan.month,
+      year: plan.year,
     });
 
     Object.assign(plan, calculation);
@@ -575,6 +784,7 @@ export class SpendingPlansService {
     if (!plan) {
       throw new NotFoundException('Spending plan not found');
     }
+    this.applyCalculation(plan);
 
     return plan;
   }

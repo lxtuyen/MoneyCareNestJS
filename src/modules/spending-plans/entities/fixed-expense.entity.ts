@@ -10,7 +10,9 @@ import { ColumnNumericTransformer } from 'src/common/transformers/decimal.transf
 import { User } from 'src/modules/user/entities/user.entity';
 import { SpendingPlan } from './spending-plan.entity';
 import { SpendingPlanExpenseFrequency } from './spending-plan.enums';
+import { SpendingPlanTrackingType } from './spending-plan.enums';
 import { Category } from 'src/modules/categories/entities/category.entity';
+import { SubCategory } from 'src/modules/categories/entities/sub-category.entity';
 
 @Entity('fixed_expenses')
 export class FixedExpense {
@@ -31,6 +33,16 @@ export class FixedExpense {
   @ManyToOne(() => Category, { onDelete: 'SET NULL', nullable: true, eager: true })
   category: Category | null;
 
+  @ManyToOne(() => SubCategory, { onDelete: 'SET NULL', nullable: true, eager: true })
+  subCategory: SubCategory | null;
+
+  @Column({
+    type: 'enum',
+    enum: SpendingPlanTrackingType,
+    default: SpendingPlanTrackingType.FIXED_BILL,
+  })
+  trackingType: SpendingPlanTrackingType;
+
   @Column({
     type: 'decimal',
     precision: 15,
@@ -39,6 +51,24 @@ export class FixedExpense {
     transformer: new ColumnNumericTransformer(),
   })
   amount: number;
+
+  @Column({
+    type: 'decimal',
+    precision: 15,
+    scale: 2,
+    default: 0,
+    transformer: new ColumnNumericTransformer(),
+  })
+  monthlyLimit: number;
+
+  @Column({
+    type: 'decimal',
+    precision: 15,
+    scale: 2,
+    nullable: true,
+    transformer: new ColumnNumericTransformer(),
+  })
+  dailyLimit: number | null;
 
   @Column({
     type: 'enum',

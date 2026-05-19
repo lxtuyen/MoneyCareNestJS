@@ -75,6 +75,11 @@ export class SpendingPlansController {
     return this.spendingPlansService.activate(id, userId);
   }
 
+  @Patch(':id/pause')
+  pause(@Param('id', ParseIntPipe) id: number, @User('sub') userId: number) {
+    return this.spendingPlansService.pause(id, userId);
+  }
+
   @Patch(':id/archive')
   archive(@Param('id', ParseIntPipe) id: number, @User('sub') userId: number) {
     return this.spendingPlansService.archive(id, userId);

@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import {
   SpendingPlanRiskLevel,
   SpendingPlanExpenseFrequency,
+  SpendingPlanTrackingType,
 } from './entities/spending-plan.enums';
 
 export interface SpendingPlanCalculationInput {
@@ -11,6 +12,7 @@ export interface SpendingPlanCalculationInput {
     amount: number | null | undefined;
     frequencyType?: SpendingPlanExpenseFrequency;
     frequencyValue?: number;
+    trackingType?: SpendingPlanTrackingType;
   }> | null;
   month: number;
   year: number;

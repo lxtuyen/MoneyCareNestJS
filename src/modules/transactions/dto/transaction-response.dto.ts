@@ -1,5 +1,6 @@
 import { Expose, Type } from 'class-transformer';
 import { CategoryResponseDto } from 'src/modules/categories/dto/category-response.dto';
+import { SubCategoryResponseDto } from 'src/modules/categories/dto/category-response.dto';
 
 export class TransactionResponseDto {
   @Expose()
@@ -17,6 +18,10 @@ export class TransactionResponseDto {
   @Expose()
   @Type(() => CategoryResponseDto)
   category?: CategoryResponseDto;
+
+  @Expose()
+  @Type(() => SubCategoryResponseDto)
+  subCategory?: SubCategoryResponseDto;
 
   @Expose()
   created_at: Date;

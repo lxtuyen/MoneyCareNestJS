@@ -10,6 +10,10 @@ export class TransactionFilterDto {
 
   @IsOptional()
   @IsNumber()
+  subCategoryId?: number;
+
+  @IsOptional()
+  @IsNumber()
   walletId?: number;
 
   @IsOptional()

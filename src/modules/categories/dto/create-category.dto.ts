@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsNumber, Min, Max, IsEnum } from 'class-validator';
+import { IsString, IsOptional, IsEnum, IsBoolean } from 'class-validator';
 import { CategoryType } from '../entities/category.entity';
 
 export class CreateCategoryDto {
@@ -15,4 +15,8 @@ export class CreateCategoryDto {
 
   @IsOptional()
   isEssential?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  is_system?: boolean;
 }

@@ -29,6 +29,10 @@ export class CreateTransactionDto {
   @IsNumber()
   categoryId?: number;
 
+  @IsOptional()
+  @IsNumber()
+  subCategoryId?: number;
+
   @IsNumber()
   userId: number;
 

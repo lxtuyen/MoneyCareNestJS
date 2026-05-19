@@ -11,12 +11,10 @@ import {
   OneToMany,
   DeleteDateColumn,
 } from 'typeorm';
+import { SubCategory } from './sub-category.entity';
+import { CategoryType } from './category-type.enum';
 
-export enum CategoryType {
-  INCOME = 'income',
-  EXPENSE = 'expense',
-  OTHERS = 'others',
-}
+export { CategoryType } from './category-type.enum';
 
 @Entity('categories')
 export class Category {
@@ -46,6 +44,9 @@ export class Category {
 
   @OneToMany(() => Transaction, (trans) => trans.category)
   transactions: Transaction[];
+
+  @OneToMany(() => SubCategory, (subCategory) => subCategory.category)
+  subCategories: SubCategory[];
 
   @CreateDateColumn()
   created_at: Date;
