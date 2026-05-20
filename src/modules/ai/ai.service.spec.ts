@@ -3,6 +3,11 @@ import {
   buildAiAnalysisCacheKey,
   buildAiAnalysisRegistryKey,
 } from 'src/common/cache/financial-cache.util';
+import { GoogleGenAI } from '@google/genai';
+import {
+  GoalPlanInsightDto,
+  GoalPlanProgressStatus,
+} from './dto/goal-plan-insight.dto';
 
 jest.mock('@google/genai', () => ({
   GoogleGenAI: jest.fn().mockImplementation(() => ({
@@ -30,7 +35,11 @@ describe('AiService cache behavior', () => {
   };
   const fundRepo = { findOne: jest.fn() };
   const categoryRepo = { find: jest.fn() };
+  const subCategoryRepo = { find: jest.fn() };
   const userRepo = { findOne: jest.fn() };
+  const walletRepo = { find: jest.fn() };
+  const spendingPlansService = {};
+  const savingGoalsService = {};
 
   let service: AiService;
 
@@ -43,7 +52,11 @@ describe('AiService cache behavior', () => {
       cacheService as any,
       fundRepo as any,
       categoryRepo as any,
+      subCategoryRepo as any,
       userRepo as any,
+      walletRepo as any,
+      spendingPlansService as any,
+      savingGoalsService as any,
     );
   });
 
@@ -51,7 +64,11 @@ describe('AiService cache behavior', () => {
     const cached = '__STRUCTURED_ANALYSIS__{"summary":"cached"}';
     cacheService.get.mockResolvedValueOnce(cached);
 
-    const result = await (service as any).handleAnalysis('phan tich chi tieu', 7, 2);
+    const result = await (service as any).handleAnalysis(
+      'phan tich chi tieu',
+      7,
+      2,
+    );
 
     expect(result).toEqual({ success: true, statusCode: 200, message: cached });
     expect(financialInsightsService.getInsights).not.toHaveBeenCalled();
@@ -110,4 +127,92 @@ describe('AiService cache behavior', () => {
       300,
     );
   });
+
+  it('generates structured goal-plan insight from AI JSON', async () => {
+    const generateContent = jest.fn().mockResolvedValueOnce({
+      text: JSON.stringify({
+        status: 'delayed',
+        summary: 'Kế hoạch đang chậm tiến độ.',
+        reason: 'Ăn uống vượt kế hoạch.',
+        suggestion: 'Giảm ăn ngoài trong tuần này.',
+      }),
+    });
+    (GoogleGenAI as jest.Mock).mockImplementationOnce(() => ({
+      models: { generateContent },
+    }));
+    service = new AiService(
+      transactionService as any,
+      financialInsightsService as any,
+      cacheService as any,
+      fundRepo as any,
+      categoryRepo as any,
+      subCategoryRepo as any,
+      userRepo as any,
+      walletRepo as any,
+      spendingPlansService as any,
+      savingGoalsService as any,
+    );
+
+    const result = await service.generateGoalPlanInsight(goalPlanInsightDto());
+
+    expect(result.success).toBe(true);
+    expect(result.data).toEqual({
+      status: GoalPlanProgressStatus.DELAYED,
+      summary: 'Kế hoạch đang chậm tiến độ.',
+      reason: 'Ăn uống vượt kế hoạch.',
+      suggestion: 'Giảm ăn ngoài trong tuần này.',
+    });
+  });
+
+  it('returns fallback goal-plan insight when AI generation fails', async () => {
+    const generateContent = jest.fn().mockRejectedValueOnce(new Error('boom'));
+    (GoogleGenAI as jest.Mock).mockImplementationOnce(() => ({
+      models: { generateContent },
+    }));
+    service = new AiService(
+      transactionService as any,
+      financialInsightsService as any,
+      cacheService as any,
+      fundRepo as any,
+      categoryRepo as any,
+      subCategoryRepo as any,
+      userRepo as any,
+      walletRepo as any,
+      spendingPlansService as any,
+      savingGoalsService as any,
+    );
+
+    const result = await service.generateGoalPlanInsight(goalPlanInsightDto());
+
+    expect(result.success).toBe(true);
+    expect(result.data?.status).toBe(GoalPlanProgressStatus.DELAYED);
+    expect(result.data?.summary).toContain('chậm tiến độ');
+  });
 });
+
+function goalPlanInsightDto(): GoalPlanInsightDto {
+  return {
+    userId: 1,
+    selectedMonth: '2026-05',
+    goal: {
+      name: 'Mua xe',
+      status: GoalPlanProgressStatus.DELAYED,
+    },
+    plan: {
+      name: 'Plan tháng 5',
+      status: GoalPlanProgressStatus.DELAYED,
+      plannedToDate: 1000000,
+      actualSpent: 1200000,
+      overAmount: 200000,
+    },
+    categories: [
+      {
+        name: 'Ăn uống',
+        status: GoalPlanProgressStatus.DELAYED,
+        plannedToDate: 500000,
+        actualSpent: 650000,
+        overAmount: 150000,
+      },
+    ],
+  };
+}

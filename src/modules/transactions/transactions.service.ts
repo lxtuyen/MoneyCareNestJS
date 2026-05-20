@@ -370,7 +370,9 @@ export class TransactionService {
   async findAllByFilter(
     filter: TransactionFilterDto,
   ): Promise<ApiResponse<{ income: Transaction[]; expense: Transaction[] }>> {
-    const { userId, categoryId, subCategoryId, walletId, startDate, endDate, categoryName, limit } = filter;
+    const { userId, categoryId, subCategoryId, walletId, startDate, endDate, categoryName, limit, includeTransfer } = filter;
+
+    const excludeTransfer = includeTransfer !== 'true';
 
     const incomeQuery = this.createBaseQuery(userId, 'income', {
       categoryId,
@@ -380,6 +382,7 @@ export class TransactionService {
       endDate,
       withRelations: true,
       categoryName,
+      excludeTransfer,
     });
 
     const expenseQuery = this.createBaseQuery(userId, 'expense', {
@@ -390,6 +393,7 @@ export class TransactionService {
       endDate,
       withRelations: true,
       categoryName,
+      excludeTransfer,
     });
 
     incomeQuery.orderBy('transaction.transaction_date', 'DESC');
@@ -686,6 +690,7 @@ export class TransactionService {
       endDate,
       withRelations = false,
       categoryName,
+      excludeTransfer = true,
     }: {
       categoryId?: number;
       subCategoryId?: number;
@@ -695,6 +700,7 @@ export class TransactionService {
       pictureURL?: string;
       withRelations?: boolean;
       categoryName?: string;
+      excludeTransfer?: boolean;
     } = {},
   ) {
 
@@ -716,6 +722,10 @@ export class TransactionService {
     query
       .where('user.id = :userId', { userId })
       .andWhere('transaction.type = :type', { type });
+
+    if (excludeTransfer) {
+      query.andWhere("(category.name IS NULL OR category.name != 'Chuyển tiền')");
+    }
 
     if (categoryId) {
       query.andWhere('category.id = :categoryId', { categoryId });

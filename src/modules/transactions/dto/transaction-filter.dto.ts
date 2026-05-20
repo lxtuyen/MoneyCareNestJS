@@ -30,4 +30,7 @@ export class TransactionFilterDto {
   @IsOptional()
   @IsNumber()
   limit?: number;
+
+  @IsOptional()
+  includeTransfer?: string;
 }

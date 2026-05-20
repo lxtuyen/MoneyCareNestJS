@@ -656,7 +656,9 @@ export class SpendingPlansService {
           todaySpent: 0,
         };
         const trackingType = this.resolveTrackingType(item, item.category);
-        const monthlyLimit = Number(item.monthlyLimit || item.amount || 0);
+        const monthlyLimit =
+          Number(item.monthlyLimit || 0) ||
+          this.resolveMonthlyLimit(item, period);
         const dailyLimit =
           item.dailyLimit == null ? null : Number(item.dailyLimit);
         const todaySpent = this.roundMoney(totals.todaySpent);
@@ -718,6 +720,33 @@ export class SpendingPlansService {
       ...plan,
       fixedExpenses: context.planItems,
     };
+  }
+
+  private resolveMonthlyLimit(
+    item: FixedExpense,
+    period: { month: number; year: number },
+  ) {
+    const amount = Number(item.amount || 0);
+    const frequencyValue = Number(item.frequencyValue || 1);
+    const frequencyType = item.frequencyType?.toLowerCase();
+
+    if (frequencyType === 'daily') {
+      return (
+        amount *
+        frequencyValue *
+        this.calculator.getDaysInMonth(period.month, period.year)
+      );
+    }
+
+    if (frequencyType === 'weekly') {
+      return (
+        amount *
+        frequencyValue *
+        (this.calculator.getDaysInMonth(period.month, period.year) / 7)
+      );
+    }
+
+    return amount * frequencyValue;
   }
 
   private async resolvePlanItemCategories(

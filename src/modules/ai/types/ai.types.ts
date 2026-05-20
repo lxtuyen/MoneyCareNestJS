@@ -38,6 +38,13 @@ export type FinancialAnalysisResult = {
   budget_plan: BudgetPlanGroup[];
 };
 
+export type GoalPlanInsightResult = {
+  status: 'on_track' | 'delayed';
+  summary: string;
+  reason: string;
+  suggestion: string;
+};
+
 export type InsightCategorySummary = {
   name: string;
   amount: number;
@@ -69,4 +76,3 @@ export type GetTransactionQuery = {
   category_name: string | null;
   limit: number | null;
 };
-

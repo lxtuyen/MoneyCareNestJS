@@ -21,6 +21,7 @@ import {
   CatOption,
   ChatTransactionResult,
   FinancialAnalysisResult,
+  GoalPlanInsightResult,
   FinancialInsightSnapshot,
   GetTransactionQuery,
 } from './types/ai.types';
@@ -32,6 +33,11 @@ import {
 } from 'src/common/cache/financial-cache.util';
 import { SpendingPlansService } from 'src/modules/spending-plans/spending-plans.service';
 import { SavingGoalsService } from 'src/modules/saving-goals/saving-goals.service';
+import {
+  GoalPlanInsightDto,
+  GoalPlanInsightResponseDto,
+  GoalPlanProgressStatus,
+} from './dto/goal-plan-insight.dto';
 
 const DEFAULT_MODEL = 'gemini-2.5-flash-lite';
 const AI_ANALYSIS_TTL_SECONDS = 300;
@@ -231,10 +237,21 @@ export class AiService {
   private safeJsonParse<T>(value: unknown, fallback: T): T {
     if (typeof value !== 'string' || !value.trim()) return fallback;
     try {
-      return JSON5.parse(value) as T;
+      return JSON5.parse(value);
     } catch {
       return fallback;
     }
+  }
+
+  private stripJsonFence(value: string): string {
+    let raw = value.trim();
+    if (raw.startsWith('```')) {
+      raw = raw
+        .replace(/```[\w]*\n?/g, '')
+        .replace(/```$/, '')
+        .trim();
+    }
+    return raw;
   }
 
   private parseReceiptLines(value: unknown): ReceiptOcrLine[] {
@@ -918,13 +935,13 @@ Tin nhan: "${message}"`,
       let pickedCategory = this.pickCategoryByName(
         categories,
         parsedTrans.category_name,
-        parsedTrans.type as 'income' | 'expense',
+        parsedTrans.type,
       );
 
       if (!pickedCategory) {
         const fallback = await this.getFallbackCategoryFromDB(
           userId,
-          parsedTrans.type as 'income' | 'expense',
+          parsedTrans.type,
         );
         if (fallback) pickedCategory = fallback;
       }
@@ -989,7 +1006,7 @@ Tin nhan: "${message}"`,
 
         const dto: CreateTransactionDto = {
           userId,
-          type: parsedTrans.type as 'income' | 'expense',
+          type: parsedTrans.type,
           amount,
           note: parsedTrans.description ?? 'Giao dịch từ chatbot',
           transactionDate: isValidDate(parsedTrans.time)
@@ -1113,9 +1130,11 @@ Tin nhan: "${message}"`,
       const subCategoryRules = options
         .map(
           (option) =>
-            `${option.name}: ${(option.subCategories ?? [])
-              .map((subCategory) => subCategory.name)
-              .join(', ') || 'khong co'}`,
+            `${option.name}: ${
+              (option.subCategories ?? [])
+                .map((subCategory) => subCategory.name)
+                .join(', ') || 'khong co'
+            }`,
         )
         .join('\n');
       const response = await this.genAI.models.generateContent({
@@ -1293,11 +1312,121 @@ YEU CAU:${text}
           .replace(/```$/, '')
           .trim();
       }
-      return JSON5.parse(raw) as FinancialAnalysisResult;
+      return JSON5.parse(raw);
     } catch (error) {
       this.logger.error('Parse analysis JSON failed', error);
       return 'Toi gap loi khi chuan bi ke hoach tai chinh cho ban. Hay thu lai.';
     }
+  }
+
+  async generateGoalPlanInsight(
+    dto: GoalPlanInsightDto,
+  ): Promise<ApiResponse<GoalPlanInsightResponseDto>> {
+    const fallback = this.buildGoalPlanInsightFallback(dto);
+    const prompt = `
+Ban la tro ly tai chinh cua ung dung Money Care.
+
+NHIEM VU:
+Phan tich moi lien he giua ke hoach chi tieu thang va muc tieu tiet kiem.
+Chi ket luan "dung tien do" hoac "cham tien do"; khong du bao som/cham bao nhieu ngay.
+
+QUY TAC:
+1. Chi dung du lieu trong JSON.
+2. Neu status la delayed, noi ro nhom nao lam cham tien do nhat.
+3. Neu status la on_track, noi ngan gon vi sao van trong ke hoach.
+4. Tra loi tieng Viet, ngan gon, than thien.
+
+OUTPUT JSON DUY NHAT:
+{"status":"on_track|delayed","summary":string,"reason":string,"suggestion":string}
+
+SNAPSHOT:
+${JSON.stringify(dto)}
+`.trim();
+
+    try {
+      const result = await this.generateContent(
+        prompt,
+        undefined,
+        undefined,
+        this.analysisModel,
+      );
+      const parsed = this.safeJsonParse<GoalPlanInsightResult>(
+        this.stripJsonFence(result.text || ''),
+        fallback,
+      );
+      const normalized = this.normalizeGoalPlanInsight(parsed, fallback);
+
+      return new ApiResponse({
+        success: true,
+        statusCode: HttpStatus.OK,
+        data: normalized,
+        message: 'Generate goal plan insight successfully',
+      });
+    } catch (error) {
+      this.logger.error('Generate goal plan insight failed', error);
+      return new ApiResponse({
+        success: true,
+        statusCode: HttpStatus.OK,
+        data: fallback,
+        message: 'Generate goal plan insight fallback result',
+      });
+    }
+  }
+
+  private normalizeGoalPlanInsight(
+    value: GoalPlanInsightResult,
+    fallback: GoalPlanInsightResponseDto,
+  ): GoalPlanInsightResponseDto {
+    const status =
+      value.status === 'delayed'
+        ? GoalPlanProgressStatus.DELAYED
+        : GoalPlanProgressStatus.ON_TRACK;
+
+    return {
+      status,
+      summary:
+        typeof value.summary === 'string' && value.summary.trim()
+          ? value.summary.trim()
+          : fallback.summary,
+      reason:
+        typeof value.reason === 'string' && value.reason.trim()
+          ? value.reason.trim()
+          : fallback.reason,
+      suggestion:
+        typeof value.suggestion === 'string' && value.suggestion.trim()
+          ? value.suggestion.trim()
+          : fallback.suggestion,
+    };
+  }
+
+  private buildGoalPlanInsightFallback(
+    dto: GoalPlanInsightDto,
+  ): GoalPlanInsightResponseDto {
+    const delayedCategories = [...(dto.categories ?? [])]
+      .filter((item) => item.status === GoalPlanProgressStatus.DELAYED)
+      .sort((a, b) => b.overAmount - a.overAmount);
+    const topCategory = delayedCategories[0];
+
+    if (dto.plan.status === GoalPlanProgressStatus.DELAYED) {
+      return {
+        status: GoalPlanProgressStatus.DELAYED,
+        summary: 'Kế hoạch tháng này đang chậm tiến độ.',
+        reason: topCategory
+          ? `${topCategory.name} đang vượt kế hoạch nhiều nhất.`
+          : 'Tổng chi tiêu hiện tại đã vượt phần kế hoạch nên dùng tới hôm nay.',
+        suggestion: topCategory
+          ? `Ưu tiên giảm chi ở ${topCategory.name} để đưa mục tiêu về đúng tiến độ.`
+          : 'Giảm các khoản chi linh hoạt trong vài ngày tới để cân bằng lại kế hoạch.',
+      };
+    }
+
+    return {
+      status: GoalPlanProgressStatus.ON_TRACK,
+      summary: 'Kế hoạch tháng này vẫn đúng tiến độ.',
+      reason: 'Chi tiêu hiện tại chưa vượt phần kế hoạch nên dùng tới hôm nay.',
+      suggestion:
+        'Tiếp tục giữ nhịp chi hiện tại và theo dõi các nhóm chi lớn trong tháng.',
+    };
   }
 
   async chatAnswer(text: string): Promise<string> {

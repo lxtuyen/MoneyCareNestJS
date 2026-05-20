@@ -9,6 +9,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { AiService } from './ai.service';
 import { ChatDto } from './dto/chat.dto';
+import { GoalPlanInsightDto } from './dto/goal-plan-insight.dto';
 
 @Controller('ai')
 export class AiController {
@@ -29,6 +30,11 @@ export class AiController {
       dto.ocrText,
       dto.ocrLines,
     );
+  }
+
+  @Post('goal-plan-insight')
+  async goalPlanInsight(@Body() dto: GoalPlanInsightDto) {
+    return this.aiService.generateGoalPlanInsight(dto);
   }
 
   @Post('receipt/scan')
