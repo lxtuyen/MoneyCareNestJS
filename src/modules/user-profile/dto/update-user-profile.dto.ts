@@ -9,12 +9,6 @@ export class UpdateProfileDto {
   @IsString()
   last_name?: string;
 
-  @IsOptional()
-  monthlyIncome?: number;
-
-  @IsOptional()
-  @IsString()
-  incomeDate?: string;
 
   @IsOptional()
   @IsString()
