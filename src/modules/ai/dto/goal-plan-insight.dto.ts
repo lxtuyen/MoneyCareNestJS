@@ -88,4 +88,13 @@ export class GoalPlanInsightResponseDto {
 
   @IsString()
   suggestion: string;
+
+  @IsOptional()
+  @IsNumber()
+  projectedDaysDiff?: number;
+
+  @IsOptional()
+  @IsString()
+  projectionStatus?: string;
 }
+

@@ -5,9 +5,10 @@ import { WalletsController } from './wallets.controller';
 import { Wallet } from './entities/wallet.entity';
 import { Transaction } from '../transactions/entities/transaction.entity';
 import { Category } from '../categories/entities/category.entity';
+import { SavingGoal } from '../saving-goals/entities/saving-goal.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Wallet, Transaction, Category])],
+  imports: [TypeOrmModule.forFeature([Wallet, Transaction, Category, SavingGoal])],
   controllers: [WalletsController],
   providers: [WalletsService],
   exports: [WalletsService],

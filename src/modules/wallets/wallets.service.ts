@@ -1,11 +1,17 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, In } from 'typeorm';
 import { Wallet } from './entities/wallet.entity';
 import { CreateWalletDto, UpdateWalletDto, TransferDto } from './dto/wallet.dto';
 import { User } from 'src/modules/user/entities/user.entity';
 import { Transaction } from '../transactions/entities/transaction.entity';
 import { Category } from '../categories/entities/category.entity';
+import { SavingGoal } from '../saving-goals/entities/saving-goal.entity';
+import { CacheService } from 'src/common/cache/cache.service';
+import {
+  getFinancialCacheKeys,
+  getAiAnalysisRegistryKeys,
+} from 'src/common/cache/financial-cache.util';
 
 @Injectable()
 export class WalletsService {
@@ -16,6 +22,9 @@ export class WalletsService {
     private transactionRepository: Repository<Transaction>,
     @InjectRepository(Category)
     private categoryRepository: Repository<Category>,
+    @InjectRepository(SavingGoal)
+    private goalRepo: Repository<SavingGoal>,
+    private cacheService: CacheService,
   ) {}
 
   async create(createWalletDto: CreateWalletDto, user: User): Promise<Wallet> {
@@ -112,6 +121,44 @@ export class WalletsService {
     });
 
     await this.transactionRepository.save([outgoing, incoming]);
+
+    // 3. Find and invalidate cache for goals linked to fromWallet or toWallet
+    try {
+      const goals = await this.goalRepo.find({
+        where: [
+          { wallet: { id: fromWalletId } },
+          { wallet: { id: toWalletId } },
+        ],
+      });
+      const affectedGoalIds = goals.map((g) => g.id);
+      if (affectedGoalIds.length > 0) {
+        await this.invalidateFinancialCache(user.id, affectedGoalIds);
+      }
+    } catch (cacheError) {
+      // Non-blocking catch to ensure transfer is not rolled back if cache invalidation fails
+      console.error('>>> [BE] Error invalidating financial cache during transfer:', cacheError);
+    }
+  }
+
+  private async invalidateFinancialCache(
+    userId: number,
+    goalIds: number[],
+  ): Promise<void> {
+    const keys = getFinancialCacheKeys(userId, [0, ...goalIds]);
+    await this.cacheService.delMany(keys);
+
+    const registryKeys = getAiAnalysisRegistryKeys(userId, [0, ...goalIds]);
+    const registryEntries = await Promise.all(
+      registryKeys.map((registryKey) =>
+        this.cacheService.get<string[]>(registryKey),
+      ),
+    );
+
+    const analysisKeys = Array.from(
+      new Set(registryEntries.flatMap((entry) => entry ?? [])),
+    );
+
+    await this.cacheService.delMany([...analysisKeys, ...registryKeys]);
   }
 
   async getTotalAssets(user: User): Promise<number> {

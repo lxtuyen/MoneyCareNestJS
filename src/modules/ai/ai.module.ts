@@ -12,6 +12,7 @@ import { Wallet } from 'src/modules/wallets/entities/wallet.entity';
 import { FinancialInsightsService } from './financial-insights.service';
 import { SpendingPlansModule } from 'src/modules/spending-plans/spending-plans.module';
 import { SavingGoalsModule } from 'src/modules/saving-goals/saving-goals.module';
+import { WalletsModule } from 'src/modules/wallets/wallets.module';
 
 @Global()
 @Module({
@@ -20,6 +21,7 @@ import { SavingGoalsModule } from 'src/modules/saving-goals/saving-goals.module'
     TransactionsModule,
     SpendingPlansModule,
     SavingGoalsModule,
+    WalletsModule,
   ],
   controllers: [AiController],
   providers: [AiService, FinancialInsightsService],

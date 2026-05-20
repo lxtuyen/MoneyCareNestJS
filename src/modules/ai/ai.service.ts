@@ -33,6 +33,7 @@ import {
 } from 'src/common/cache/financial-cache.util';
 import { SpendingPlansService } from 'src/modules/spending-plans/spending-plans.service';
 import { SavingGoalsService } from 'src/modules/saving-goals/saving-goals.service';
+import { WalletsService } from 'src/modules/wallets/wallets.service';
 import {
   GoalPlanInsightDto,
   GoalPlanInsightResponseDto,
@@ -50,6 +51,7 @@ const MSG_PREFIX = {
   STRUCTURED_ANALYSIS: '__STRUCTURED_ANALYSIS__',
   SAVING_GOAL_CREATED: '__SAVING_GOAL_CREATED__',
   SAVING_GOAL_PROPOSAL: '__SAVING_GOAL_PROPOSAL__',
+  SAVING_GOAL_INITIAL_FUND_ASK: '__SAVING_GOAL_INITIAL_FUND_ASK__',
 };
 
 interface ReceiptOcrLine {
@@ -188,6 +190,7 @@ export class AiService {
     private readonly walletRepo: Repository<Wallet>,
     private readonly spendingPlansService: SpendingPlansService,
     private readonly savingGoalsService: SavingGoalsService,
+    private readonly walletsService: WalletsService,
   ) {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
@@ -875,6 +878,9 @@ Tin nhan: "${message}"`,
     if (message && message.startsWith('/change_saving_goal_duration')) {
       return this.handleChangeSavingGoalDuration(message, userId);
     }
+    if (message && message.startsWith('/saving_goal_init_fund')) {
+      return this.handleSavingGoalInitFund(message, userId);
+    }
 
     if (ocrText) {
       return this.handleReceiptOcr(userId, ocrText, ocrLines);
@@ -1322,25 +1328,118 @@ YEU CAU:${text}
   async generateGoalPlanInsight(
     dto: GoalPlanInsightDto,
   ): Promise<ApiResponse<GoalPlanInsightResponseDto>> {
-    const fallback = this.buildGoalPlanInsightFallback(dto);
+    let daysDiff = 0;
+    let projectionStatus: 'early' | 'delayed' | 'on_track' = 'on_track';
+    
+    // Parse selectedMonth "YYYY-MM"
+    const [yearStr, monthStr] = dto.selectedMonth.split('-');
+    const year = parseInt(yearStr, 10);
+    const month = parseInt(monthStr, 10);
+    const daysInMonth = new Date(year, month, 0).getDate();
+    
+    const now = new Date();
+    let daysPassed = 1;
+    if (now.getFullYear() === year && now.getMonth() + 1 === month) {
+      daysPassed = Math.max(1, Math.min(now.getDate(), daysInMonth));
+    } else {
+      const selectedDate = new Date(year, month - 1, 1);
+      if (selectedDate < new Date(now.getFullYear(), now.getMonth(), 1)) {
+        daysPassed = daysInMonth;
+      } else {
+        daysPassed = 1;
+      }
+    }
+    
+    let Tm = 0;
+    let Sactual = 0;
+    let goalName = dto.goal.name;
+    
+    try {
+      const activeGoal = await this.goalRepo.findOne({
+        where: { user: { id: dto.userId }, is_selected: true, is_completed: false },
+        relations: ['wallet'],
+      }) || await this.goalRepo.findOne({
+        where: { user: { id: dto.userId }, is_completed: false },
+        relations: ['wallet'],
+        order: { updated_at: 'DESC' },
+      });
+      
+      if (activeGoal) {
+        goalName = activeGoal.name;
+        const reportRes = await this.savingGoalsService.getGoalReport(activeGoal.id, dto.userId);
+        if (reportRes.success && reportRes.data) {
+          const report = reportRes.data;
+          const currentMilestone = report.milestones?.find((m: any) => {
+            const mStart = new Date(m.start_date);
+            return mStart.getFullYear() === year && mStart.getMonth() + 1 === month;
+          });
+          
+          if (currentMilestone) {
+            Tm = Number(currentMilestone.target || 0);
+            Sactual = Number(currentMilestone.actual || 0);
+            
+            const Rplanned = Tm / daysInMonth;
+            const Ractual = Sactual / daysPassed;
+            const stageTargetRemaining = Math.max(0, Tm - Sactual);
+            const daysPlannedRemaining = daysInMonth - daysPassed;
+            
+            if (stageTargetRemaining <= 0) {
+              daysDiff = 0;
+              projectionStatus = 'on_track';
+            } else if (Ractual <= 0) {
+              daysDiff = 999;
+              projectionStatus = 'delayed';
+            } else {
+              const daysActualNeeded = stageTargetRemaining / Ractual;
+              daysDiff = daysActualNeeded - daysPlannedRemaining;
+              daysDiff = Math.round(daysDiff);
+              
+              if (daysDiff > 0) {
+                projectionStatus = 'delayed';
+              } else if (daysDiff < 0) {
+                projectionStatus = 'early';
+              } else {
+                projectionStatus = 'on_track';
+              }
+            }
+          }
+        }
+      }
+    } catch (e) {
+      this.logger.error('Error calculating mathematical early/late days', e);
+    }
+
+    const fallback = this.buildGoalPlanInsightFallback(dto, daysDiff, projectionStatus);
     const prompt = `
-Ban la tro ly tai chinh cua ung dung Money Care.
+Ban la tro ly tai chinh thong minh, chuyen nghiep va than thien cua ung dung Money Care.
 
 NHIEM VU:
-Phan tich moi lien he giua ke hoach chi tieu thang va muc tieu tiet kiem.
-Chi ket luan "dung tien do" hoac "cham tien do"; khong du bao som/cham bao nhieu ngay.
+Dua tren du lieu so hoc da duoc tinh toan san va snapshot chi tieu ke hoach cua nguoi dung, hay viet mot bao cao phan tich (insight) tieng Viet cuc ky thuyet phuc va tu nhien ve muc tieu tiet kiem "${goalName}" trong thang nay.
+
+DU LIEU DU DOAN CHINH XAC (BAT BUOC SU DUNG KHI VIET):
+- So ngay chenh lech: ${daysDiff === 999 ? 'Trễ vô hạn (chưa có tích lũy)' : (daysDiff > 0 ? `Trễ khoảng ${daysDiff} ngày` : (daysDiff < 0 ? `Sớm khoảng ${Math.abs(daysDiff)} ngày` : 'Đúng tiến độ'))}
+- Trang thai du doan: ${projectionStatus === 'early' ? 'Hoàn thành SỚM' : projectionStatus === 'delayed' ? 'Hoàn thành TRỄ' : 'ĐÚNG TIẾN ĐỘ'}.
+- Muc tieu chang thang nay (Tm): ${this.formatCurrency(Tm)}
+- Da tich luy duoc trong thang nay (Sactual): ${this.formatCurrency(Sactual)}
+
+YEU CAU NOI DUNG BAO CAO:
+1. "summary" (Tom tat): Mot cau ngan gon duy nhat bao cao ket qua som/tre bao nhieu ngay dua tren "DU LIEU DU DOAN CHINH XAC" o tren. 
+   - Neu som (vi du: am 5 ngày): phai dung tu ngu khen ngoi nhu "Tuyệt vời! Dự kiến chặng tiết kiệm tháng này sẽ hoàn thành sớm 5 ngày."
+   - Neu tre (vi du: duong 8 ngày): viet "Dự kiến chặng tiết kiệm tháng này sẽ hoàn thành trễ khoảng 8 ngày."
+   - Neu dung tien do (0 ngay): "Kế hoạch chặng tháng này của bạn đang rất xuất sắc và đúng tiến độ."
+   - Neu tre vo han (999 ngay): "Kế hoạch chặng tháng này dự kiến sẽ không thể hoàn thành nếu không có điều chỉnh kịp thời."
+2. "reason" (Ly do): Phai phan tich sau cac danh muc chi tieu (nhu An uong, Mua sam...) tu snapshot du lieu ben duoi. Chi ra chi tiet va chinh xac nhom nao dang lam anh huong, cham tre hoac thuc day tien do nhieu nhat. (Vi du: "Nhóm Ăn uống dang tieu vuot ke hoach...").
+3. "suggestion" (De xuat): Gợi ý các hành động thực tế, thắt chặt chi tiêu ở nhóm cụ thể nào để đưa kế hoạch trở lại đúng hạn (nếu trễ) hoặc giữ vững phong độ (nếu sớm).
 
 QUY TAC:
-1. Chi dung du lieu trong JSON.
-2. Neu status la delayed, noi ro nhom nao lam cham tien do nhat.
-3. Neu status la on_track, noi ngan gon vi sao van trong ke hoach.
-4. Tra loi tieng Viet, ngan gon, than thien.
+- Phai giu nguyen con so ngay som/tre tinh duoc o tren, khong tu y bia dat hoac thay doi so ngay khac.
+- Tra loi bang tieng Viet, ngan gon, chuyen nghiep, khong dung tu ngu qua kieu cach.
 
 OUTPUT JSON DUY NHAT:
 {"status":"on_track|delayed","summary":string,"reason":string,"suggestion":string}
 
-SNAPSHOT:
-${JSON.stringify(dto)}
+SNAPSHOT DU LIEU:
+${JSON.stringify({ ...dto, daysDiff, projectionStatus, Tm, Sactual })}
 `.trim();
 
     try {
@@ -1355,6 +1454,10 @@ ${JSON.stringify(dto)}
         fallback,
       );
       const normalized = this.normalizeGoalPlanInsight(parsed, fallback);
+      
+      // Inject correct mathematical values to ensure mathematical accuracy
+      normalized.projectedDaysDiff = daysDiff;
+      normalized.projectionStatus = projectionStatus;
 
       return new ApiResponse({
         success: true,
@@ -1401,33 +1504,59 @@ ${JSON.stringify(dto)}
 
   private buildGoalPlanInsightFallback(
     dto: GoalPlanInsightDto,
+    daysDiff: number = 0,
+    projectionStatus: string = 'on_track',
   ): GoalPlanInsightResponseDto {
     const delayedCategories = [...(dto.categories ?? [])]
       .filter((item) => item.status === GoalPlanProgressStatus.DELAYED)
       .sort((a, b) => b.overAmount - a.overAmount);
     const topCategory = delayedCategories[0];
 
-    if (dto.plan.status === GoalPlanProgressStatus.DELAYED) {
-      return {
-        status: GoalPlanProgressStatus.DELAYED,
-        summary: 'Kế hoạch tháng này đang chậm tiến độ.',
-        reason: topCategory
-          ? `${topCategory.name} đang vượt kế hoạch nhiều nhất.`
-          : 'Tổng chi tiêu hiện tại đã vượt phần kế hoạch nên dùng tới hôm nay.',
-        suggestion: topCategory
-          ? `Ưu tiên giảm chi ở ${topCategory.name} để đưa mục tiêu về đúng tiến độ.`
-          : 'Giảm các khoản chi linh hoạt trong vài ngày tới để cân bằng lại kế hoạch.',
-      };
+    let fallbackStatus = GoalPlanProgressStatus.ON_TRACK;
+    let fallbackSummary = 'Kế hoạch tháng này vẫn đúng tiến độ.';
+    let fallbackReason = 'Chi tiêu hiện tại chưa vượt phần kế hoạch nên dùng tới hôm nay.';
+    let fallbackSuggestion = 'Tiếp tục giữ nhịp chi hiện tại và theo dõi các nhóm chi lớn trong tháng.';
+
+    if (projectionStatus === 'delayed') {
+      fallbackStatus = GoalPlanProgressStatus.DELAYED;
+      if (daysDiff === 999) {
+        fallbackSummary = 'Kế hoạch chặng tháng này dự kiến sẽ không thể hoàn thành nếu không có điều chỉnh kịp thời.';
+        fallbackReason = topCategory
+          ? `Bạn chưa có tích lũy thêm cho chặng này và nhóm chi tiêu ${topCategory.name} đang vượt hạn mức lũy tiến ${this.formatCurrency(topCategory.overAmount)}.`
+          : 'Bạn chưa có tích lũy thêm cho chặng này và tổng chi tiêu hiện tại đang vượt hạn mức progressive.';
+        fallbackSuggestion = topCategory
+          ? `Hãy cố gắng tiết kiệm chi tiêu đặc biệt là ở nhóm ${topCategory.name} để có số dư trích lập vào mục tiêu.`
+          : 'Hãy cố gắng thắt chặt chi tiêu để có số dư chuyển vào ví tích lũy sớm nhất.';
+      } else {
+        fallbackSummary = `Dự kiến mục tiêu chặng tháng này sẽ hoàn thành trễ khoảng ${daysDiff} ngày so với kế hoạch.`;
+        fallbackReason = topCategory
+          ? `Do tốc độ tích lũy thực tế giảm và nhóm ${topCategory.name} đang chi vượt ${this.formatCurrency(topCategory.overAmount)}.`
+          : `Do tốc độ tích lũy thực tế giảm so với mức kế hoạch hàng ngày.`;
+        fallbackSuggestion = topCategory
+          ? `Cắt giảm bớt chi tiêu nhóm ${topCategory.name} để đưa mục tiêu về đúng tiến độ.`
+          : `Giảm bớt chi tiêu không thiết yếu để tăng tốc độ tích lũy hàng ngày.`;
+      }
+    } else if (projectionStatus === 'early') {
+      const absDays = Math.abs(daysDiff);
+      fallbackSummary = `Tuyệt vời! Dự kiến mục tiêu chặng tháng này sẽ hoàn thành sớm ${absDays} ngày.`;
+      fallbackReason = 'Bạn đang duy trì tốc độ tích lũy rất tốt và kiểm soát chi tiêu các nhóm ở mức an toàn.';
+      fallbackSuggestion = 'Bạn có thể tiếp tục phong độ này hoặc trích thêm tiền dư vào ví tiết kiệm để duy trì đà tăng tốc.';
     }
 
     return {
-      status: GoalPlanProgressStatus.ON_TRACK,
-      summary: 'Kế hoạch tháng này vẫn đúng tiến độ.',
-      reason: 'Chi tiêu hiện tại chưa vượt phần kế hoạch nên dùng tới hôm nay.',
-      suggestion:
-        'Tiếp tục giữ nhịp chi hiện tại và theo dõi các nhóm chi lớn trong tháng.',
+      status: fallbackStatus,
+      summary: fallbackSummary,
+      reason: fallbackReason,
+      suggestion: fallbackSuggestion,
+      projectedDaysDiff: daysDiff,
+      projectionStatus: projectionStatus as any,
     };
   }
+
+  private formatCurrency(amount: number): string {
+    return amount.toLocaleString('vi-VN') + 'đ';
+  }
+
 
   async chatAnswer(text: string): Promise<string> {
     const cacheKey = this.buildChatCacheKey(text);
@@ -1821,6 +1950,48 @@ Tin nhan: "${message}"`,
       const name = args.name || 'Mục tiêu tiết kiệm';
       const target = Number(args.target) || 0;
       const requestedMonths = Number(args.requested_months) || 0;
+
+      // Kiểm tra ví có tiền để hỏi trích nạp ban đầu
+      const activeWallets = await this.walletRepo.find({
+        where: { user: { id: userId }, is_active: true },
+      });
+      const positiveWallets = activeWallets.filter(
+        (w) => w.type !== 'saving' && Number(w.balance) > 0,
+      );
+
+      if (positiveWallets.length > 0 && target > 0) {
+        const totalPositiveBalance = positiveWallets.reduce(
+          (sum, w) => sum + Number(w.balance),
+          0,
+        );
+        let suggestedWallet = positiveWallets[0];
+        for (const w of positiveWallets) {
+          if (Number(w.balance) > Number(suggestedWallet.balance)) {
+            suggestedWallet = w;
+          }
+        }
+
+        const walletsData = positiveWallets.map((w) => ({
+          id: w.id,
+          name: w.name,
+          balance: Number(w.balance),
+          type: w.type,
+        }));
+
+        return {
+          success: true,
+          statusCode: 200,
+          message: `${MSG_PREFIX.SAVING_GOAL_INITIAL_FUND_ASK}${JSON.stringify({
+            name,
+            target,
+            wallets: walletsData,
+            totalBalance: totalPositiveBalance,
+            suggestedWalletId: suggestedWallet.id,
+            requestedMonths,
+          })}`,
+        };
+      }
+
       const hasRequestedMonths = requestedMonths > 0;
       let monthsEstimate = Number(args.months_estimate) || 6;
       let aiMessage = '';
@@ -1913,7 +2084,7 @@ Tin nhan: "${message}"`,
       const payloadStr = message.replace('/confirm_saving_goal', '').trim();
       const payload = JSON.parse(payloadStr);
 
-      const { name, target, months } = payload;
+      const { name, target, months, initFund, sourceWalletId } = payload;
       const monthsEstimate = Number(months) || 6;
       const endDate = new Date();
       endDate.setMonth(endDate.getMonth() + monthsEstimate);
@@ -1936,7 +2107,49 @@ Tin nhan: "${message}"`,
         Number(target) / monthsEstimate,
       );
 
-      const aiMessage = `Tuyệt vời! Tôi đã tạo thành công mục tiêu "${name}" với số tiền cần tích lũy là "${this.formatVnd(target)}" trong vòng "${monthsEstimate} tháng". Một ví mục tiêu mới cũng đã được kích hoạt để bạn bắt đầu tích lũy!`;
+      const user = await this.userRepo.findOne({ where: { id: userId } });
+      const activeInitFund = Number(initFund) || 0;
+      const activeSourceWalletId = Number(sourceWalletId) || 0;
+
+      let transferSuccess = false;
+      let sourceWalletName = '';
+
+      if (
+        activeInitFund > 0 &&
+        activeSourceWalletId > 0 &&
+        createdGoal?.wallet?.id &&
+        user
+      ) {
+        try {
+          const sourceWallet = await this.walletRepo.findOne({
+            where: { id: activeSourceWalletId },
+          });
+          if (sourceWallet) {
+            sourceWalletName = sourceWallet.name;
+            await this.walletsService.transfer(
+              {
+                fromWalletId: activeSourceWalletId,
+                toWalletId: createdGoal.wallet.id,
+                amount: activeInitFund,
+                fee: 0,
+                note: `Tích lũy ban đầu cho mục tiêu: ${name}`,
+              },
+              user,
+            );
+            transferSuccess = true;
+          }
+        } catch (transferError) {
+          this.logger.error(
+            'Failed to transfer initial fund during confirm saving goal',
+            transferError,
+          );
+        }
+      }
+
+      let aiMessage = `Tuyệt vời! Tôi đã tạo thành công mục tiêu "${name}" với số tiền cần tích lũy là "${this.formatVnd(target)}" trong vòng "${monthsEstimate} tháng". Một ví mục tiêu mới cũng đã được kích hoạt để bạn bắt đầu tích lũy!`;
+      if (transferSuccess && activeInitFund > 0) {
+        aiMessage = `Tuyệt vời! Tôi đã tạo thành công mục tiêu "${name}" với số tiền cần tích lũy là "${this.formatVnd(target)}" trong vòng "${monthsEstimate} tháng". Đồng thời, tôi đã tự động trích "${this.formatVnd(activeInitFund)}" từ "${sourceWalletName}" chuyển sang ví tích lũy "${createdGoal.wallet.name}" của mục tiêu này làm vốn ban đầu!`;
+      }
 
       return {
         success: true,
@@ -1951,6 +2164,8 @@ Tin nhan: "${message}"`,
           suggestedMonthlySaving,
           maxMonthlySaving: capacity?.monthlySavingCapacity ?? 0,
           hasPlan: !!capacity,
+          initFund: activeInitFund,
+          sourceWalletId: activeSourceWalletId,
           aiMessage,
         })}`,
       };
@@ -1961,6 +2176,120 @@ Tin nhan: "${message}"`,
         statusCode: 200,
         message:
           'Có lỗi xảy ra khi xác nhận tạo mục tiêu tiết kiệm. Vui lòng thử lại!',
+      };
+    }
+  }
+
+  private async handleSavingGoalInitFund(
+    message: string,
+    userId: number,
+  ): Promise<ApiResponse<string>> {
+    try {
+      const payloadStr = message.replace('/saving_goal_init_fund', '').trim();
+      const payload = JSON.parse(payloadStr);
+
+      const { name, target, initFund, sourceWalletId, requestedMonths } = payload;
+      const activeInitFund = Number(initFund) || 0;
+      const activeSourceWalletId = Number(sourceWalletId) || 0;
+      const remainingTarget = Math.max(0, Number(target) - activeInitFund);
+
+      const capacity =
+        await this.spendingPlansService.getMonthlySavingCapacity(userId);
+      const activeWallets = await this.walletRepo.find({
+        where: { user: { id: userId }, is_active: true },
+      });
+      const sourceWallet = activeWallets.find((w) => w.id === activeSourceWalletId);
+      const sourceWalletName = sourceWallet?.name ?? 'ví đã chọn';
+
+      const parsedRequestedMonths = Number(requestedMonths) || 0;
+      const hasRequestedMonths = parsedRequestedMonths > 0;
+      let monthsEstimate = 6;
+      let suggestedMonthlySaving = Math.round(remainingTarget / monthsEstimate);
+      let maxMonthlySaving = capacity?.monthlySavingCapacity ?? 0;
+      let isWarning = false;
+      let aiMessage = '';
+
+      if (remainingTarget <= 0) {
+        monthsEstimate = 0;
+        suggestedMonthlySaving = 0;
+        aiMessage = `Tuyệt vời! Bạn trích "${this.formatVnd(activeInitFund)}" từ "${sourceWalletName}" làm vốn ban đầu, đủ để hoàn thành mục tiêu "${name}" trị giá "${this.formatVnd(target)}" ngay lập tức! Bạn có muốn tiến hành tạo mục tiêu ngay không?`;
+      } else if (hasRequestedMonths) {
+        monthsEstimate = Math.max(1, Math.round(parsedRequestedMonths));
+        suggestedMonthlySaving = Math.ceil(remainingTarget / monthsEstimate);
+        maxMonthlySaving = capacity?.monthlySavingCapacity ?? 0;
+
+        if (!capacity) {
+          aiMessage = `Tôi đã ghi nhận mục tiêu "${name}" với số tiền còn thiếu "${this.formatVnd(remainingTarget)}" (sau khi trích "${this.formatVnd(activeInitFund)}" từ "${sourceWalletName}") trong "${monthsEstimate} tháng", tương đương khoảng "${this.formatVnd(suggestedMonthlySaving)}/tháng". Hãy tạo kế hoạch chi tiêu trước để xem chi tiết mức độ khả thi nhé!`;
+        } else {
+          const income = capacity.totalAmount;
+          const fixedExpense = capacity.fixedExpenseTotal;
+          const maxPossibleSaving = income - fixedExpense;
+
+          if (suggestedMonthlySaving > maxPossibleSaving) {
+            isWarning = true;
+            aiMessage = `⚠️ Cảnh báo: Bạn muốn hoàn thành mục tiêu "${name}" trong "${monthsEstimate} tháng", cần tiết kiệm khoảng "${this.formatVnd(suggestedMonthlySaving)}/tháng" cho phần còn thiếu "${this.formatVnd(remainingTarget)}". Nhưng với thu nhập hiện tại và chi phí cố định, mức tối đa chỉ khoảng "${this.formatVnd(maxPossibleSaving)}/tháng".`;
+          } else if (suggestedMonthlySaving > capacity.monthlySavingCapacity) {
+            isWarning = true;
+            const extraNeeded =
+              suggestedMonthlySaving - capacity.monthlySavingCapacity;
+            aiMessage = `⚠️ Để hoàn thành mục tiêu "${name}" trong "${monthsEstimate} tháng", bạn cần tiết kiệm khoảng "${this.formatVnd(suggestedMonthlySaving)}/tháng" cho phần còn thiếu "${this.formatVnd(remainingTarget)}", cao hơn khả năng hiện tại khoảng "${this.formatVnd(extraNeeded)}/tháng". Bạn vẫn có thể tạo mục tiêu nếu chấp nhận điều chỉnh chi tiêu.`;
+          } else {
+            aiMessage = `Tôi đã ghi nhận mục tiêu "${name}" trong "${monthsEstimate} tháng" với số tiền còn lại cần tích lũy là "${this.formatVnd(remainingTarget)}" (đã trích "${this.formatVnd(activeInitFund)}" từ "${sourceWalletName}"). Với mức cần tiết kiệm khoảng "${this.formatVnd(suggestedMonthlySaving)}/tháng", kế hoạch này nằm trong khả năng tiết kiệm hiện tại "${this.formatVnd(capacity.monthlySavingCapacity)}/tháng" của bạn.`;
+          }
+        }
+      } else if (capacity && capacity.monthlySavingCapacity > 0) {
+        const capacityVal = capacity.monthlySavingCapacity;
+        const recommendation = this.buildSavingGoalRecommendation(
+          remainingTarget,
+          capacityVal,
+        );
+        monthsEstimate = recommendation.months;
+        suggestedMonthlySaving = recommendation.suggestedMonthlySaving;
+        maxMonthlySaving = recommendation.maxMonthlySaving;
+
+        aiMessage = `Sau khi trích "${this.formatVnd(activeInitFund)}" từ "${sourceWalletName}" làm vốn ban đầu, bạn còn thiếu "${this.formatVnd(remainingTarget)}" cho mục tiêu "${name}".\n\n💡 Để kế hoạch thoải mái, tôi đề xuất mốc "${recommendation.months} tháng", tương đương khoảng "${this.formatVnd(recommendation.suggestedMonthlySaving)}/tháng" (nằm trong khả năng tiết kiệm "${this.formatVnd(capacity.monthlySavingCapacity)}/tháng" của bạn).`;
+      } else {
+        monthsEstimate = 6;
+        suggestedMonthlySaving = Math.round(remainingTarget / 6);
+        aiMessage = `Tôi đã ghi nhận mục tiêu "${name}" (còn thiếu "${this.formatVnd(remainingTarget)}" sau khi trích "${this.formatVnd(activeInitFund)}" từ "${sourceWalletName}"). Vì bạn chưa có Kế hoạch chi tiêu, tôi đề xuất thời gian tích lũy là "6 tháng" (tương đương khoảng "${this.formatVnd(suggestedMonthlySaving)}/tháng").`;
+      }
+
+      const endDate = new Date();
+      endDate.setMonth(endDate.getMonth() + (monthsEstimate || 1));
+      const durationOptions =
+        hasRequestedMonths || remainingTarget <= 0
+          ? []
+          : this.buildDurationOptions(remainingTarget, monthsEstimate);
+
+      return {
+        success: true,
+        statusCode: 200,
+        message: `${MSG_PREFIX.SAVING_GOAL_PROPOSAL}${JSON.stringify({
+          name,
+          target: Number(target),
+          initFund: activeInitFund,
+          sourceWalletId: activeSourceWalletId,
+          remainingTarget,
+          monthsEstimate,
+          endDate: endDate.toISOString(),
+          monthlySavingCapacity: capacity?.monthlySavingCapacity ?? 0,
+          suggestedMonthlySaving,
+          maxMonthlySaving,
+          durationOptions,
+          hasPlan: !!capacity,
+          isImpossible: false,
+          isWarning,
+          isRequestedDuration: hasRequestedMonths,
+          aiMessage,
+        })}`,
+      };
+    } catch (error) {
+      this.logger.error('Handle saving goal init fund failed', error);
+      return {
+        success: true,
+        statusCode: 200,
+        message:
+          'Tôi gặp lỗi khi đề xuất lộ trình dựa trên số vốn ban đầu. Vui lòng thử lại!',
       };
     }
   }
