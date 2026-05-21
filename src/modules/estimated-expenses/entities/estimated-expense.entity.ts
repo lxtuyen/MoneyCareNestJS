@@ -8,27 +8,23 @@ import {
 } from 'typeorm';
 import { ColumnNumericTransformer } from 'src/common/transformers/decimal.transformer';
 import { User } from 'src/modules/user/entities/user.entity';
-import { SpendingPlan } from './spending-plan.entity';
-import { SpendingPlanExpenseFrequency } from '../interfaces/spending-plan.enums';
-import { SpendingPlanTrackingType } from '../interfaces/spending-plan.enums';
+import { SpendingPlan } from 'src/modules/spending-plans/entities/spending-plan.entity';
+import { SpendingPlanExpenseFrequency } from 'src/modules/spending-plans/interfaces/spending-plan.enums';
 import { Category } from 'src/modules/categories/entities/category.entity';
 import { SubCategory } from 'src/modules/categories/entities/sub-category.entity';
 
-@Entity('fixed_expenses')
-export class FixedExpense {
+@Entity('estimated_expenses')
+export class EstimatedExpense {
   @PrimaryGeneratedColumn()
   id!: number;
 
-  @ManyToOne(() => SpendingPlan, (plan) => plan.fixedExpenses, {
+  @ManyToOne(() => SpendingPlan, (plan) => plan.estimatedExpenses, {
     onDelete: 'CASCADE',
   })
   spendingPlan!: SpendingPlan;
 
   @ManyToOne(() => User, { onDelete: 'CASCADE' })
   user!: User;
-
-  @Column()
-  name!: string;
 
   @ManyToOne(() => Category, {
     onDelete: 'SET NULL',
@@ -43,13 +39,6 @@ export class FixedExpense {
     eager: true,
   })
   subCategory!: SubCategory | null;
-
-  @Column({
-    type: 'enum',
-    enum: SpendingPlanTrackingType,
-    default: SpendingPlanTrackingType.FIXED_BILL,
-  })
-  trackingType!: SpendingPlanTrackingType;
 
   @Column({
     type: 'decimal',
@@ -87,21 +76,6 @@ export class FixedExpense {
 
   @Column({ type: 'int', default: 1 })
   frequencyValue!: number;
-
-  @Column({ type: 'int', nullable: true })
-  dueDay!: number | null;
-
-  @Column({ type: 'text', nullable: true })
-  note!: string | null;
-
-  @Column({ default: false })
-  isPaid!: boolean;
-
-  @Column({ default: false })
-  isReminderEnabled!: boolean;
-
-  @Column({ type: 'int', nullable: true })
-  linkedTransactionId!: number | null;
 
   @CreateDateColumn()
   createdAt!: Date;

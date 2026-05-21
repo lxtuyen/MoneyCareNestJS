@@ -17,7 +17,14 @@ import { WalletsModule } from 'src/modules/wallets/wallets.module';
 @Global()
 @Module({
   imports: [
-    TypeOrmModule.forFeature([SavingGoal, Category, SubCategory, User, Transaction, Wallet]),
+    TypeOrmModule.forFeature([
+      SavingGoal,
+      Category,
+      SubCategory,
+      User,
+      Transaction,
+      Wallet,
+    ]),
     TransactionsModule,
     SpendingPlansModule,
     SavingGoalsModule,

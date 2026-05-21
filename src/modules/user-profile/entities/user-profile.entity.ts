@@ -12,25 +12,24 @@ import {
 @Entity('user_profile')
 export class UserProfile {
   @PrimaryGeneratedColumn()
-  id: number;
+  id!: number;
 
   @Column({ nullable: true })
-  first_name: string;
+  first_name!: string;
 
   @Column({ nullable: true })
-  last_name: string;
+  last_name!: string;
 
   @OneToOne(() => User, (user) => user.profile, { onDelete: 'CASCADE' })
   @JoinColumn()
-  user: User;
-
+  user!: User;
 
   @Column({ nullable: true })
-  avatar: string;
+  avatar!: string;
 
   @CreateDateColumn()
-  created_at: Date;
+  created_at!: Date;
 
   @UpdateDateColumn()
-  updated_at: Date;
+  updated_at!: Date;
 }

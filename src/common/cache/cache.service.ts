@@ -192,7 +192,7 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
         COUNT: 100,
       })) {
         if (Array.isArray(key)) {
-          keysToDelete.push(...(key as string[]));
+          keysToDelete.push(...key);
         } else {
           keysToDelete.push(key as unknown as string);
         }

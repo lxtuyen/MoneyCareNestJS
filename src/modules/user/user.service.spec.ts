@@ -12,7 +12,12 @@ describe('UserService', () => {
         UserService,
         {
           provide: getRepositoryToken(User),
-          useValue: { count: jest.fn(), find: jest.fn(), findOne: jest.fn(), save: jest.fn() },
+          useValue: {
+            count: jest.fn(),
+            find: jest.fn(),
+            findOne: jest.fn(),
+            save: jest.fn(),
+          },
         },
       ],
     }).compile();

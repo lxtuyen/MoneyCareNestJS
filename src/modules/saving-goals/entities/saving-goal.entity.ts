@@ -3,12 +3,10 @@ import {
   PrimaryGeneratedColumn,
   Column,
   ManyToOne,
-  OneToMany,
   CreateDateColumn,
   UpdateDateColumn,
 } from 'typeorm';
 import { User } from 'src/modules/user/entities/user.entity';
-import { Category } from 'src/modules/categories/entities/category.entity';
 import { ColumnNumericTransformer } from 'src/common/transformers/decimal.transformer';
 import { SavingGoalStatus } from '../enums/saving-goal-status.enum';
 import { Wallet } from 'src/modules/wallets/entities/wallet.entity';
@@ -16,10 +14,10 @@ import { Wallet } from 'src/modules/wallets/entities/wallet.entity';
 @Entity('saving_goals')
 export class SavingGoal {
   @PrimaryGeneratedColumn()
-  id: number;
+  id!: number;
 
   @Column()
-  name: string;
+  name!: string;
 
   @Column({
     type: 'decimal',
@@ -28,7 +26,7 @@ export class SavingGoal {
     nullable: true,
     transformer: new ColumnNumericTransformer(),
   })
-  target: number | null;
+  target!: number | null;
 
   @Column({
     type: 'decimal',
@@ -37,42 +35,42 @@ export class SavingGoal {
     default: 0,
     transformer: new ColumnNumericTransformer(),
   })
-  saved_amount: number;
+  saved_amount!: number;
 
   @Column({ default: false })
-  is_completed: boolean;
+  is_completed!: boolean;
 
   @Column({ type: 'varchar', nullable: true })
-  template_key: string | null;
+  template_key!: string | null;
 
   @Column({ type: 'timestamp with time zone', nullable: true })
-  start_date: Date | null;
+  start_date!: Date | null;
 
   @Column({ type: 'timestamp with time zone', nullable: true })
-  end_date: Date | null;
+  end_date!: Date | null;
 
   @Column({
     type: 'enum',
     enum: SavingGoalStatus,
     default: SavingGoalStatus.ACTIVE,
   })
-  status: SavingGoalStatus;
+  status!: SavingGoalStatus;
 
   @Column({ default: false })
-  completion_notified: boolean;
+  completion_notified!: boolean;
 
   @Column({ default: false })
-  is_selected: boolean;
+  is_selected!: boolean;
 
   @ManyToOne(() => User, (user) => user.savingGoals, { onDelete: 'CASCADE' })
-  user: User;
+  user!: User;
 
   @ManyToOne(() => Wallet, { nullable: false, onDelete: 'CASCADE' })
-  wallet: Wallet;
+  wallet!: Wallet;
 
   @CreateDateColumn()
-  created_at: Date;
+  created_at!: Date;
 
   @UpdateDateColumn()
-  updated_at: Date;
+  updated_at!: Date;
 }

@@ -1,10 +1,8 @@
 import { Injectable } from '@nestjs/common';
-import {
-  SpendingPlanRiskLevel,
-  SpendingPlanExpenseFrequency,
-} from './interfaces/spending-plan.enums';
+import { SpendingPlanRiskLevel } from './interfaces/spending-plan.enums';
 import { roundMoney } from 'src/common/utils/money.util';
 import {
+  SpendingPlanCalculationExpense,
   SpendingPlanCalculationInput,
   SpendingPlanCalculationResult,
 } from './interfaces/spending-plan-calculation.interface';
@@ -18,37 +16,39 @@ export class SpendingPlanCalculatorService {
     const savingTargetAmount = Number(input.savingTargetAmount ?? 0);
     const daysInMonth = this.getDaysInMonth(input.month, input.year);
 
-    let fixedExpenseTotal = 0;
-    for (const expense of input.fixedExpenses ?? []) {
+    let estimatedExpenseTotal = 0;
+    const estimatedExpenses: SpendingPlanCalculationExpense[] =
+      input.estimatedExpenses ?? [];
+
+    for (const expense of estimatedExpenses) {
       const amount = Number(expense.amount ?? 0);
-      const freqType =
-        expense.frequencyType ?? SpendingPlanExpenseFrequency.ONCE;
+      const freqType = expense.frequencyType ?? 'once';
       const freqValue = expense.frequencyValue ?? 1;
 
       switch (freqType) {
-        case SpendingPlanExpenseFrequency.DAILY:
-          fixedExpenseTotal += amount * freqValue * daysInMonth;
+        case 'daily':
+          estimatedExpenseTotal += amount * freqValue * daysInMonth;
           break;
-        case SpendingPlanExpenseFrequency.WEEKLY:
-          fixedExpenseTotal += amount * freqValue * (daysInMonth / 7);
+        case 'weekly':
+          estimatedExpenseTotal += amount * freqValue * (daysInMonth / 7);
           break;
-        case SpendingPlanExpenseFrequency.MONTHLY:
-        case SpendingPlanExpenseFrequency.ONCE:
+        case 'monthly':
+        case 'once':
         default:
-          fixedExpenseTotal += amount * freqValue;
+          estimatedExpenseTotal += amount * freqValue;
           break;
       }
     }
 
     const availableSpendingAmount =
-      totalAmount - fixedExpenseTotal - savingTargetAmount;
+      totalAmount - estimatedExpenseTotal - savingTargetAmount;
 
     return {
-      fixedExpenseTotal: roundMoney(fixedExpenseTotal),
+      estimatedExpenseTotal: roundMoney(estimatedExpenseTotal),
       availableSpendingAmount: roundMoney(availableSpendingAmount),
       riskLevel: this.calculateRiskLevel(
         totalAmount,
-        fixedExpenseTotal,
+        estimatedExpenseTotal,
         savingTargetAmount,
         availableSpendingAmount,
       ),
@@ -61,7 +61,7 @@ export class SpendingPlanCalculatorService {
 
   private calculateRiskLevel(
     totalAmount: number,
-    fixedExpenseTotal: number,
+    estimatedExpenseTotal: number,
     savingTargetAmount: number,
     availableSpendingAmount: number,
   ): SpendingPlanRiskLevel {
@@ -70,7 +70,7 @@ export class SpendingPlanCalculatorService {
     }
 
     const committedRatio =
-      (fixedExpenseTotal + savingTargetAmount) / totalAmount;
+      (estimatedExpenseTotal + savingTargetAmount) / totalAmount;
     if (committedRatio >= 0.9) {
       return SpendingPlanRiskLevel.DANGER;
     }

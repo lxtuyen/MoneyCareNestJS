@@ -11,6 +11,7 @@ import {
   ParseIntPipe,
 } from '@nestjs/common';
 import { SavingGoalsService } from './saving-goals.service';
+import { SavingGoalsStatisticsService } from './saving-goals-statistics.service';
 import { CreateSavingGoalDto } from './dto/create-goal.dto';
 import { UpdateSavingGoalDto } from './dto/update-goal.dto';
 import { SavingGoalResponseDto } from './dto/goal-response.dto';
@@ -22,7 +23,10 @@ import { User } from 'src/common/decorators/user.decorator';
 @Controller('saving-goals')
 @UseGuards(JwtAuthGuard)
 export class SavingGoalsController {
-  constructor(private readonly savingGoalsService: SavingGoalsService) {}
+  constructor(
+    private readonly savingGoalsService: SavingGoalsService,
+    private readonly savingGoalsStatisticsService: SavingGoalsStatisticsService,
+  ) {}
 
   @Post()
   @SwaggerApiResponse({ type: SavingGoalResponseDto })
@@ -75,11 +79,6 @@ export class SavingGoalsController {
     return this.savingGoalsService.selectGoal(userId, id);
   }
 
-  @Get('check-expired/:userId')
-  async checkExpiredGoal(@User('sub') userId: number) {
-    return this.savingGoalsService.checkExpiredGoal(userId);
-  }
-
   @Patch(':id/mark-notified')
   async markAsNotified(
     @Param('id', ParseIntPipe) id: number,
@@ -107,6 +106,6 @@ export class SavingGoalsController {
     @Param('id', ParseIntPipe) id: number,
     @User('sub') userId: number,
   ) {
-    return this.savingGoalsService.getGoalReport(id, userId);
+    return this.savingGoalsStatisticsService.getGoalReport(id, userId);
   }
 }

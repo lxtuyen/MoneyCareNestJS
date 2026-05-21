@@ -1,24 +1,27 @@
-import {
-  SpendingPlanExpenseFrequency,
-  SpendingPlanRiskLevel,
-  SpendingPlanTrackingType,
-} from './spending-plan.enums';
+import { SpendingPlanRiskLevel } from './spending-plan.enums';
+
+export type SpendingPlanCalculationFrequency =
+  | 'daily'
+  | 'weekly'
+  | 'monthly'
+  | 'once';
+
+export interface SpendingPlanCalculationExpense {
+  amount: number | null | undefined;
+  frequencyType?: SpendingPlanCalculationFrequency;
+  frequencyValue?: number | null;
+}
 
 export interface SpendingPlanCalculationInput {
   totalAmount: number;
   savingTargetAmount?: number | null;
-  fixedExpenses?: Array<{
-    amount: number | null | undefined;
-    frequencyType?: SpendingPlanExpenseFrequency;
-    frequencyValue?: number;
-    trackingType?: SpendingPlanTrackingType;
-  }> | null;
+  estimatedExpenses?: SpendingPlanCalculationExpense[] | null;
   month: number;
   year: number;
 }
 
 export interface SpendingPlanCalculationResult {
-  fixedExpenseTotal: number;
+  estimatedExpenseTotal: number;
   availableSpendingAmount: number;
   riskLevel: SpendingPlanRiskLevel;
 }

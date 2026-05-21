@@ -3,21 +3,7 @@ import { SavingGoalsService } from './saving-goals.service';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { SavingGoal } from './entities/saving-goal.entity';
 import { User } from '../user/entities/user.entity';
-import { Category } from '../categories/entities/category.entity';
-import { Transaction } from '../transactions/entities/transaction.entity';
-
-const mockQueryBuilder = {
-  leftJoinAndSelect: jest.fn().mockReturnThis(),
-  leftJoin: jest.fn().mockReturnThis(),
-  where: jest.fn().mockReturnThis(),
-  andWhere: jest.fn().mockReturnThis(),
-  select: jest.fn().mockReturnThis(),
-  getOne: jest.fn().mockResolvedValue(null),
-  getMany: jest.fn().mockResolvedValue([]),
-  update: jest.fn().mockReturnThis(),
-  set: jest.fn().mockReturnThis(),
-  execute: jest.fn().mockResolvedValue({}),
-};
+import { Wallet } from '../wallets/entities/wallet.entity';
 
 describe('SavingGoalsService', () => {
   let service: SavingGoalsService;
@@ -35,7 +21,6 @@ describe('SavingGoalsService', () => {
             findOne: jest.fn(),
             remove: jest.fn(),
             update: jest.fn(),
-            createQueryBuilder: jest.fn().mockReturnValue(mockQueryBuilder),
           },
         },
         {
@@ -43,12 +28,13 @@ describe('SavingGoalsService', () => {
           useValue: { findOne: jest.fn() },
         },
         {
-          provide: getRepositoryToken(Category),
-          useValue: { create: jest.fn(), save: jest.fn(), find: jest.fn(), update: jest.fn() },
-        },
-        {
-          provide: getRepositoryToken(Transaction),
-          useValue: {},
+          provide: getRepositoryToken(Wallet),
+          useValue: {
+            create: jest.fn(),
+            save: jest.fn(),
+            findOne: jest.fn(),
+            update: jest.fn(),
+          },
         },
       ],
     }).compile();

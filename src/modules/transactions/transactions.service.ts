@@ -343,20 +343,8 @@ export class TransactionService {
       .groupBy('category.id');
 
     const [categories, totals] = await Promise.all([
-      categoryQuery.getRawMany() as Promise<
-        Array<{
-          categoryId: number;
-          categoryName: string;
-          categoryIcon: string;
-          target: string | null;
-        }>
-      >,
-      transactionQuery.getRawMany() as Promise<
-        Array<{
-          categoryId: number | null;
-          total: string;
-        }>
-      >,
+      categoryQuery.getRawMany(),
+      transactionQuery.getRawMany(),
     ]);
 
     const totalMap = new Map(
@@ -470,12 +458,8 @@ export class TransactionService {
     });
 
     const [incomeTotalRes, expenseTotalRes] = await Promise.all([
-      incomeQuery
-        .select('SUM(transaction.amount)', 'total')
-        .getRawOne() as Promise<{ total: string } | undefined>,
-      expenseQuery
-        .select('SUM(transaction.amount)', 'total')
-        .getRawOne() as Promise<{ total: string } | undefined>,
+      incomeQuery.select('SUM(transaction.amount)', 'total').getRawOne(),
+      expenseQuery.select('SUM(transaction.amount)', 'total').getRawOne(),
     ]);
 
     const goal = null;

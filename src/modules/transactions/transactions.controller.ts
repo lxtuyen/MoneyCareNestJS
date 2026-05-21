@@ -84,9 +84,7 @@ export class TransactionController {
   }
 
   @Get(':userId/statistics-summary')
-  async getStatisticsSummary(
-    @Param('userId', ParseIntPipe) userId: number,
-  ) {
+  async getStatisticsSummary(@Param('userId', ParseIntPipe) userId: number) {
     return this.transactionService.getStatisticsSummary(userId);
   }
 
@@ -101,11 +99,26 @@ export class TransactionController {
   ) {
     const dto: TransactionFilterDto = {
       userId,
-      categoryId: (categoryId === 'null' || categoryId === 'undefined') ? undefined : (categoryId ? Number(categoryId) : undefined),
-      walletId: (walletId === 'null' || walletId === 'undefined') ? undefined : (walletId ? Number(walletId) : undefined),
+      categoryId:
+        categoryId === 'null' || categoryId === 'undefined'
+          ? undefined
+          : categoryId
+            ? Number(categoryId)
+            : undefined,
+      walletId:
+        walletId === 'null' || walletId === 'undefined'
+          ? undefined
+          : walletId
+            ? Number(walletId)
+            : undefined,
       startDate,
       endDate,
-      limit: (limit === 'null' || limit === 'undefined') ? undefined : (limit ? Number(limit) : undefined),
+      limit:
+        limit === 'null' || limit === 'undefined'
+          ? undefined
+          : limit
+            ? Number(limit)
+            : undefined,
     };
     return this.transactionService.findAllByFilter(dto);
   }

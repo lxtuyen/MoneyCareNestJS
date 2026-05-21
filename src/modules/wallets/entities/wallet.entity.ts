@@ -15,10 +15,10 @@ import { ColumnNumericTransformer } from 'src/common/transformers/decimal.transf
 @Entity('wallets')
 export class Wallet {
   @PrimaryGeneratedColumn()
-  id: number;
+  id!: number;
 
   @Column()
-  name: string;
+  name!: string;
 
   @Column({
     type: 'decimal',
@@ -27,32 +27,32 @@ export class Wallet {
     default: 0,
     transformer: new ColumnNumericTransformer(),
   })
-  balance: number;
+  balance!: number;
 
   @Column({ nullable: true })
-  icon: string;
+  icon!: string;
 
   @Column({ nullable: true })
-  color: string;
+  color!: string;
 
   @Column({ default: true })
-  is_active: boolean;
+  is_active!: boolean;
 
   @Column({ default: 'regular' })
-  type: string;
+  type!: string;
 
   @ManyToOne(() => User, (user) => user.wallets, { onDelete: 'CASCADE' })
-  user: User;
+  user!: User;
 
   @OneToMany(() => Transaction, (transaction) => transaction.wallet)
-  transactions: Transaction[];
+  transactions!: Transaction[];
 
   @OneToMany(() => SavingGoal, (goal) => goal.wallet)
-  savingGoals: SavingGoal[];
+  savingGoals!: SavingGoal[];
 
   @CreateDateColumn()
-  created_at: Date;
+  created_at!: Date;
 
   @UpdateDateColumn()
-  updated_at: Date;
+  updated_at!: Date;
 }

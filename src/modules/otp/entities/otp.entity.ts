@@ -10,17 +10,17 @@ import {
 @Entity('otps')
 export class OTP {
   @PrimaryGeneratedColumn()
-  id: number;
+  id!: number;
 
   @Column()
-  code: string;
+  code!: string;
 
   @Column()
-  expires_at: Date;
+  expires_at!: Date;
 
   @CreateDateColumn()
-  created_at: Date;
+  created_at!: Date;
 
   @ManyToOne(() => User, (user) => user.otps, { onDelete: 'CASCADE' })
-  user: User;
+  user!: User;
 }

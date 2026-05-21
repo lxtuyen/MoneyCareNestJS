@@ -107,3 +107,15 @@ export function formatDateParts(
     day.toString().padStart(2, '0'),
   ].join('-');
 }
+
+export function setStartOfDay(date: Date): Date {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+export function setEndOfDay(date: Date): Date {
+  const d = new Date(date);
+  d.setHours(23, 59, 59, 999);
+  return d;
+}

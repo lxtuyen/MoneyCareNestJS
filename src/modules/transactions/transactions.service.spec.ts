@@ -68,7 +68,10 @@ describe('TransactionsService', () => {
         },
         { provide: getRepositoryToken(User), useValue: userRepo },
         { provide: getRepositoryToken(Category), useValue: categoryRepo },
-        { provide: getRepositoryToken(SavingGoal), useValue: { findOne: jest.fn() } },
+        {
+          provide: getRepositoryToken(SavingGoal),
+          useValue: { findOne: jest.fn() },
+        },
         {
           provide: NotificationsService,
           useValue: { sendPushNotification: jest.fn() },

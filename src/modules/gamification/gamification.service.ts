@@ -22,7 +22,6 @@ export class GamificationService {
         userId,
         currentStreak: 0,
         lastTransactionDate: null,
-        badges: [],
       });
       return await this.gamificationRepo.save(newRecord);
     } catch (error) {

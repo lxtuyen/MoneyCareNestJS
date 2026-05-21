@@ -3,7 +3,6 @@ import { SavingGoal } from 'src/modules/saving-goals/entities/saving-goal.entity
 import { Transaction } from 'src/modules/transactions/entities/transaction.entity';
 import { Category } from 'src/modules/categories/entities/category.entity';
 import { UserProfile } from 'src/modules/user-profile/entities/user-profile.entity';
-import { DeviceToken } from 'src/modules/notifications/entities/device-token.entity';
 import { Notification } from 'src/modules/notifications/entities/notification.entity';
 import { Wallet } from 'src/modules/wallets/entities/wallet.entity';
 import { GamificationEntity } from 'src/modules/gamification/entities/gamification.entity';
@@ -24,47 +23,44 @@ export enum UserRole {
 @Entity('users')
 export class User {
   @PrimaryGeneratedColumn()
-  id: number;
+  id!: number;
 
   @Column({ unique: true })
-  email: string;
+  email!: string;
 
   @Column({ nullable: true, select: false })
-  password: string;
+  password!: string;
 
   @Column({ type: 'enum', enum: UserRole, default: UserRole.USER })
-  role: UserRole;
+  role!: UserRole;
 
   @CreateDateColumn()
-  createdAt: Date;
+  createdAt!: Date;
 
   @OneToOne(() => UserProfile, (profile) => profile.user, {
     cascade: true,
     eager: true,
   })
-  profile: UserProfile;
+  profile!: UserProfile;
 
   @OneToMany(() => OTP, (otp) => otp.user)
-  otps: OTP[];
+  otps!: OTP[];
 
   @OneToMany(() => SavingGoal, (goal) => goal.user)
-  savingGoals: SavingGoal[];
+  savingGoals!: SavingGoal[];
 
   @OneToMany(() => Category, (category) => category.user)
-  categories: Category[];
+  categories!: Category[];
 
   @OneToMany(() => Transaction, (trans) => trans.user)
-  transactions: Transaction[];
-
-  @OneToMany(() => DeviceToken, (token) => token.user)
-  deviceTokens: DeviceToken[];
+  transactions!: Transaction[];
 
   @OneToMany(() => Notification, (notification) => notification.user)
-  notifications: Notification[];
+  notifications!: Notification[];
 
   @OneToMany(() => Wallet, (wallet) => wallet.user)
-  wallets: Wallet[];
+  wallets!: Wallet[];
 
   @OneToOne(() => GamificationEntity, (gamification) => gamification.user)
-  gamification: GamificationEntity;
+  gamification!: GamificationEntity;
 }

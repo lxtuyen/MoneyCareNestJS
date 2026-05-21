@@ -32,7 +32,6 @@ export class UserService {
       hasChange = true;
     }
 
-
     if (!hasChange) {
       return new ApiResponse<User>({
         success: true,

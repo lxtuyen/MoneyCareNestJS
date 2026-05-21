@@ -14,34 +14,34 @@ import {
 @Entity('transactions')
 export class Transaction {
   @PrimaryGeneratedColumn()
-  id: number;
+  id!: number;
 
   @Column()
-  amount: number;
+  amount!: number;
 
   @Column({ type: 'enum', enum: ['income', 'expense'] })
-  type: 'income' | 'expense';
+  type!: 'income' | 'expense';
 
   @Column({ type: 'timestamp with time zone', nullable: true })
-  transaction_date: Date;
+  transaction_date!: Date;
 
   @Column({ nullable: true })
-  note: string;
+  note!: string;
 
   @Column({ nullable: true })
-  pictureURL: string;
+  pictureURL!: string;
 
   @Column({ default: false })
-  isTransfer: boolean;
+  isTransfer!: boolean;
 
   @CreateDateColumn()
-  created_at: Date;
+  created_at!: Date;
 
   @UpdateDateColumn()
-  updated_at: Date;
+  updated_at!: Date;
 
   @ManyToOne(() => User, (user) => user.transactions, { onDelete: 'CASCADE' })
-  user: User;
+  user!: User;
 
   @ManyToOne(() => Category, (category) => category.transactions, {
     nullable: true,

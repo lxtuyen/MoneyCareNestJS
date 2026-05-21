@@ -1,14 +1,7 @@
-import {
-  SpendingPlanStatus,
-  SpendingPlanTrackingType,
-} from './spending-plan.enums';
+import { SpendingPlanStatus } from './spending-plan.enums';
 
 export interface SpendingPlanFilters {
   status?: SpendingPlanStatus;
-}
-
-export interface TrackingTypeInput {
-  trackingType?: SpendingPlanTrackingType | null;
 }
 
 export interface DailySeriesItem {

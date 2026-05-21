@@ -11,7 +11,10 @@ describe('UserProfileService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         UserProfileService,
-        { provide: getRepositoryToken(UserProfile), useValue: { save: jest.fn(), findOne: jest.fn() } },
+        {
+          provide: getRepositoryToken(UserProfile),
+          useValue: { save: jest.fn(), findOne: jest.fn() },
+        },
         { provide: getRepositoryToken(User), useValue: { findOne: jest.fn() } },
       ],
     }).compile();

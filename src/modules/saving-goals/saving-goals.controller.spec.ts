@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { SavingGoalsController } from './saving-goals.controller';
 import { SavingGoalsService } from './saving-goals.service';
+import { SavingGoalsStatisticsService } from './saving-goals-statistics.service';
 
 describe('SavingGoalsController', () => {
   let controller: SavingGoalsController;
@@ -21,6 +22,11 @@ describe('SavingGoalsController', () => {
             checkExpiredGoal: jest.fn(),
             markAsNotified: jest.fn(),
             extendGoal: jest.fn(),
+          },
+        },
+        {
+          provide: SavingGoalsStatisticsService,
+          useValue: {
             getGoalReport: jest.fn(),
           },
         },

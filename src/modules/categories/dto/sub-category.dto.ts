@@ -1,9 +1,15 @@
-import { IsBoolean, IsEnum, IsNumber, IsOptional, IsString } from 'class-validator';
+import {
+  IsBoolean,
+  IsEnum,
+  IsNumber,
+  IsOptional,
+  IsString,
+} from 'class-validator';
 import { CategoryType } from '../entities/category.entity';
 
 export class CreateSubCategoryDto {
   @IsString()
-  name: string;
+  name?: string;
 
   @IsOptional()
   @IsString()
@@ -14,7 +20,7 @@ export class CreateSubCategoryDto {
   type?: CategoryType;
 
   @IsNumber()
-  categoryId: number;
+  categoryId?: number;
 
   @IsOptional()
   @IsBoolean()

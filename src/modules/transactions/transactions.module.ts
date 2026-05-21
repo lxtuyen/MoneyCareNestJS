@@ -16,7 +16,14 @@ import { SavingGoalsModule } from 'src/modules/saving-goals/saving-goals.module'
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Transaction, Category, SubCategory, User, SavingGoal, Wallet]),
+    TypeOrmModule.forFeature([
+      Transaction,
+      Category,
+      SubCategory,
+      User,
+      SavingGoal,
+      Wallet,
+    ]),
     forwardRef(() => UserModule),
     NotificationsModule,
     MailModule,

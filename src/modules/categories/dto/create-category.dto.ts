@@ -3,7 +3,7 @@ import { CategoryType } from '../entities/category.entity';
 
 export class CreateCategoryDto {
   @IsString()
-  name: string;
+  name?: string;
 
   @IsOptional()
   @IsString()

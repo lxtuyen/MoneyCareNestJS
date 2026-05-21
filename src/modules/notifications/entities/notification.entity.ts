@@ -1,5 +1,11 @@
 import { User } from 'src/modules/user/entities/user.entity';
-import { Column, CreateDateColumn, Entity, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
+import {
+  Column,
+  CreateDateColumn,
+  Entity,
+  ManyToOne,
+  PrimaryGeneratedColumn,
+} from 'typeorm';
 
 export enum NotificationType {
   SYSTEM = 'system',
@@ -10,23 +16,27 @@ export enum NotificationType {
 @Entity('notifications')
 export class Notification {
   @PrimaryGeneratedColumn()
-  id: number;
+  id!: number;
 
   @Column()
-  title: string;
+  title!: string;
 
   @Column('text', { default: '' })
-  body: string;
+  body!: string;
 
-  @Column({ type: 'enum', enum: NotificationType, default: NotificationType.SYSTEM })
-  type: NotificationType;
+  @Column({
+    type: 'enum',
+    enum: NotificationType,
+    default: NotificationType.SYSTEM,
+  })
+  type!: NotificationType;
 
   @Column({ default: false })
-  isRead: boolean;
+  isRead!: boolean;
 
   @CreateDateColumn()
-  createdAt: Date;
+  createdAt!: Date;
 
   @ManyToOne(() => User, (user) => user.notifications, { onDelete: 'CASCADE' })
-  user: User;
+  user!: User;
 }

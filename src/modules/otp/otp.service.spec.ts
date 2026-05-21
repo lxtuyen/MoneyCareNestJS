@@ -12,8 +12,19 @@ describe('OtpService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         OtpService,
-        { provide: getRepositoryToken(OTP), useValue: { create: jest.fn(), save: jest.fn(), findOne: jest.fn(), remove: jest.fn() } },
-        { provide: getRepositoryToken(User), useValue: { findOne: jest.fn(), save: jest.fn() } },
+        {
+          provide: getRepositoryToken(OTP),
+          useValue: {
+            create: jest.fn(),
+            save: jest.fn(),
+            findOne: jest.fn(),
+            remove: jest.fn(),
+          },
+        },
+        {
+          provide: getRepositoryToken(User),
+          useValue: { findOne: jest.fn(), save: jest.fn() },
+        },
         { provide: MailService, useValue: { sendOtpEmail: jest.fn() } },
       ],
     }).compile();

@@ -18,6 +18,7 @@ import { SavingGoalsModule } from './modules/saving-goals/saving-goals.module';
 import { AiModule } from './modules/ai/ai.module';
 import { WalletsModule } from './modules/wallets/wallets.module';
 import { SpendingPlansModule } from './modules/spending-plans/spending-plans.module';
+import { EstimatedExpensesModule } from './modules/estimated-expenses/estimated-expenses.module';
 
 @Module({
   imports: [
@@ -71,6 +72,7 @@ import { SpendingPlansModule } from './modules/spending-plans/spending-plans.mod
     AiModule,
     WalletsModule,
     SpendingPlansModule,
+    EstimatedExpensesModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -1,4 +1,5 @@
 import { AiService } from './ai.service';
+import { FinancialAnalysisResult } from './types/ai.types';
 import {
   buildAiAnalysisCacheKey,
   buildAiAnalysisRegistryKey,
@@ -8,6 +9,20 @@ import {
   GoalPlanInsightDto,
   GoalPlanProgressStatus,
 } from './dto/goal-plan-insight.dto';
+import { Repository } from 'typeorm';
+import { ApiResponse } from 'src/common/dto/api-response.dto';
+import { TransactionService } from 'src/modules/transactions/transactions.service';
+import { FinancialInsightsService } from './financial-insights.service';
+import { CacheService } from 'src/common/cache/cache.service';
+import { SavingGoal } from 'src/modules/saving-goals/entities/saving-goal.entity';
+import { Category } from 'src/modules/categories/entities/category.entity';
+import { SubCategory } from 'src/modules/categories/entities/sub-category.entity';
+import { User } from 'src/modules/user/entities/user.entity';
+import { Wallet } from 'src/modules/wallets/entities/wallet.entity';
+import { SpendingPlansService } from 'src/modules/spending-plans/spending-plans.service';
+import { SavingGoalsService } from 'src/modules/saving-goals/saving-goals.service';
+import { SavingGoalsStatisticsService } from 'src/modules/saving-goals/saving-goals-statistics.service';
+import { WalletsService } from 'src/modules/wallets/wallets.service';
 
 jest.mock('@google/genai', () => ({
   GoogleGenAI: jest.fn().mockImplementation(() => ({
@@ -40,6 +55,15 @@ describe('AiService cache behavior', () => {
   const walletRepo = { find: jest.fn() };
   const spendingPlansService = {};
   const savingGoalsService = {};
+  const savingGoalsStatisticsService = {
+    getGoalReport: jest.fn().mockResolvedValue({
+      success: true,
+      data: {
+        milestones: [],
+      },
+    }),
+  };
+  const walletsService = {};
 
   let service: AiService;
 
@@ -47,16 +71,18 @@ describe('AiService cache behavior', () => {
     jest.clearAllMocks();
     process.env.GEMINI_API_KEY = 'test-key';
     service = new AiService(
-      transactionService as any,
-      financialInsightsService as any,
-      cacheService as any,
-      fundRepo as any,
-      categoryRepo as any,
-      subCategoryRepo as any,
-      userRepo as any,
-      walletRepo as any,
-      spendingPlansService as any,
-      savingGoalsService as any,
+      transactionService as unknown as TransactionService,
+      financialInsightsService as unknown as FinancialInsightsService,
+      cacheService as unknown as CacheService,
+      fundRepo as unknown as Repository<SavingGoal>,
+      categoryRepo as unknown as Repository<Category>,
+      subCategoryRepo as unknown as Repository<SubCategory>,
+      userRepo as unknown as Repository<User>,
+      walletRepo as unknown as Repository<Wallet>,
+      spendingPlansService as unknown as SpendingPlansService,
+      savingGoalsService as unknown as SavingGoalsService,
+      savingGoalsStatisticsService as unknown as SavingGoalsStatisticsService,
+      walletsService as unknown as WalletsService,
     );
   });
 
@@ -64,11 +90,15 @@ describe('AiService cache behavior', () => {
     const cached = '__STRUCTURED_ANALYSIS__{"summary":"cached"}';
     cacheService.get.mockResolvedValueOnce(cached);
 
-    const result = await (service as any).handleAnalysis(
-      'phan tich chi tieu',
-      7,
-      2,
-    );
+    const result = await (
+      service as unknown as {
+        handleAnalysis: (
+          message: string,
+          userId: number,
+          goalId?: number,
+        ) => Promise<ApiResponse<string>>;
+      }
+    ).handleAnalysis('phan tich chi tieu', 7, 2);
 
     expect(result).toEqual({ success: true, statusCode: 200, message: cached });
     expect(financialInsightsService.getInsights).not.toHaveBeenCalled();
@@ -84,11 +114,18 @@ describe('AiService cache behavior', () => {
     const registryKey = buildAiAnalysisRegistryKey(9, 4);
 
     jest
-      .spyOn(service as any, 'buildIntentHash')
+      .spyOn(
+        service as unknown as {
+          buildIntentHash: (message: string) => string;
+        },
+        'buildIntentHash',
+      )
       .mockReturnValueOnce('81bce0d8');
     jest
       .spyOn(service, 'analyzeFinancialHealth')
-      .mockResolvedValueOnce(analysisPayload as any);
+      .mockResolvedValueOnce(
+        analysisPayload as unknown as FinancialAnalysisResult,
+      );
 
     cacheService.get
       .mockResolvedValueOnce(null)
@@ -112,7 +149,15 @@ describe('AiService cache behavior', () => {
       },
     });
 
-    await (service as any).handleAnalysis('phan tich chi tieu', 9, 4);
+    await (
+      service as unknown as {
+        handleAnalysis: (
+          message: string,
+          userId: number,
+          goalId?: number,
+        ) => Promise<ApiResponse<string>>;
+      }
+    ).handleAnalysis('phan tich chi tieu', 9, 4);
 
     expect(cacheService.set).toHaveBeenNthCalledWith(
       1,
@@ -141,16 +186,18 @@ describe('AiService cache behavior', () => {
       models: { generateContent },
     }));
     service = new AiService(
-      transactionService as any,
-      financialInsightsService as any,
-      cacheService as any,
-      fundRepo as any,
-      categoryRepo as any,
-      subCategoryRepo as any,
-      userRepo as any,
-      walletRepo as any,
-      spendingPlansService as any,
-      savingGoalsService as any,
+      transactionService as unknown as TransactionService,
+      financialInsightsService as unknown as FinancialInsightsService,
+      cacheService as unknown as CacheService,
+      fundRepo as unknown as Repository<SavingGoal>,
+      categoryRepo as unknown as Repository<Category>,
+      subCategoryRepo as unknown as Repository<SubCategory>,
+      userRepo as unknown as Repository<User>,
+      walletRepo as unknown as Repository<Wallet>,
+      spendingPlansService as unknown as SpendingPlansService,
+      savingGoalsService as unknown as SavingGoalsService,
+      savingGoalsStatisticsService as unknown as SavingGoalsStatisticsService,
+      walletsService as unknown as WalletsService,
     );
 
     const result = await service.generateGoalPlanInsight(goalPlanInsightDto());
@@ -161,6 +208,8 @@ describe('AiService cache behavior', () => {
       summary: 'Kế hoạch đang chậm tiến độ.',
       reason: 'Ăn uống vượt kế hoạch.',
       suggestion: 'Giảm ăn ngoài trong tuần này.',
+      projectedDaysDiff: 0,
+      projectionStatus: 'on_track',
     });
   });
 
@@ -169,24 +218,48 @@ describe('AiService cache behavior', () => {
     (GoogleGenAI as jest.Mock).mockImplementationOnce(() => ({
       models: { generateContent },
     }));
+
+    const mockActiveGoal = {
+      id: 1,
+      name: 'Mua xe',
+    };
+    fundRepo.findOne.mockResolvedValueOnce(mockActiveGoal);
+
+    const mockStatsService = {
+      getGoalReport: jest.fn().mockResolvedValueOnce({
+        success: true,
+        data: {
+          milestones: [
+            {
+              start_date: new Date('2026-05-01'),
+              target: 1000000,
+              actual: 200000,
+            },
+          ],
+        },
+      }),
+    };
+
     service = new AiService(
-      transactionService as any,
-      financialInsightsService as any,
-      cacheService as any,
-      fundRepo as any,
-      categoryRepo as any,
-      subCategoryRepo as any,
-      userRepo as any,
-      walletRepo as any,
-      spendingPlansService as any,
-      savingGoalsService as any,
+      transactionService as unknown as TransactionService,
+      financialInsightsService as unknown as FinancialInsightsService,
+      cacheService as unknown as CacheService,
+      fundRepo as unknown as Repository<SavingGoal>,
+      categoryRepo as unknown as Repository<Category>,
+      subCategoryRepo as unknown as Repository<SubCategory>,
+      userRepo as unknown as Repository<User>,
+      walletRepo as unknown as Repository<Wallet>,
+      spendingPlansService as unknown as SpendingPlansService,
+      savingGoalsService as unknown as SavingGoalsService,
+      mockStatsService as unknown as SavingGoalsStatisticsService,
+      walletsService as unknown as WalletsService,
     );
 
     const result = await service.generateGoalPlanInsight(goalPlanInsightDto());
 
     expect(result.success).toBe(true);
     expect(result.data?.status).toBe(GoalPlanProgressStatus.DELAYED);
-    expect(result.data?.summary).toContain('chậm tiến độ');
+    expect(result.data?.summary).toContain('trễ khoảng 74 ngày');
   });
 });
 

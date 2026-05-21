@@ -12,9 +12,7 @@ import {
 } from '@nestjs/common';
 import { JwtAuthGuard } from 'src/modules/auth/jwt-auth.guard';
 import { User } from 'src/common/decorators/user.decorator';
-import { CreateFixedExpenseDto } from './dto/create-fixed-expense.dto';
 import { CreateSpendingPlanDto } from './dto/create-spending-plan.dto';
-import { UpdateFixedExpenseDto } from './dto/update-fixed-expense.dto';
 import { UpdateSpendingPlanDto } from './dto/update-spending-plan.dto';
 import { SpendingPlanStatus } from './interfaces/spending-plan.enums';
 import { SpendingPlansService } from './spending-plans.service';
@@ -79,50 +77,5 @@ export class SpendingPlansController {
   @Delete(':id')
   remove(@Param('id', ParseIntPipe) id: number, @User('sub') userId: number) {
     return this.spendingPlansService.remove(id, userId);
-  }
-
-  @Get(':id/fixed-expenses')
-  findFixedExpenses(
-    @Param('id', ParseIntPipe) id: number,
-    @User('sub') userId: number,
-  ) {
-    return this.spendingPlansService.findFixedExpenses(id, userId);
-  }
-
-  @Post(':id/fixed-expenses')
-  createFixedExpense(
-    @Param('id', ParseIntPipe) id: number,
-    @User('sub') userId: number,
-    @Body() dto: CreateFixedExpenseDto,
-  ) {
-    return this.spendingPlansService.createFixedExpense(id, userId, dto);
-  }
-
-  @Patch(':planId/fixed-expenses/:expenseId')
-  updateFixedExpense(
-    @Param('planId', ParseIntPipe) planId: number,
-    @Param('expenseId', ParseIntPipe) expenseId: number,
-    @User('sub') userId: number,
-    @Body() dto: UpdateFixedExpenseDto,
-  ) {
-    return this.spendingPlansService.updateFixedExpense(
-      planId,
-      expenseId,
-      userId,
-      dto,
-    );
-  }
-
-  @Delete(':planId/fixed-expenses/:expenseId')
-  deleteFixedExpense(
-    @Param('planId', ParseIntPipe) planId: number,
-    @Param('expenseId', ParseIntPipe) expenseId: number,
-    @User('sub') userId: number,
-  ) {
-    return this.spendingPlansService.deleteFixedExpense(
-      planId,
-      expenseId,
-      userId,
-    );
   }
 }

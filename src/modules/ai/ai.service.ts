@@ -33,6 +33,7 @@ import {
 } from 'src/common/cache/financial-cache.util';
 import { SpendingPlansService } from 'src/modules/spending-plans/spending-plans.service';
 import { SavingGoalsService } from 'src/modules/saving-goals/saving-goals.service';
+import { SavingGoalsStatisticsService } from 'src/modules/saving-goals/saving-goals-statistics.service';
 import { WalletsService } from 'src/modules/wallets/wallets.service';
 import {
   GoalPlanInsightDto,
@@ -155,6 +156,7 @@ export class AiService {
     private readonly walletRepo: Repository<Wallet>,
     private readonly spendingPlansService: SpendingPlansService,
     private readonly savingGoalsService: SavingGoalsService,
+    private readonly savingGoalsStatisticsService: SavingGoalsStatisticsService,
     private readonly walletsService: WalletsService,
   ) {
     const apiKey = process.env.GEMINI_API_KEY;
@@ -1328,7 +1330,7 @@ YEU CAU:${text}
         }));
       if (activeGoal) {
         goalName = activeGoal.name;
-        const reportRes = await this.savingGoalsService.getGoalReport(
+        const reportRes = await this.savingGoalsStatisticsService.getGoalReport(
           activeGoal.id,
           dto.userId,
         );

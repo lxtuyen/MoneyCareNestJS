@@ -97,4 +97,3 @@ export class GoalPlanInsightResponseDto {
   @IsString()
   projectionStatus?: string;
 }
-

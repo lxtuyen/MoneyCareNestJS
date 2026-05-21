@@ -1,4 +1,10 @@
-import { IsString, IsNumber, IsOptional, IsArray, IsDateString } from 'class-validator';
+import {
+  IsString,
+  IsNumber,
+  IsOptional,
+  IsArray,
+  IsDateString,
+} from 'class-validator';
 
 export class CreateSavingGoalDto {
   @IsString()
@@ -27,7 +33,6 @@ export class CreateSavingGoalDto {
   @IsOptional()
   @IsDateString()
   end_date?: string;
-
 
   @IsNumber()
   @IsOptional()

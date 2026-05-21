@@ -9,7 +9,7 @@ import {
 } from 'typeorm';
 import { ColumnNumericTransformer } from 'src/common/transformers/decimal.transformer';
 import { User } from 'src/modules/user/entities/user.entity';
-import { FixedExpense } from './fixed-expense.entity';
+import { EstimatedExpense } from 'src/modules/estimated-expenses/entities/estimated-expense.entity';
 import {
   SpendingPlanRiskLevel,
   SpendingPlanStatus,
@@ -45,7 +45,7 @@ export class SpendingPlan {
     default: 0,
     transformer: new ColumnNumericTransformer(),
   })
-  fixedExpenseTotal!: number;
+  estimatedExpenseTotal!: number;
 
   @Column({
     type: 'decimal',
@@ -73,10 +73,14 @@ export class SpendingPlan {
   @ManyToOne(() => User, { onDelete: 'CASCADE' })
   user!: User;
 
-  @OneToMany(() => FixedExpense, (fixedExpense) => fixedExpense.spendingPlan, {
-    cascade: true,
-  })
-  fixedExpenses!: FixedExpense[];
+  @OneToMany(
+    () => EstimatedExpense,
+    (estimatedExpense) => estimatedExpense.spendingPlan,
+    {
+      cascade: true,
+    },
+  )
+  estimatedExpenses!: EstimatedExpense[];
 
   @CreateDateColumn()
   createdAt!: Date;

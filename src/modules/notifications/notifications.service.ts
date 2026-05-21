@@ -1,67 +1,17 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Notification, NotificationType } from './entities/notification.entity';
-import { DeviceToken } from './entities/device-token.entity';
-import { Repository, In } from 'typeorm';
+import { Repository } from 'typeorm';
 import { User } from 'src/modules/user/entities/user.entity';
-import * as admin from 'firebase-admin';
+import { Notification, NotificationType } from './entities/notification.entity';
+
+type NotificationData = Record<string, string>;
 
 @Injectable()
-export class NotificationsService implements OnModuleInit {
-  private readonly logger = new Logger(NotificationsService.name);
-
+export class NotificationsService {
   constructor(
     @InjectRepository(Notification)
     private readonly notificationRepo: Repository<Notification>,
-    @InjectRepository(DeviceToken)
-    private readonly deviceTokenRepo: Repository<DeviceToken>,
   ) {}
-
-  onModuleInit() {
-    try {
-      if (!admin.apps.length) {
-        const jsonEnv = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
-        const pathEnv = process.env.FIREBASE_SERVICE_ACCOUNT_PATH;
-
-        let credential: admin.credential.Credential;
-        if (jsonEnv) {
-          credential = admin.credential.cert(JSON.parse(jsonEnv));
-        } else if (pathEnv) {
-          credential = admin.credential.cert(pathEnv);
-        } else {
-          this.logger.warn(
-            'No Firebase credentials configured (FIREBASE_SERVICE_ACCOUNT_JSON or FIREBASE_SERVICE_ACCOUNT_PATH). Push notifications disabled.',
-          );
-          return;
-        }
-
-        admin.initializeApp({ credential });
-        this.logger.log('Firebase Admin SDK initialized successfully');
-      }
-    } catch (error) {
-      this.logger.error('Failed to initialize Firebase Admin SDK', error);
-    }
-  }
-
-  async saveDeviceToken(user: User, token: string) {
-    this.logger.log(`Saving device token for user ID: ${user.id}`);
-    let deviceToken = await this.deviceTokenRepo.findOne({
-      where: { token },
-      relations: ['user'],
-    });
-    if (!deviceToken) {
-      deviceToken = this.deviceTokenRepo.create({ token, user });
-    } else {
-      deviceToken.user = user;
-    }
-    await this.deviceTokenRepo.save(deviceToken);
-    return { success: true };
-  }
-
-  async removeDeviceToken(token: string) {
-    await this.deviceTokenRepo.delete({ token });
-    return { success: true };
-  }
 
   async getNotificationsForUser(userId: number) {
     return this.notificationRepo.find({
@@ -82,87 +32,23 @@ export class NotificationsService implements OnModuleInit {
     user: User,
     title: string,
     body: string,
-    data?: any,
+    data?: NotificationData,
     type: NotificationType = NotificationType.SYSTEM,
   ) {
-    this.logger.log(`Searching tokens for user ID: ${user.id}`);
-    const notification = this.notificationRepo.create({
-      title,
-      body,
-      type,
-      user,
-    });
-    await this.notificationRepo.save(notification);
-
-    const tokens = await this.deviceTokenRepo.find({
-      where: { user: { id: user.id } },
-    });
-    this.logger.log(`Found ${tokens.length} tokens for user ID: ${user.id}`);
-
-    if (tokens.length === 0) {
-      this.logger.warn(
-        `User ${user.id} has no registered device tokens. Check if syncToken() was called successfully on the app.`,
-      );
-      return {
-        success: false,
-        error: 'No device tokens found for this user',
-        tokenCount: 0,
-      };
-    }
-
-    const tokenStrings = tokens.map((t) => t.token);
-
-    try {
-      const response = await admin.messaging().sendEachForMulticast({
-        tokens: tokenStrings,
-        notification: {
-          title,
-          body,
-        },
-        data: data,
-      });
-
-      this.logger.log(
-        `Successfully sent ${response.successCount} messages; Failed: ${response.failureCount}`,
-      );
-      if (response.failureCount > 0) {
-        const failedTokens: string[] = [];
-        response.responses.forEach((resp, idx) => {
-          if (!resp.success) {
-            failedTokens.push(tokenStrings[idx]);
-            this.logger.error(
-              `FCM error for token ${tokenStrings[idx]}: ${resp.error?.message || 'Unknown error'}`,
-            );
-          }
-        });
-        if (failedTokens.length > 0) {
-          await this.deviceTokenRepo.delete({ token: In(failedTokens) });
-        }
-      }
-      return {
-        success: true,
-        tokenCount: tokens.length,
-        successCount: response.successCount,
-        failureCount: response.failureCount,
-      };
-    } catch (error) {
-      this.logger.error('Error sending default FCM message:', error);
-      return {
-        success: false,
-        error: error.message,
-        tokenCount: tokens.length,
-      };
-    }
-  }
-
-  async sendTestNotification(user: User) {
-    this.logger.log(`Sending test notification to user ${user.id}`);
-    return this.sendPushNotification(
-      user,
-      '🔔 Kiểm tra kết nối',
-      'Chúc mừng! Bạn đã tích hợp thông báo từ Backend thành công. 🚀',
-      { type: 'TEST' },
-      NotificationType.SYSTEM,
+    const notification = await this.notificationRepo.save(
+      this.notificationRepo.create({
+        title,
+        body,
+        type,
+        user,
+      }),
     );
+
+    return {
+      success: true,
+      notification,
+      pushSkipped: true,
+      data,
+    };
   }
 }

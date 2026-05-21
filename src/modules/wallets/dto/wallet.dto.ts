@@ -33,7 +33,6 @@ export class UpdateWalletDto {
   @IsBoolean()
   @IsOptional()
   is_active?: boolean;
-
 }
 
 export class TransferDto {

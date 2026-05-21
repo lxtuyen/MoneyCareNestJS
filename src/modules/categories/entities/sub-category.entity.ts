@@ -15,33 +15,33 @@ import { CategoryType } from './category-type.enum';
 @Entity('sub_categories')
 export class SubCategory {
   @PrimaryGeneratedColumn()
-  id: number;
+  id!: number;
 
   @Column()
-  name: string;
+  name!: string;
 
   @Column({ nullable: true })
-  icon: string;
+  icon!: string;
 
   @Column({ type: 'enum', enum: CategoryType, default: CategoryType.EXPENSE })
-  type: CategoryType;
+  type!: CategoryType;
 
   @Column({ default: true })
-  is_system: boolean;
+  is_system!: boolean;
 
   @ManyToOne(() => Category, (category) => category.subCategories, {
     onDelete: 'CASCADE',
   })
-  category: Category;
+  category!: Category;
 
   @OneToMany(() => Transaction, (transaction) => transaction.subCategory)
-  transactions: Transaction[];
+  transactions!: Transaction[];
 
   @CreateDateColumn()
-  created_at: Date;
+  created_at!: Date;
 
   @UpdateDateColumn()
-  updated_at: Date;
+  updated_at!: Date;
 
   @DeleteDateColumn()
   deleted_at?: Date;

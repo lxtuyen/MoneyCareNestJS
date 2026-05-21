@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Between } from 'typeorm';
@@ -9,8 +9,6 @@ import { NotificationType } from './entities/notification.entity';
 
 @Injectable()
 export class CronService {
-  private readonly logger = new Logger(CronService.name);
-
   constructor(
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
@@ -21,15 +19,9 @@ export class CronService {
 
   @Cron('0 20 * * *')
   async handleDailyReminderCron() {
-    this.logger.log('Running daily reminder cronjob...');
+    const users = await this.userRepo.find();
 
-    const usersWithTokens = await this.userRepo
-      .createQueryBuilder('user')
-      .innerJoin('user.deviceTokens', 'deviceToken')
-      .getMany();
-
-    if (usersWithTokens.length === 0) {
-      this.logger.log('No users with device tokens. Skip reminder.');
+    if (users.length === 0) {
       return;
     }
 
@@ -39,9 +31,7 @@ export class CronService {
     const endOfDay = new Date();
     endOfDay.setHours(23, 59, 59, 999);
 
-    let sentCount = 0;
-
-    for (const user of usersWithTokens) {
+    for (const user of users) {
       const transactionCount = await this.transactionRepo.count({
         where: {
           user: { id: user.id },
@@ -57,10 +47,7 @@ export class CronService {
           undefined,
           NotificationType.REMINDER,
         );
-        sentCount++;
       }
     }
-
-    this.logger.log(`Daily reminder push sent to ${sentCount} users.`);
   }
 }

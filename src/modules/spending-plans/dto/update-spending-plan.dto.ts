@@ -6,7 +6,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import { CreateFixedExpenseDto } from './create-fixed-expense.dto';
+import { CreateEstimatedExpenseDto } from 'src/modules/estimated-expenses/dto/create-estimated-expense.dto';
 
 export class UpdateSpendingPlanDto {
   @IsOptional()
@@ -22,6 +22,6 @@ export class UpdateSpendingPlanDto {
   @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
-  @Type(() => CreateFixedExpenseDto)
-  fixedExpenses?: CreateFixedExpenseDto[];
+  @Type(() => CreateEstimatedExpenseDto)
+  estimatedExpenses?: CreateEstimatedExpenseDto[];
 }

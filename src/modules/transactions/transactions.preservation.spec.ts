@@ -89,7 +89,11 @@ describe('Preservation 5 — Sum by category aggregation (MUST PASS on unfixed c
           useValue: createMockRepository<SavingGoal>(),
         },
         {
-          provide: CacheService, useValue: { get: jest.fn(), set: jest.fn(), delMany: jest.fn() } }, { provide: NotificationsService,
+          provide: CacheService,
+          useValue: { get: jest.fn(), set: jest.fn(), delMany: jest.fn() },
+        },
+        {
+          provide: NotificationsService,
           useValue: {
             sendPushNotification: jest.fn(),
           },
@@ -107,7 +111,9 @@ describe('Preservation 5 — Sum by category aggregation (MUST PASS on unfixed c
     const mockTransactionQueryBuilder = createMockQueryBuilder();
 
     categoryRepo.createQueryBuilder.mockReturnValue(mockCategoryQueryBuilder);
-    transactionRepo.createQueryBuilder.mockReturnValue(mockTransactionQueryBuilder);
+    transactionRepo.createQueryBuilder.mockReturnValue(
+      mockTransactionQueryBuilder,
+    );
 
     // Mock category data — service uses 'balance' (from fund.balance) for limit calculation
     mockCategoryQueryBuilder.getRawMany.mockResolvedValue([
@@ -146,7 +152,7 @@ describe('Preservation 5 — Sum by category aggregation (MUST PASS on unfixed c
         categoryName: 'Food',
         categoryIcon: 'food-icon',
         percentage: 30,
-        limit: 0, 
+        limit: 0,
         total: 2500000,
       }),
     );
@@ -155,7 +161,7 @@ describe('Preservation 5 — Sum by category aggregation (MUST PASS on unfixed c
         categoryName: 'Transport',
         categoryIcon: 'transport-icon',
         percentage: 20,
-        limit: 0, 
+        limit: 0,
         total: 1500000,
       }),
     );
@@ -166,7 +172,9 @@ describe('Preservation 5 — Sum by category aggregation (MUST PASS on unfixed c
     const mockTransactionQueryBuilder = createMockQueryBuilder();
 
     categoryRepo.createQueryBuilder.mockReturnValue(mockCategoryQueryBuilder);
-    transactionRepo.createQueryBuilder.mockReturnValue(mockTransactionQueryBuilder);
+    transactionRepo.createQueryBuilder.mockReturnValue(
+      mockTransactionQueryBuilder,
+    );
 
     mockCategoryQueryBuilder.getRawMany.mockResolvedValue([
       {
@@ -228,7 +236,11 @@ describe('Preservation 6 — Filter transactions by fundId (MUST PASS on unfixed
           useValue: createMockRepository<SavingGoal>(),
         },
         {
-          provide: CacheService, useValue: { get: jest.fn(), set: jest.fn(), delMany: jest.fn() } }, { provide: NotificationsService,
+          provide: CacheService,
+          useValue: { get: jest.fn(), set: jest.fn(), delMany: jest.fn() },
+        },
+        {
+          provide: NotificationsService,
           useValue: {
             sendPushNotification: jest.fn(),
           },
@@ -303,7 +315,15 @@ describe('PBT Preservation — Sum by category with random data', () => {
                 useValue: createMockRepository<SavingGoal>(),
               },
               {
-                provide: CacheService, useValue: { get: jest.fn(), set: jest.fn(), delMany: jest.fn() } }, { provide: NotificationsService,
+                provide: CacheService,
+                useValue: {
+                  get: jest.fn(),
+                  set: jest.fn(),
+                  delMany: jest.fn(),
+                },
+              },
+              {
+                provide: NotificationsService,
                 useValue: {
                   sendPushNotification: jest.fn(),
                 },
@@ -312,9 +332,9 @@ describe('PBT Preservation — Sum by category with random data', () => {
           }).compile();
 
           const service = module.get<TransactionService>(TransactionService);
-          const transactionRepo = module.get<jest.Mocked<Repository<Transaction>>>(
-            getRepositoryToken(Transaction),
-          );
+          const transactionRepo = module.get<
+            jest.Mocked<Repository<Transaction>>
+          >(getRepositoryToken(Transaction));
           const categoryRepo = module.get<jest.Mocked<Repository<Category>>>(
             getRepositoryToken(Category),
           );
@@ -322,8 +342,12 @@ describe('PBT Preservation — Sum by category with random data', () => {
           const mockCategoryQueryBuilder = createMockQueryBuilder();
           const mockTransactionQueryBuilder = createMockQueryBuilder();
 
-          categoryRepo.createQueryBuilder.mockReturnValue(mockCategoryQueryBuilder);
-          transactionRepo.createQueryBuilder.mockReturnValue(mockTransactionQueryBuilder);
+          categoryRepo.createQueryBuilder.mockReturnValue(
+            mockCategoryQueryBuilder,
+          );
+          transactionRepo.createQueryBuilder.mockReturnValue(
+            mockTransactionQueryBuilder,
+          );
 
           // Convert to string format as returned by database
           // Service uses 'balance' (from fund.balance) for limit calculation
@@ -338,7 +362,9 @@ describe('PBT Preservation — Sum by category with random data', () => {
           }));
 
           mockCategoryQueryBuilder.getRawMany.mockResolvedValue(categoryData);
-          mockTransactionQueryBuilder.getRawMany.mockResolvedValue(transactionData);
+          mockTransactionQueryBuilder.getRawMany.mockResolvedValue(
+            transactionData,
+          );
 
           const dto: GetTransactionDto = {
             userId: 1,
@@ -349,9 +375,12 @@ describe('PBT Preservation — Sum by category with random data', () => {
           // Verify that limit calculation is correct for each category
           // Service formula: (percentage * balance) / 100
           result.data!.forEach((item) => {
-            const category = categories.find((c) => c.categoryName === item.categoryName);
+            const category = categories.find(
+              (c) => c.categoryName === item.categoryName,
+            );
             if (category) {
-              const expectedLimit = (category.percentage * category.amount) / 100;
+              const expectedLimit =
+                (category.percentage * category.amount) / 100;
               expect(item.limit).toBe(expectedLimit);
               expect(item.percentage).toBe(category.percentage);
             }
@@ -407,7 +436,15 @@ describe('PBT Preservation — Existing data preservation', () => {
                 useValue: createMockRepository<SavingGoal>(),
               },
               {
-                provide: CacheService, useValue: { get: jest.fn(), set: jest.fn(), delMany: jest.fn() } }, { provide: NotificationsService,
+                provide: CacheService,
+                useValue: {
+                  get: jest.fn(),
+                  set: jest.fn(),
+                  delMany: jest.fn(),
+                },
+              },
+              {
+                provide: NotificationsService,
                 useValue: {
                   sendPushNotification: jest.fn(),
                 },
@@ -416,9 +453,9 @@ describe('PBT Preservation — Existing data preservation', () => {
           }).compile();
 
           const service = module.get<TransactionService>(TransactionService);
-          const transactionRepo = module.get<jest.Mocked<Repository<Transaction>>>(
-            getRepositoryToken(Transaction),
-          );
+          const transactionRepo = module.get<
+            jest.Mocked<Repository<Transaction>>
+          >(getRepositoryToken(Transaction));
           const categoryRepo = module.get<jest.Mocked<Repository<Category>>>(
             getRepositoryToken(Category),
           );
@@ -426,8 +463,12 @@ describe('PBT Preservation — Existing data preservation', () => {
           const mockCategoryQueryBuilder = createMockQueryBuilder();
           const mockTransactionQueryBuilder = createMockQueryBuilder();
 
-          categoryRepo.createQueryBuilder.mockReturnValue(mockCategoryQueryBuilder);
-          transactionRepo.createQueryBuilder.mockReturnValue(mockTransactionQueryBuilder);
+          categoryRepo.createQueryBuilder.mockReturnValue(
+            mockCategoryQueryBuilder,
+          );
+          transactionRepo.createQueryBuilder.mockReturnValue(
+            mockTransactionQueryBuilder,
+          );
 
           const categoryData = categories.map((cat) => ({
             ...cat,
@@ -446,9 +487,12 @@ describe('PBT Preservation — Existing data preservation', () => {
           // Verify that amount field is used in limit calculation
           // This confirms that existing data (amount → balance) is preserved and used correctly
           result.data!.forEach((item) => {
-            const category = categories.find((c) => c.categoryName === item.categoryName);
+            const category = categories.find(
+              (c) => c.categoryName === item.categoryName,
+            );
             if (category) {
-              const expectedLimit = (category.percentage * category.amount) / 100;
+              const expectedLimit =
+                (category.percentage * category.amount) / 100;
               expect(item.limit).toBe(expectedLimit);
             }
           });

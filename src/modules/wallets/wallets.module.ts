@@ -8,7 +8,9 @@ import { Category } from '../categories/entities/category.entity';
 import { SavingGoal } from '../saving-goals/entities/saving-goal.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Wallet, Transaction, Category, SavingGoal])],
+  imports: [
+    TypeOrmModule.forFeature([Wallet, Transaction, Category, SavingGoal]),
+  ],
   controllers: [WalletsController],
   providers: [WalletsService],
   exports: [WalletsService],

@@ -17,8 +17,3 @@ export enum SpendingPlanExpenseFrequency {
   MONTHLY = 'monthly',
   ONCE = 'once',
 }
-
-export enum SpendingPlanTrackingType {
-  BUDGET = 'budget',
-  FIXED_BILL = 'fixed_bill',
-}

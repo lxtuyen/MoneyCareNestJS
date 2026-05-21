@@ -11,7 +11,11 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { WalletsService } from './wallets.service';
-import { CreateWalletDto, UpdateWalletDto, TransferDto } from './dto/wallet.dto';
+import {
+  CreateWalletDto,
+  UpdateWalletDto,
+  TransferDto,
+} from './dto/wallet.dto';
 import { JwtAuthGuard } from 'src/modules/auth/jwt-auth.guard';
 import { ApiResponse } from 'src/common/dto/api-response.dto';
 
@@ -77,7 +81,11 @@ export class WalletsController {
     @Body() updateWalletDto: UpdateWalletDto,
     @Request() req,
   ) {
-    const wallet = await this.walletsService.update(+id, updateWalletDto, req.user);
+    const wallet = await this.walletsService.update(
+      +id,
+      updateWalletDto,
+      req.user,
+    );
     return new ApiResponse({
       success: true,
       statusCode: HttpStatus.OK,

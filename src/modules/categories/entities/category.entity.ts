@@ -1,4 +1,3 @@
-
 import { Transaction } from 'src/modules/transactions/entities/transaction.entity';
 import { User } from 'src/modules/user/entities/user.entity';
 import {
@@ -19,40 +18,40 @@ export { CategoryType } from './category-type.enum';
 @Entity('categories')
 export class Category {
   @PrimaryGeneratedColumn()
-  id: number;
+  id!: number;
 
   @Column()
-  name: string;
+  name!: string;
 
   @Column({ nullable: true })
-  icon: string;
+  icon!: string;
 
   @Column({ type: 'enum', enum: CategoryType, default: CategoryType.EXPENSE })
-  type: CategoryType;
+  type!: CategoryType;
 
   @Column({ default: true })
-  isEssential: boolean;
+  isEssential!: boolean;
 
   @Column({ default: false })
-  is_system: boolean;
+  is_system!: boolean;
 
   @ManyToOne(() => User, (user) => user.categories, {
     onDelete: 'CASCADE',
     nullable: true,
   })
-  user: User | null;
+  user!: User | null;
 
   @OneToMany(() => Transaction, (trans) => trans.category)
-  transactions: Transaction[];
+  transactions!: Transaction[];
 
   @OneToMany(() => SubCategory, (subCategory) => subCategory.category)
-  subCategories: SubCategory[];
+  subCategories!: SubCategory[];
 
   @CreateDateColumn()
-  created_at: Date;
+  created_at!: Date;
 
   @UpdateDateColumn()
-  updated_at: Date;
+  updated_at!: Date;
 
   @DeleteDateColumn()
   deleted_at?: Date;

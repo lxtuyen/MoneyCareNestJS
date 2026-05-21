@@ -97,7 +97,9 @@ describe('CacheService', () => {
 
     await service.onModuleInit();
     mockRedisClient.set.mockRejectedValueOnce(new Error('set failed'));
-    await expect(service.set('redis:key', 'value', 60)).resolves.toBeUndefined();
+    await expect(
+      service.set('redis:key', 'value', 60),
+    ).resolves.toBeUndefined();
 
     redisHandlers.ready?.();
     mockRedisClient.del.mockRejectedValueOnce(new Error('del failed'));

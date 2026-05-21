@@ -2,7 +2,11 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
 import { Wallet } from './entities/wallet.entity';
-import { CreateWalletDto, UpdateWalletDto, TransferDto } from './dto/wallet.dto';
+import {
+  CreateWalletDto,
+  UpdateWalletDto,
+  TransferDto,
+} from './dto/wallet.dto';
 import { User } from 'src/modules/user/entities/user.entity';
 import { Transaction } from '../transactions/entities/transaction.entity';
 import { Category } from '../categories/entities/category.entity';
@@ -76,14 +80,23 @@ export class WalletsService {
   }
 
   async transfer(transferDto: TransferDto, user: User): Promise<void> {
-    const { fromWalletId, toWalletId, amount, fee = 0, note, categoryId } = transferDto;
+    const {
+      fromWalletId,
+      toWalletId,
+      amount,
+      fee = 0,
+      note,
+      categoryId,
+    } = transferDto;
 
     const fromWallet = await this.findOne(fromWalletId, user);
     const toWallet = await this.findOne(toWalletId, user);
 
     let category: Category | null = null;
     if (categoryId) {
-      category = await this.categoryRepository.findOne({ where: { id: categoryId } });
+      category = await this.categoryRepository.findOne({
+        where: { id: categoryId },
+      });
     }
 
     if (Number(fromWallet.balance) < amount + fee) {
@@ -138,7 +151,10 @@ export class WalletsService {
       }
     } catch (cacheError) {
       // Non-blocking catch to ensure transfer is not rolled back if cache invalidation fails
-      console.error('>>> [BE] Error invalidating financial cache during transfer:', cacheError);
+      console.error(
+        '>>> [BE] Error invalidating financial cache during transfer:',
+        cacheError,
+      );
     }
   }
 

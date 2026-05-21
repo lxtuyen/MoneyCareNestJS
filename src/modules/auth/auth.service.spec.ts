@@ -13,10 +13,24 @@ describe('AuthService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AuthService,
-        { provide: getRepositoryToken(User), useValue: { findOne: jest.fn(), create: jest.fn(), save: jest.fn(), createQueryBuilder: jest.fn() } },
-        { provide: getRepositoryToken(UserProfile), useValue: { create: jest.fn(), save: jest.fn() } },
+        {
+          provide: getRepositoryToken(User),
+          useValue: {
+            findOne: jest.fn(),
+            create: jest.fn(),
+            save: jest.fn(),
+            createQueryBuilder: jest.fn(),
+          },
+        },
+        {
+          provide: getRepositoryToken(UserProfile),
+          useValue: { create: jest.fn(), save: jest.fn() },
+        },
         { provide: JwtService, useValue: { sign: jest.fn() } },
-        { provide: ConfigService, useValue: { get: jest.fn().mockReturnValue('test-client-id') } },
+        {
+          provide: ConfigService,
+          useValue: { get: jest.fn().mockReturnValue('test-client-id') },
+        },
       ],
     }).compile();
 
