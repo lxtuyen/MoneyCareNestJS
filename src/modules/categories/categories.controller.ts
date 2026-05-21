@@ -1,7 +1,20 @@
-import { Controller, Get, Post, Body, Param, ParseIntPipe, UseGuards, Patch, Delete } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Param,
+  ParseIntPipe,
+  UseGuards,
+  Patch,
+  Delete,
+} from '@nestjs/common';
 import { CategoriesService } from './categories.service';
 import { CreateCategoryDto } from './dto/create-category.dto';
-import { CreateSubCategoryDto, UpdateSubCategoryDto } from './dto/sub-category.dto';
+import {
+  CreateSubCategoryDto,
+  UpdateSubCategoryDto,
+} from './dto/sub-category.dto';
 import { JwtAuthGuard } from 'src/modules/auth/jwt-auth.guard';
 
 @UseGuards(JwtAuthGuard)
@@ -9,25 +22,9 @@ import { JwtAuthGuard } from 'src/modules/auth/jwt-auth.guard';
 export class CategoriesController {
   constructor(private readonly categoriesService: CategoriesService) {}
 
-  @Post('user/:userId')
-  createForUser(
-    @Param('userId', ParseIntPipe) userId: number,
-    @Body() dtos: CreateCategoryDto[],
-  ) {
-    return this.categoriesService.createForUser(userId, dtos);
-  }
-
   @Get('user/:userId')
   findByUser(@Param('userId', ParseIntPipe) userId: number) {
     return this.categoriesService.findByUser(userId);
-  }
-
-  @Post('user/:userId/single')
-  createOne(
-    @Param('userId', ParseIntPipe) userId: number,
-    @Body() dto: CreateCategoryDto,
-  ) {
-    return this.categoriesService.createForUser(userId, [dto]);
   }
 
   @Patch(':id')

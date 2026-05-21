@@ -31,6 +31,9 @@ export class Transaction {
   @Column({ nullable: true })
   pictureURL: string;
 
+  @Column({ default: false })
+  isTransfer: boolean;
+
   @CreateDateColumn()
   created_at: Date;
 

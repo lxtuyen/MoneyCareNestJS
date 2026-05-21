@@ -209,9 +209,11 @@ export class FinancialInsightsService {
       });
 
     if (type === 'expense' && (goalId ?? 0) > 0) {
-      query.leftJoin('category.savingGoal', 'savingGoal').andWhere('savingGoal.id = :goalId', {
-        goalId,
-      });
+      query
+        .leftJoin('category.savingGoal', 'savingGoal')
+        .andWhere('savingGoal.id = :goalId', {
+          goalId,
+        });
     }
 
     const raw = await query
@@ -274,9 +276,11 @@ export class FinancialInsightsService {
       });
 
     if (goalId > 0) {
-      query.leftJoin('category.savingGoal', 'savingGoal').andWhere('savingGoal.id = :goalId', {
-        goalId,
-      });
+      query
+        .leftJoin('category.savingGoal', 'savingGoal')
+        .andWhere('savingGoal.id = :goalId', {
+          goalId,
+        });
     }
 
     return query

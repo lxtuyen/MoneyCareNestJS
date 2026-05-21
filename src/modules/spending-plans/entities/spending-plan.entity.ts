@@ -10,22 +10,15 @@ import {
 import { ColumnNumericTransformer } from 'src/common/transformers/decimal.transformer';
 import { User } from 'src/modules/user/entities/user.entity';
 import { FixedExpense } from './fixed-expense.entity';
-import { SpendingPlanSnapshot } from './spending-plan-snapshot.entity';
 import {
   SpendingPlanRiskLevel,
   SpendingPlanStatus,
-} from './spending-plan.enums';
+} from '../interfaces/spending-plan.enums';
 
 @Entity('spending_plans')
 export class SpendingPlan {
   @PrimaryGeneratedColumn()
-  id: number;
-
-  @Column()
-  month: number;
-
-  @Column()
-  year: number;
+  id!: number;
 
   @Column({
     type: 'decimal',
@@ -34,7 +27,7 @@ export class SpendingPlan {
     default: 0,
     transformer: new ColumnNumericTransformer(),
   })
-  totalAmount: number;
+  totalAmount!: number;
 
   @Column({
     type: 'decimal',
@@ -43,7 +36,7 @@ export class SpendingPlan {
     default: 0,
     transformer: new ColumnNumericTransformer(),
   })
-  savingTargetAmount: number;
+  savingTargetAmount!: number;
 
   @Column({
     type: 'decimal',
@@ -52,7 +45,7 @@ export class SpendingPlan {
     default: 0,
     transformer: new ColumnNumericTransformer(),
   })
-  fixedExpenseTotal: number;
+  fixedExpenseTotal!: number;
 
   @Column({
     type: 'decimal',
@@ -61,44 +54,39 @@ export class SpendingPlan {
     default: 0,
     transformer: new ColumnNumericTransformer(),
   })
-  availableSpendingAmount: number;
+  availableSpendingAmount!: number;
 
   @Column({
     type: 'enum',
     enum: SpendingPlanStatus,
     default: SpendingPlanStatus.DRAFT,
   })
-  status: SpendingPlanStatus;
+  status!: SpendingPlanStatus;
 
   @Column({
     type: 'enum',
     enum: SpendingPlanRiskLevel,
     default: SpendingPlanRiskLevel.WARNING,
   })
-  riskLevel: SpendingPlanRiskLevel;
+  riskLevel!: SpendingPlanRiskLevel;
 
   @ManyToOne(() => User, { onDelete: 'CASCADE' })
-  user: User;
+  user!: User;
 
-  @OneToMany(
-    () => FixedExpense,
-    (fixedExpense) => fixedExpense.spendingPlan,
-    { cascade: true },
-  )
-  fixedExpenses: FixedExpense[];
-
-  @OneToMany(() => SpendingPlanSnapshot, (snapshot) => snapshot.spendingPlan)
-  snapshots: SpendingPlanSnapshot[];
+  @OneToMany(() => FixedExpense, (fixedExpense) => fixedExpense.spendingPlan, {
+    cascade: true,
+  })
+  fixedExpenses!: FixedExpense[];
 
   @CreateDateColumn()
-  createdAt: Date;
+  createdAt!: Date;
 
   @UpdateDateColumn()
-  updatedAt: Date;
+  updatedAt!: Date;
 
   @Column({ type: 'timestamp with time zone', nullable: true })
-  activatedAt: Date | null;
+  activatedAt!: Date | null;
 
   @Column({ type: 'timestamp with time zone', nullable: true })
-  archivedAt: Date | null;
+  archivedAt!: Date | null;
 }

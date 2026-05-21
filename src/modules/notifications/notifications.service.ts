@@ -29,7 +29,9 @@ export class NotificationsService implements OnModuleInit {
         } else if (pathEnv) {
           credential = admin.credential.cert(pathEnv);
         } else {
-          this.logger.warn('No Firebase credentials configured (FIREBASE_SERVICE_ACCOUNT_JSON or FIREBASE_SERVICE_ACCOUNT_PATH). Push notifications disabled.');
+          this.logger.warn(
+            'No Firebase credentials configured (FIREBASE_SERVICE_ACCOUNT_JSON or FIREBASE_SERVICE_ACCOUNT_PATH). Push notifications disabled.',
+          );
           return;
         }
 
@@ -43,7 +45,10 @@ export class NotificationsService implements OnModuleInit {
 
   async saveDeviceToken(user: User, token: string) {
     this.logger.log(`Saving device token for user ID: ${user.id}`);
-    let deviceToken = await this.deviceTokenRepo.findOne({ where: { token }, relations: ['user'] });
+    let deviceToken = await this.deviceTokenRepo.findOne({
+      where: { token },
+      relations: ['user'],
+    });
     if (!deviceToken) {
       deviceToken = this.deviceTokenRepo.create({ token, user });
     } else {
@@ -66,11 +71,20 @@ export class NotificationsService implements OnModuleInit {
   }
 
   async markAsRead(notificationId: number, userId: number) {
-    await this.notificationRepo.update({ id: notificationId, user: { id: userId } }, { isRead: true });
+    await this.notificationRepo.update(
+      { id: notificationId, user: { id: userId } },
+      { isRead: true },
+    );
     return { success: true };
   }
 
-  async sendPushNotification(user: User, title: string, body: string, data?: any, type: NotificationType = NotificationType.SYSTEM) {
+  async sendPushNotification(
+    user: User,
+    title: string,
+    body: string,
+    data?: any,
+    type: NotificationType = NotificationType.SYSTEM,
+  ) {
     this.logger.log(`Searching tokens for user ID: ${user.id}`);
     const notification = this.notificationRepo.create({
       title,
@@ -80,12 +94,20 @@ export class NotificationsService implements OnModuleInit {
     });
     await this.notificationRepo.save(notification);
 
-    const tokens = await this.deviceTokenRepo.find({ where: { user: { id: user.id } } });
+    const tokens = await this.deviceTokenRepo.find({
+      where: { user: { id: user.id } },
+    });
     this.logger.log(`Found ${tokens.length} tokens for user ID: ${user.id}`);
 
     if (tokens.length === 0) {
-      this.logger.warn(`User ${user.id} has no registered device tokens. Check if syncToken() was called successfully on the app.`);
-      return { success: false, error: 'No device tokens found for this user', tokenCount: 0 };
+      this.logger.warn(
+        `User ${user.id} has no registered device tokens. Check if syncToken() was called successfully on the app.`,
+      );
+      return {
+        success: false,
+        error: 'No device tokens found for this user',
+        tokenCount: 0,
+      };
     }
 
     const tokenStrings = tokens.map((t) => t.token);
@@ -100,13 +122,17 @@ export class NotificationsService implements OnModuleInit {
         data: data,
       });
 
-      this.logger.log(`Successfully sent ${response.successCount} messages; Failed: ${response.failureCount}`);
+      this.logger.log(
+        `Successfully sent ${response.successCount} messages; Failed: ${response.failureCount}`,
+      );
       if (response.failureCount > 0) {
         const failedTokens: string[] = [];
         response.responses.forEach((resp, idx) => {
           if (!resp.success) {
             failedTokens.push(tokenStrings[idx]);
-            this.logger.error(`FCM error for token ${tokenStrings[idx]}: ${resp.error?.message || 'Unknown error'}`);
+            this.logger.error(
+              `FCM error for token ${tokenStrings[idx]}: ${resp.error?.message || 'Unknown error'}`,
+            );
           }
         });
         if (failedTokens.length > 0) {

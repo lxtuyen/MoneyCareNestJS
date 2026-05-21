@@ -93,14 +93,19 @@ export class TransactionService {
     if (dto.transactionDate) {
       transactionDate = new Date(dto.transactionDate);
       if (isNaN(transactionDate.getTime())) {
-        console.warn('>>> [BE] Invalid transactionDate received, falling back to current date');
+        console.warn(
+          '>>> [BE] Invalid transactionDate received, falling back to current date',
+        );
         transactionDate = new Date();
       }
     } else {
       transactionDate = new Date();
     }
-    
-    console.log('>>> [BE] Parsed transaction_date:', transactionDate.toISOString());
+
+    console.log(
+      '>>> [BE] Parsed transaction_date:',
+      transactionDate.toISOString(),
+    );
 
     const transaction = this.transactionRepo.create({
       amount: dto.amount,
@@ -115,30 +120,32 @@ export class TransactionService {
     });
 
     if (dto.walletId) {
-      const wallet = await this.walletRepo.findOne({ where: { id: dto.walletId } });
+      const wallet = await this.walletRepo.findOne({
+        where: { id: dto.walletId },
+      });
       if (wallet) {
         const amt = Number(dto.amount);
-        wallet.balance = dto.type === 'income' 
-          ? Number(wallet.balance) + amt 
-          : Number(wallet.balance) - amt;
+        wallet.balance =
+          dto.type === 'income'
+            ? Number(wallet.balance) + amt
+            : Number(wallet.balance) - amt;
         await this.walletRepo.save(wallet);
       }
     }
 
     // Budget alerts will be refactored to be wallet-based if needed
 
-
     await this.transactionRepo.save(transaction);
-    
+
     // Invalidate cache for goals linked to this wallet
     let affectedGoalIds: number[] = [];
     if (dto.walletId) {
-      const goals = await this.goalRepo.find({ where: { wallet: { id: dto.walletId } } });
-      affectedGoalIds = goals.map(g => g.id);
+      const goals = await this.goalRepo.find({
+        where: { wallet: { id: dto.walletId } },
+      });
+      affectedGoalIds = goals.map((g) => g.id);
     }
     await this.invalidateFinancialCache(user.id, affectedGoalIds);
-
-
 
     return new ApiResponse({
       success: true,
@@ -156,12 +163,14 @@ export class TransactionService {
       relations: ['category', 'subCategory', 'user', 'wallet'],
     });
     if (!transaction) throw new NotFoundException('Transaction not found');
-    
+
     // Find goals linked to the old wallet
     let oldGoalIds: number[] = [];
     if (transaction.wallet) {
-      const oldGoals = await this.goalRepo.find({ where: { wallet: { id: transaction.wallet.id } } });
-      oldGoalIds = oldGoals.map(g => g.id);
+      const oldGoals = await this.goalRepo.find({
+        where: { wallet: { id: transaction.wallet.id } },
+      });
+      oldGoalIds = oldGoals.map((g) => g.id);
     }
 
     if (dto.categoryId) {
@@ -183,7 +192,9 @@ export class TransactionService {
         ? transaction.category
         : subCategory.category;
       if (nextCategory && subCategory.category?.id !== nextCategory.id) {
-        throw new BadRequestException('Sub category does not belong to category');
+        throw new BadRequestException(
+          'Sub category does not belong to category',
+        );
       }
       transaction.subCategory = subCategory;
       transaction.category = nextCategory;
@@ -214,36 +225,46 @@ export class TransactionService {
       if (oldWalletId === newWalletId) {
         // Same wallet, update diff
         if (oldWalletId) {
-          const wallet = await this.walletRepo.findOne({ where: { id: oldWalletId } });
+          const wallet = await this.walletRepo.findOne({
+            where: { id: oldWalletId },
+          });
           if (wallet) {
             // Revert old
-            wallet.balance = oldType === 'income' 
-              ? Number(wallet.balance) - oldAmount 
-              : Number(wallet.balance) + oldAmount;
+            wallet.balance =
+              oldType === 'income'
+                ? Number(wallet.balance) - oldAmount
+                : Number(wallet.balance) + oldAmount;
             // Apply new
-            wallet.balance = newType === 'income' 
-              ? Number(wallet.balance) + newAmount 
-              : Number(wallet.balance) - newAmount;
+            wallet.balance =
+              newType === 'income'
+                ? Number(wallet.balance) + newAmount
+                : Number(wallet.balance) - newAmount;
             await this.walletRepo.save(wallet);
           }
         }
       } else {
         // Different wallets
         if (oldWalletId) {
-          const oldWallet = await this.walletRepo.findOne({ where: { id: oldWalletId } });
+          const oldWallet = await this.walletRepo.findOne({
+            where: { id: oldWalletId },
+          });
           if (oldWallet) {
-            oldWallet.balance = oldType === 'income' 
-              ? Number(oldWallet.balance) - oldAmount 
-              : Number(oldWallet.balance) + oldAmount;
+            oldWallet.balance =
+              oldType === 'income'
+                ? Number(oldWallet.balance) - oldAmount
+                : Number(oldWallet.balance) + oldAmount;
             await this.walletRepo.save(oldWallet);
           }
         }
         if (newWalletId) {
-          const newWallet = await this.walletRepo.findOne({ where: { id: newWalletId } });
+          const newWallet = await this.walletRepo.findOne({
+            where: { id: newWalletId },
+          });
           if (newWallet) {
-            newWallet.balance = newType === 'income' 
-              ? Number(newWallet.balance) + newAmount 
-              : Number(newWallet.balance) - newAmount;
+            newWallet.balance =
+              newType === 'income'
+                ? Number(newWallet.balance) + newAmount
+                : Number(newWallet.balance) - newAmount;
             await this.walletRepo.save(newWallet);
           }
         }
@@ -257,12 +278,14 @@ export class TransactionService {
     transaction.type = newType;
 
     await this.transactionRepo.save(transaction);
-    
+
     // Find goals linked to the new/current wallet
     let newGoalIds: number[] = [];
     if (transaction.wallet) {
-      const newGoals = await this.goalRepo.find({ where: { wallet: { id: transaction.wallet.id } } });
-      newGoalIds = newGoals.map(g => g.id);
+      const newGoals = await this.goalRepo.find({
+        where: { wallet: { id: transaction.wallet.id } },
+      });
+      newGoalIds = newGoals.map((g) => g.id);
     }
 
     await this.invalidateFinancialCache(transaction.user.id, [
@@ -289,7 +312,9 @@ export class TransactionService {
     categoryQuery
       .leftJoin('category.user', 'user')
       .addSelect('NULL', 'target')
-      .where('(user.id = :userId OR category.is_system = true)', { userId: dto.userId });
+      .where('(user.id = :userId OR category.is_system = true)', {
+        userId: dto.userId,
+      });
 
     if (dto.type) {
       categoryQuery.andWhere(
@@ -370,7 +395,17 @@ export class TransactionService {
   async findAllByFilter(
     filter: TransactionFilterDto,
   ): Promise<ApiResponse<{ income: Transaction[]; expense: Transaction[] }>> {
-    const { userId, categoryId, subCategoryId, walletId, startDate, endDate, categoryName, limit, includeTransfer } = filter;
+    const {
+      userId,
+      categoryId,
+      subCategoryId,
+      walletId,
+      startDate,
+      endDate,
+      categoryName,
+      limit,
+      includeTransfer,
+    } = filter;
 
     const excludeTransfer = includeTransfer !== 'true';
 
@@ -499,7 +534,11 @@ export class TransactionService {
       );
     };
 
-    const currentMonthStart = getVietnamStartOfDay(currentYear, currentMonth, 1);
+    const currentMonthStart = getVietnamStartOfDay(
+      currentYear,
+      currentMonth,
+      1,
+    );
     const currentMonthEnd = now;
 
     const prevMonthDate = new Date(currentYear, currentMonth, 0);
@@ -508,7 +547,11 @@ export class TransactionService {
     const prevMonthLastDay = prevMonthDate.getDate();
 
     const prevMonthStart = getVietnamStartOfDay(prevYear, prevMonth, 1);
-    const prevMonthEnd = getVietnamEndOfDay(prevYear, prevMonth, prevMonthLastDay);
+    const prevMonthEnd = getVietnamEndOfDay(
+      prevYear,
+      prevMonth,
+      prevMonthLastDay,
+    );
 
     const [currentMonthTotals, prevMonthTotals] = await Promise.all([
       this.getTotalsForRange(userId, currentMonthStart, currentMonthEnd),
@@ -551,11 +594,7 @@ export class TransactionService {
     });
   }
 
-  private async getTotalsForRange(
-    userId: number,
-    start: Date,
-    end: Date,
-  ) {
+  private async getTotalsForRange(userId: number, start: Date, end: Date) {
     const incomeQuery = this.createBaseQuery(userId, 'income', {
       startDate: start.toISOString(),
       endDate: end.toISOString(),
@@ -612,14 +651,17 @@ export class TransactionService {
       relations: ['category', 'user', 'wallet'],
     });
     if (!transaction) throw new NotFoundException('Transaction not found');
-    
+
     if (transaction.wallet) {
-      const wallet = await this.walletRepo.findOne({ where: { id: transaction.wallet.id } });
+      const wallet = await this.walletRepo.findOne({
+        where: { id: transaction.wallet.id },
+      });
       if (wallet) {
         const amt = Number(transaction.amount);
-        wallet.balance = transaction.type === 'income' 
-          ? Number(wallet.balance) - amt 
-          : Number(wallet.balance) + amt;
+        wallet.balance =
+          transaction.type === 'income'
+            ? Number(wallet.balance) - amt
+            : Number(wallet.balance) + amt;
         await this.walletRepo.save(wallet);
       }
     }
@@ -628,8 +670,10 @@ export class TransactionService {
     // Invalidate cache for goals linked to this wallet
     let affectedGoalIds: number[] = [];
     if (transaction.wallet) {
-      const goals = await this.goalRepo.find({ where: { wallet: { id: transaction.wallet.id } } });
-      affectedGoalIds = goals.map(g => g.id);
+      const goals = await this.goalRepo.find({
+        where: { wallet: { id: transaction.wallet.id } },
+      });
+      affectedGoalIds = goals.map((g) => g.id);
     }
     await this.invalidateFinancialCache(transaction.user.id, affectedGoalIds);
     return new ApiResponse({
@@ -652,14 +696,24 @@ export class TransactionService {
 
     const [incomeRes, expenseRes] = await Promise.all([
       incomeQuery
-        .select("DATE(transaction.transaction_date AT TIME ZONE 'Asia/Ho_Chi_Minh')", 'date')
+        .select(
+          "DATE(transaction.transaction_date AT TIME ZONE 'Asia/Ho_Chi_Minh')",
+          'date',
+        )
         .addSelect('SUM(transaction.amount)', 'total')
-        .groupBy("DATE(transaction.transaction_date AT TIME ZONE 'Asia/Ho_Chi_Minh')")
+        .groupBy(
+          "DATE(transaction.transaction_date AT TIME ZONE 'Asia/Ho_Chi_Minh')",
+        )
         .getRawMany<TotalByDate>(),
       expenseQuery
-        .select("DATE(transaction.transaction_date AT TIME ZONE 'Asia/Ho_Chi_Minh')", 'date')
+        .select(
+          "DATE(transaction.transaction_date AT TIME ZONE 'Asia/Ho_Chi_Minh')",
+          'date',
+        )
         .addSelect('SUM(transaction.amount)', 'total')
-        .groupBy("DATE(transaction.transaction_date AT TIME ZONE 'Asia/Ho_Chi_Minh')")
+        .groupBy(
+          "DATE(transaction.transaction_date AT TIME ZONE 'Asia/Ho_Chi_Minh')",
+        )
         .getRawMany<TotalByDate>(),
     ]);
 
@@ -703,8 +757,6 @@ export class TransactionService {
       excludeTransfer?: boolean;
     } = {},
   ) {
-
-
     const query = this.transactionRepo.createQueryBuilder('transaction');
 
     if (withRelations) {
@@ -724,7 +776,9 @@ export class TransactionService {
       .andWhere('transaction.type = :type', { type });
 
     if (excludeTransfer) {
-      query.andWhere("(category.name IS NULL OR category.name != 'Chuyển tiền')");
+      query.andWhere(
+        "(category.name IS NULL OR category.name != 'Chuyển tiền')",
+      );
     }
 
     if (categoryId) {
@@ -736,10 +790,12 @@ export class TransactionService {
     if (walletId) {
       query.andWhere('transaction.wallet = :walletId', { walletId });
     }
-    
+
     const now = new Date();
     const offset = 7 * 60;
-    const vnNow = new Date(now.getTime() + (offset + now.getTimezoneOffset()) * 60000);
+    const vnNow = new Date(
+      now.getTime() + (offset + now.getTimezoneOffset()) * 60000,
+    );
     const y = vnNow.getFullYear();
     const m = vnNow.getMonth();
 
@@ -747,7 +803,7 @@ export class TransactionService {
     if (startDate && startDate !== 'null' && startDate !== 'undefined') {
       start = new Date(startDate);
     } else {
-      start = new Date(Date.UTC(y, m, 1, -7, 0, 0)); 
+      start = new Date(Date.UTC(y, m, 1, -7, 0, 0));
     }
 
     let end: Date;

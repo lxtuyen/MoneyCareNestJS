@@ -4,7 +4,6 @@ import { User } from 'src/modules/user/entities/user.entity';
 import { Transaction } from 'src/modules/transactions/entities/transaction.entity';
 import { SpendingPlan } from './entities/spending-plan.entity';
 import { FixedExpense } from './entities/fixed-expense.entity';
-import { SpendingPlanSnapshot } from './entities/spending-plan-snapshot.entity';
 import { Category } from 'src/modules/categories/entities/category.entity';
 import { SubCategory } from 'src/modules/categories/entities/sub-category.entity';
 import { SpendingPlanCalculatorService } from './spending-plan-calculator.service';
@@ -18,7 +17,6 @@ import { NotificationsModule } from '../notifications/notifications.module';
     TypeOrmModule.forFeature([
       SpendingPlan,
       FixedExpense,
-      SpendingPlanSnapshot,
       Transaction,
       User,
       Category,
@@ -27,7 +25,11 @@ import { NotificationsModule } from '../notifications/notifications.module';
     NotificationsModule,
   ],
   controllers: [SpendingPlansController],
-  providers: [SpendingPlansService, SpendingPlanCalculatorService, SpendingPlanCronService],
+  providers: [
+    SpendingPlansService,
+    SpendingPlanCalculatorService,
+    SpendingPlanCronService,
+  ],
   exports: [SpendingPlansService, SpendingPlanCalculatorService],
 })
 export class SpendingPlansModule {}

@@ -7,8 +7,8 @@ import {
   Max,
   Min,
 } from 'class-validator';
-import { SpendingPlanExpenseFrequency } from '../entities/spending-plan.enums';
-import { SpendingPlanTrackingType } from '../entities/spending-plan.enums';
+import { SpendingPlanExpenseFrequency } from '../interfaces/spending-plan.enums';
+import { SpendingPlanTrackingType } from '../interfaces/spending-plan.enums';
 
 export class CreateFixedExpenseDto {
   @IsOptional()

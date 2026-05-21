@@ -9,39 +9,47 @@ import {
 import { ColumnNumericTransformer } from 'src/common/transformers/decimal.transformer';
 import { User } from 'src/modules/user/entities/user.entity';
 import { SpendingPlan } from './spending-plan.entity';
-import { SpendingPlanExpenseFrequency } from './spending-plan.enums';
-import { SpendingPlanTrackingType } from './spending-plan.enums';
+import { SpendingPlanExpenseFrequency } from '../interfaces/spending-plan.enums';
+import { SpendingPlanTrackingType } from '../interfaces/spending-plan.enums';
 import { Category } from 'src/modules/categories/entities/category.entity';
 import { SubCategory } from 'src/modules/categories/entities/sub-category.entity';
 
 @Entity('fixed_expenses')
 export class FixedExpense {
   @PrimaryGeneratedColumn()
-  id: number;
+  id!: number;
 
   @ManyToOne(() => SpendingPlan, (plan) => plan.fixedExpenses, {
     onDelete: 'CASCADE',
   })
-  spendingPlan: SpendingPlan;
+  spendingPlan!: SpendingPlan;
 
   @ManyToOne(() => User, { onDelete: 'CASCADE' })
-  user: User;
+  user!: User;
 
   @Column()
-  name: string;
+  name!: string;
 
-  @ManyToOne(() => Category, { onDelete: 'SET NULL', nullable: true, eager: true })
-  category: Category | null;
+  @ManyToOne(() => Category, {
+    onDelete: 'SET NULL',
+    nullable: true,
+    eager: true,
+  })
+  category!: Category | null;
 
-  @ManyToOne(() => SubCategory, { onDelete: 'SET NULL', nullable: true, eager: true })
-  subCategory: SubCategory | null;
+  @ManyToOne(() => SubCategory, {
+    onDelete: 'SET NULL',
+    nullable: true,
+    eager: true,
+  })
+  subCategory!: SubCategory | null;
 
   @Column({
     type: 'enum',
     enum: SpendingPlanTrackingType,
     default: SpendingPlanTrackingType.FIXED_BILL,
   })
-  trackingType: SpendingPlanTrackingType;
+  trackingType!: SpendingPlanTrackingType;
 
   @Column({
     type: 'decimal',
@@ -50,7 +58,7 @@ export class FixedExpense {
     default: 0,
     transformer: new ColumnNumericTransformer(),
   })
-  amount: number;
+  amount!: number;
 
   @Column({
     type: 'decimal',
@@ -59,7 +67,7 @@ export class FixedExpense {
     default: 0,
     transformer: new ColumnNumericTransformer(),
   })
-  monthlyLimit: number;
+  monthlyLimit!: number;
 
   @Column({
     type: 'decimal',
@@ -68,36 +76,36 @@ export class FixedExpense {
     nullable: true,
     transformer: new ColumnNumericTransformer(),
   })
-  dailyLimit: number | null;
+  dailyLimit!: number | null;
 
   @Column({
     type: 'enum',
     enum: SpendingPlanExpenseFrequency,
     default: SpendingPlanExpenseFrequency.ONCE,
   })
-  frequencyType: SpendingPlanExpenseFrequency;
+  frequencyType!: SpendingPlanExpenseFrequency;
 
   @Column({ type: 'int', default: 1 })
-  frequencyValue: number;
+  frequencyValue!: number;
 
   @Column({ type: 'int', nullable: true })
-  dueDay: number | null;
+  dueDay!: number | null;
 
   @Column({ type: 'text', nullable: true })
-  note: string | null;
+  note!: string | null;
 
   @Column({ default: false })
-  isPaid: boolean;
+  isPaid!: boolean;
 
   @Column({ default: false })
-  isReminderEnabled: boolean;
+  isReminderEnabled!: boolean;
 
   @Column({ type: 'int', nullable: true })
-  linkedTransactionId: number | null;
+  linkedTransactionId!: number | null;
 
   @CreateDateColumn()
-  createdAt: Date;
+  createdAt!: Date;
 
   @UpdateDateColumn()
-  updatedAt: Date;
+  updatedAt!: Date;
 }

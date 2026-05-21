@@ -9,10 +9,16 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Category, CategoryType } from './entities/category.entity';
 import { SubCategory } from './entities/sub-category.entity';
-import { User } from 'src/modules/user/entities/user.entity';
 import { CreateCategoryDto } from './dto/create-category.dto';
-import { CreateSubCategoryDto, UpdateSubCategoryDto } from './dto/sub-category.dto';
+import {
+  CreateSubCategoryDto,
+  UpdateSubCategoryDto,
+} from './dto/sub-category.dto';
 import { ApiResponse } from 'src/common/dto/api-response.dto';
+import {
+  SYSTEM_CATEGORY_SEEDS,
+  SYSTEM_SUB_CATEGORY_SEED_GROUPS,
+} from './categories.seed';
 
 @Injectable()
 export class CategoriesService implements OnModuleInit {
@@ -21,8 +27,6 @@ export class CategoriesService implements OnModuleInit {
     private categoryRepo: Repository<Category>,
     @InjectRepository(SubCategory)
     private subCategoryRepo: Repository<SubCategory>,
-    @InjectRepository(User)
-    private userRepo: Repository<User>,
   ) {}
 
   async onModuleInit() {
@@ -30,28 +34,7 @@ export class CategoriesService implements OnModuleInit {
   }
 
   private async seedSystemCategories() {
-    const systemCategories = [
-      // Expense
-      { name: 'Ăn uống', icon: '🍔', type: CategoryType.EXPENSE, is_system: true },
-      { name: 'Đi chợ', icon: '🛒', type: CategoryType.EXPENSE, is_system: true },
-      { name: 'Di chuyển', icon: '🚗', type: CategoryType.EXPENSE, is_system: true },
-      { name: 'Hóa đơn', icon: '⚡', type: CategoryType.EXPENSE, is_system: true },
-      { name: 'Mua sắm', icon: '🛍️', type: CategoryType.EXPENSE, is_system: true },
-      { name: 'Sức khỏe', icon: '💊', type: CategoryType.EXPENSE, is_system: true },
-      { name: 'Giải trí', icon: '🎬', type: CategoryType.EXPENSE, is_system: true },
-      { name: 'Giáo dục', icon: '📚', type: CategoryType.EXPENSE, is_system: true },
-      { name: 'Làm đẹp', icon: '✨', type: CategoryType.EXPENSE, is_system: true },
-      { name: 'Khác', icon: '📦', type: CategoryType.EXPENSE, is_system: true },
-      // Income
-      { name: 'Lương', icon: '💵', type: CategoryType.INCOME, is_system: true },
-      { name: 'Thưởng', icon: '🧧', type: CategoryType.INCOME, is_system: true },
-      { name: 'Kinh doanh', icon: '📈', type: CategoryType.INCOME, is_system: true },
-      { name: 'Lãi suất', icon: '🏦', type: CategoryType.INCOME, is_system: true },
-      { name: 'Quà tặng', icon: '🎁', type: CategoryType.INCOME, is_system: true },
-      { name: 'Khác', icon: '➕', type: CategoryType.INCOME, is_system: true },
-    ];
-
-    for (const cat of systemCategories) {
+    for (const cat of SYSTEM_CATEGORY_SEEDS) {
       const exists = await this.categoryRepo.findOne({
         where: { name: cat.name, is_system: true, type: cat.type },
       });
@@ -64,39 +47,13 @@ export class CategoriesService implements OnModuleInit {
   }
 
   private async seedSystemSubCategories() {
-    const groups: Record<string, Array<{ name: string; icon: string }>> = {
-      'Hóa đơn': [
-        { name: 'Điện', icon: '⚡' },
-        { name: 'Nước', icon: '💧' },
-        { name: 'Internet', icon: '🌐' },
-        { name: 'Thuê nhà', icon: '🏠' },
-        { name: 'Điện thoại', icon: '📱' },
-      ],
-      'Giáo dục': [
-        { name: 'Học phí', icon: '🎓' },
-        { name: 'Sách vở', icon: '📚' },
-        { name: 'Khóa học', icon: '🧑‍🏫' },
-      ],
-      'Ăn uống': [
-        { name: 'Bữa sáng', icon: '🥪' },
-        { name: 'Bữa trưa', icon: '🍱' },
-        { name: 'Bữa tối', icon: '🍲' },
-        { name: 'Cà phê/Trà sữa', icon: '☕' },
-        { name: 'Ăn ngoài', icon: '🍽️' },
-      ],
-      'Di chuyển': [
-        { name: 'Xăng xe', icon: '⛽' },
-        { name: 'Grab/Taxi', icon: '🚕' },
-        { name: 'Gửi xe', icon: '🅿️' },
-        { name: 'Bảo dưỡng', icon: '🛠️' },
-      ],
-    };
-
     const categories = await this.categoryRepo.find({
       where: { is_system: true, type: CategoryType.EXPENSE },
     });
 
-    for (const [categoryName, subCategories] of Object.entries(groups)) {
+    for (const [categoryName, subCategories] of Object.entries(
+      SYSTEM_SUB_CATEGORY_SEED_GROUPS,
+    )) {
       const category = categories.find((cat) => cat.name === categoryName);
       if (!category) continue;
 
@@ -121,32 +78,6 @@ export class CategoriesService implements OnModuleInit {
         }
       }
     }
-  }
-
-  async createForUser(
-    userId: number,
-    dtos: CreateCategoryDto[],
-  ): Promise<ApiResponse<Category[]>> {
-    const user = await this.userRepo.findOne({ where: { id: userId } });
-    if (!user) throw new NotFoundException('User not found');
-
-    const categories = dtos.map((dto) =>
-      this.categoryRepo.create({
-        name: dto.name,
-        icon: dto.icon,
-        type: dto.type,
-        isEssential: dto.isEssential ?? true,
-        user,
-      }),
-    );
-
-    const saved = await this.categoryRepo.save(categories);
-
-    return new ApiResponse({
-      success: true,
-      statusCode: HttpStatus.CREATED,
-      data: saved,
-    });
   }
 
   async findByUser(userId: number): Promise<ApiResponse<Category[]>> {
@@ -283,10 +214,14 @@ export class CategoriesService implements OnModuleInit {
     if (!category) throw new NotFoundException('Category not found');
 
     if (category.is_system) {
-      if ((dto.name && dto.name !== category.name) || 
-          (dto.icon && dto.icon !== category.icon) || 
-          (dto.type && dto.type !== category.type)) {
-        throw new BadRequestException('Chỉ có thể thay đổi trạng thái Thiết yếu cho danh mục hệ thống');
+      if (
+        (dto.name && dto.name !== category.name) ||
+        (dto.icon && dto.icon !== category.icon) ||
+        (dto.type && dto.type !== category.type)
+      ) {
+        throw new BadRequestException(
+          'Chỉ có thể thay đổi trạng thái Thiết yếu cho danh mục hệ thống',
+        );
       }
     }
 

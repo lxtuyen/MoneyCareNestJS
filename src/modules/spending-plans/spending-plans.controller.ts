@@ -14,11 +14,9 @@ import { JwtAuthGuard } from 'src/modules/auth/jwt-auth.guard';
 import { User } from 'src/common/decorators/user.decorator';
 import { CreateFixedExpenseDto } from './dto/create-fixed-expense.dto';
 import { CreateSpendingPlanDto } from './dto/create-spending-plan.dto';
-import { CloneSpendingPlanDto } from './dto/clone-spending-plan.dto';
-import { MarkFixedExpensePaidDto } from './dto/mark-fixed-expense-paid.dto';
 import { UpdateFixedExpenseDto } from './dto/update-fixed-expense.dto';
 import { UpdateSpendingPlanDto } from './dto/update-spending-plan.dto';
-import { SpendingPlanStatus } from './entities/spending-plan.enums';
+import { SpendingPlanStatus } from './interfaces/spending-plan.enums';
 import { SpendingPlansService } from './spending-plans.service';
 
 @Controller('spending-plans')
@@ -29,21 +27,14 @@ export class SpendingPlansController {
   @Get()
   findAll(
     @User('sub') userId: number,
-    @Query('month') month?: number,
-    @Query('year') year?: number,
     @Query('status') status?: SpendingPlanStatus,
   ) {
-    return this.spendingPlansService.findAll(userId, { month, year, status });
+    return this.spendingPlansService.findAll(userId, { status });
   }
 
   @Get('active')
   findActive(@User('sub') userId: number) {
     return this.spendingPlansService.findActive(userId);
-  }
-
-  @Get('active/home-summary')
-  getHomeSummary(@User('sub') userId: number) {
-    return this.spendingPlansService.getActiveHomeSummary(userId);
   }
 
   @Get('active/statistics')
@@ -90,15 +81,6 @@ export class SpendingPlansController {
     return this.spendingPlansService.remove(id, userId);
   }
 
-  @Post(':id/clone')
-  clone(
-    @Param('id', ParseIntPipe) id: number,
-    @User('sub') userId: number,
-    @Body() dto: CloneSpendingPlanDto,
-  ) {
-    return this.spendingPlansService.clone(id, userId, dto);
-  }
-
   @Get(':id/fixed-expenses')
   findFixedExpenses(
     @Param('id', ParseIntPipe) id: number,
@@ -141,21 +123,6 @@ export class SpendingPlansController {
       planId,
       expenseId,
       userId,
-    );
-  }
-
-  @Patch(':planId/fixed-expenses/:expenseId/mark-paid')
-  markFixedExpensePaid(
-    @Param('planId', ParseIntPipe) planId: number,
-    @Param('expenseId', ParseIntPipe) expenseId: number,
-    @User('sub') userId: number,
-    @Body() dto: MarkFixedExpensePaidDto,
-  ) {
-    return this.spendingPlansService.markFixedExpensePaid(
-      planId,
-      expenseId,
-      userId,
-      dto,
     );
   }
 }

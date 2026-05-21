@@ -107,6 +107,7 @@ export class WalletsService {
       user: user,
       wallet: fromWallet,
       category: category,
+      isTransfer: true,
     });
 
     // Incoming transaction to target wallet
@@ -118,6 +119,7 @@ export class WalletsService {
       user: user,
       wallet: toWallet,
       category: category,
+      isTransfer: true,
     });
 
     await this.transactionRepository.save([outgoing, incoming]);

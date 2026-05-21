@@ -3,7 +3,6 @@ import {
   Body,
   Controller,
   Post,
-  UploadedFile,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -39,10 +38,7 @@ export class AiController {
 
   @Post('receipt/scan')
   @UseInterceptors(FileInterceptor('file'))
-  async scanReceipt(
-    @UploadedFile() file: Express.Multer.File | undefined,
-    @Body() body: Record<string, string | undefined>,
-  ) {
-    return this.aiService.scanReceipt(file, body);
+  async scanReceipt(@Body() body: Record<string, string | undefined>) {
+    return this.aiService.scanReceipt(body);
   }
 }

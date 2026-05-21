@@ -3,7 +3,10 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { FixedExpense } from './entities/fixed-expense.entity';
-import { SpendingPlanStatus, SpendingPlanExpenseFrequency } from './entities/spending-plan.enums';
+import {
+  SpendingPlanStatus,
+  SpendingPlanExpenseFrequency,
+} from './interfaces/spending-plan.enums';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationType } from '../notifications/entities/notification.entity';
 
@@ -65,12 +68,16 @@ export class SpendingPlanCronService {
           expense.user,
           'Đến hạn thanh toán chi phí',
           `Hôm nay là ngày thanh toán khoản "${expense.name}" (${expense.amount.toLocaleString()}đ). Đừng quên cập nhật nhé!`,
-          { type: 'FIXED_EXPENSE_REMINDER', expenseId: expense.id.toString(), planId: expense.spendingPlan.id.toString() },
+          {
+            type: 'FIXED_EXPENSE_REMINDER',
+            expenseId: expense.id.toString(),
+            planId: expense.spendingPlan.id.toString(),
+          },
           NotificationType.SYSTEM,
         );
       }
     }
-    
+
     this.logger.log('Hoàn tất gửi thông báo nhắc nhở chi phí cố định.');
   }
 }

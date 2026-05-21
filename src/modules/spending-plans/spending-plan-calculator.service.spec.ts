@@ -2,7 +2,7 @@ import { SpendingPlanCalculatorService } from './spending-plan-calculator.servic
 import {
   SpendingPlanExpenseFrequency,
   SpendingPlanTrackingType,
-} from './entities/spending-plan.enums';
+} from './interfaces/spending-plan.enums';
 
 describe('SpendingPlanCalculatorService', () => {
   let service: SpendingPlanCalculatorService;

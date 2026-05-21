@@ -1,4 +1,8 @@
-import { Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  InternalServerErrorException,
+  Logger,
+} from '@nestjs/common';
 import { MailerService } from '@nestjs-modules/mailer';
 
 @Injectable()
@@ -24,7 +28,12 @@ export class MailService {
     }
   }
 
-  async sendEmailWithAttachment(to: string, subject: string, html: string, attachments: any[]) {
+  async sendEmailWithAttachment(
+    to: string,
+    subject: string,
+    html: string,
+    attachments: any[],
+  ) {
     try {
       await this.mailerService.sendMail({
         to,
@@ -40,7 +49,9 @@ export class MailService {
         `Failed to send email with attachment to ${to}`,
         error instanceof Error ? error.stack : undefined,
       );
-      throw new InternalServerErrorException('Không thể gửi email kèm tệp đính kèm');
+      throw new InternalServerErrorException(
+        'Không thể gửi email kèm tệp đính kèm',
+      );
     }
   }
 }

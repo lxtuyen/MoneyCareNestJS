@@ -12,7 +12,6 @@ describe('CategoriesController', () => {
         {
           provide: CategoriesService,
           useValue: {
-            createForUser: jest.fn(),
             findByUser: jest.fn(),
             update: jest.fn(),
             remove: jest.fn(),
