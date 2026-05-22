@@ -106,7 +106,6 @@ export class SpendingPlansService {
     const plan = await this.planRepo.findOne({
       where: { user: { id: userId }, status: SpendingPlanStatus.ACTIVE },
       relations: ['estimatedExpenses'],
-      order: { updatedAt: 'DESC' },
     });
     if (plan) {
       this.applyCalculation(plan);

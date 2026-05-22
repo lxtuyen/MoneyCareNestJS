@@ -56,9 +56,9 @@ export class SpendingPlanStatisticsService {
       planId: plan.id,
       planName: this.getPlanDisplayName(),
       mealLimit: 0,
+      totalAmount: plan.totalAmount,
       availableSpendingAmount: plan.availableSpendingAmount,
-      spentFlexibleAmount: context.spentFlexibleAmount,
-      spentFixedAmount: context.spentFixedAmount,
+      spentAmount: context.spentAmount,
       remainingAmount: context.remainingAmount,
       daysLeft,
       projectedEndBalance: context.projectedEndBalance,
@@ -71,7 +71,6 @@ export class SpendingPlanStatisticsService {
     const plan = await this.planRepo.findOne({
       where: { user: { id: userId }, status: SpendingPlanStatus.ACTIVE },
       relations: ['estimatedExpenses', 'user'],
-      order: { updatedAt: 'DESC' },
     });
     if (plan) {
       this.applyCalculation(plan);
@@ -104,8 +103,7 @@ export class SpendingPlanStatisticsService {
       period.month,
       getReportDay(period),
     );
-    let spentFlexibleAmount = 0;
-    let spentFixedAmount = 0;
+    let spentAmount = 0;
     const planItemTotals = new Map<
       number,
       { spentThisMonth: number; todaySpent: number }
@@ -116,7 +114,12 @@ export class SpendingPlanStatisticsService {
       const transactionDateKey = formatDateInTimeZone(
         transaction.transaction_date,
       );
-      let matchesPlanItem = false;
+
+      spentAmount += amount;
+      dailySpentMap.set(
+        transactionDateKey,
+        (dailySpentMap.get(transactionDateKey) ?? 0) + amount,
+      );
 
       for (const item of plan.estimatedExpenses ?? []) {
         const matchesSubCategory =
@@ -137,23 +140,11 @@ export class SpendingPlanStatisticsService {
           totals.todaySpent += amount;
         }
         planItemTotals.set(item.id, totals);
-        matchesPlanItem = true;
       }
-
-      if (matchesPlanItem) {
-        spentFixedAmount += amount;
-        continue;
-      }
-
-      spentFlexibleAmount += amount;
-      dailySpentMap.set(
-        transactionDateKey,
-        (dailySpentMap.get(transactionDateKey) ?? 0) + amount,
-      );
     }
 
     const remainingAmount = roundMoney(
-      plan.availableSpendingAmount - spentFlexibleAmount,
+      plan.totalAmount - spentAmount,
     );
     const daysPassed = Math.max(1, getReportDay(period));
     const daysInMonth = this.calculator.getDaysInMonth(
@@ -161,38 +152,15 @@ export class SpendingPlanStatisticsService {
       period.year,
     );
 
-    let totalAvgDailyFixed = 0;
-    for (const item of plan.estimatedExpenses ?? []) {
-      const totals = planItemTotals.get(item.id);
-      const spent = totals?.spentThisMonth ?? 0;
-      const freqType = item.frequencyType ?? SpendingPlanExpenseFrequency.ONCE;
-      const amount = Number(item.amount ?? 0);
-      const freqValue = Number(item.frequencyValue ?? 1);
-
-      if (freqType === SpendingPlanExpenseFrequency.DAILY) {
-        totalAvgDailyFixed +=
-          spent > 0 ? spent / daysPassed : amount * freqValue;
-      } else if (freqType === SpendingPlanExpenseFrequency.WEEKLY) {
-        totalAvgDailyFixed +=
-          spent > 0 ? spent / daysPassed : (amount * freqValue) / 7;
-      } else {
-        totalAvgDailyFixed +=
-          spent > 0 ? spent / daysInMonth : (amount * freqValue) / daysInMonth;
-      }
-    }
-
-    const avgDailyFlexible =
-      daysPassed > 0 ? spentFlexibleAmount / daysPassed : 0;
-    const totalAvgDaily = totalAvgDailyFixed + avgDailyFlexible;
-    const projectedMonthlySpending = totalAvgDaily * daysInMonth;
+    const avgDaily = daysPassed > 0 ? spentAmount / daysPassed : 0;
+    const projectedMonthlySpending = avgDaily * daysInMonth;
     const projectedEndBalance = roundMoney(
       plan.totalAmount - projectedMonthlySpending,
     );
 
     return {
       dailySpentMap,
-      spentFlexibleAmount: roundMoney(spentFlexibleAmount),
-      spentFixedAmount: roundMoney(spentFixedAmount),
+      spentAmount: roundMoney(spentAmount),
       remainingAmount,
       projectedEndBalance,
       planItems: (plan.estimatedExpenses ?? []).map((item) => {

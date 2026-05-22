@@ -1,6 +1,5 @@
 import {
   BadRequestException,
-  HttpStatus,
   Inject,
   Injectable,
   NotFoundException,
@@ -8,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { ApiResponse } from 'src/common/dto/api-response.dto';
+import { ok } from 'src/common/utils/response.util';
 import { EstimatedExpense } from './entities/estimated-expense.entity';
 import { CreateEstimatedExpenseDto } from './dto/create-estimated-expense.dto';
 import { UpdateEstimatedExpenseDto } from './dto/update-estimated-expense.dto';
@@ -47,7 +46,7 @@ export class EstimatedExpensesService {
       userId,
     );
 
-    return this.ok(
+    return ok(
       estimatedExpenses.map((expense) => {
         const enriched = context.planItems.find(
           (item) => item.id === expense.id,
@@ -66,7 +65,6 @@ export class EstimatedExpensesService {
       planId,
       userId,
     );
-    this.spendingPlansService.assertPlanEditable(plan);
 
     const { category, subCategory } = await this.resolvePlanItemCategories(dto);
 
@@ -87,7 +85,7 @@ export class EstimatedExpensesService {
       planId,
       userId,
     );
-    return this.ok(
+    return ok(
       await this.spendingPlansService.enrichPlanUsageForResponse(
         reloaded,
         userId,
@@ -105,7 +103,6 @@ export class EstimatedExpensesService {
       planId,
       userId,
     );
-    this.spendingPlansService.assertPlanEditable(plan);
     const expense = await this.loadEstimatedExpense(planId, expenseId, userId);
 
     if (dto.category !== undefined) {
@@ -147,7 +144,7 @@ export class EstimatedExpensesService {
       planId,
       userId,
     );
-    return this.ok(
+    return ok(
       await this.spendingPlansService.enrichPlanUsageForResponse(
         reloaded,
         userId,
@@ -164,7 +161,6 @@ export class EstimatedExpensesService {
       planId,
       userId,
     );
-    this.spendingPlansService.assertPlanEditable(plan);
     const expense = await this.loadEstimatedExpense(planId, expenseId, userId);
 
     await this.estimatedExpenseRepo.remove(expense);
@@ -172,7 +168,7 @@ export class EstimatedExpensesService {
       planId,
       userId,
     );
-    return this.ok(
+    return ok(
       await this.spendingPlansService.enrichPlanUsageForResponse(
         reloaded,
         userId,
@@ -229,13 +225,5 @@ export class EstimatedExpensesService {
     }
 
     return { category, subCategory };
-  }
-
-  private ok<T>(data: T): ApiResponse<T> {
-    return new ApiResponse({
-      success: true,
-      statusCode: HttpStatus.OK,
-      data,
-    });
   }
 }
