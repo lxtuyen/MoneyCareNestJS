@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -105,6 +106,10 @@ export class SavingGoalsService {
     });
     if (!goal) throw new NotFoundException('Saving goal not found');
 
+    if (dto.walletId !== undefined) {
+      throw new BadRequestException('Updating wallet is not allowed for saving goals');
+    }
+
     if (dto.name) goal.name = dto.name;
     if (dto.is_selected !== undefined) goal.is_selected = dto.is_selected;
     if (dto.target !== undefined && dto.target !== null)
@@ -120,15 +125,6 @@ export class SavingGoalsService {
         goal.is_selected = false;
         goal.status = SavingGoalStatus.COMPLETED;
       }
-    }
-    if (dto.walletId !== undefined) {
-      const wallet = await this.walletRepo.findOne({
-        where: userId
-          ? { id: dto.walletId, user: { id: userId } }
-          : { id: dto.walletId },
-      });
-      if (!wallet) throw new NotFoundException('Wallet not found');
-      goal.wallet = wallet;
     }
 
     const updated = await this.goalRepo.save(goal);

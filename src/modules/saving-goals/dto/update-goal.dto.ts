@@ -38,8 +38,4 @@ export class UpdateSavingGoalDto {
   @IsOptional()
   @IsDateString()
   end_date?: string;
-
-  @IsOptional()
-  @IsNumber()
-  walletId?: number;
 }

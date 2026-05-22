@@ -119,3 +119,11 @@ export function setEndOfDay(date: Date): Date {
   d.setHours(23, 59, 59, 999);
   return d;
 }
+
+export function msToDays(ms: number): number {
+  return ms / (1000 * 60 * 60 * 24);
+}
+
+export function getDaysDiff(d1: Date, d2: Date): number {
+  return Math.ceil(msToDays(d1.getTime() - d2.getTime()));
+}

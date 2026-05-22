@@ -8,30 +8,12 @@ import { SpendingPlansService } from 'src/modules/spending-plans/spending-plans.
 import { SavingGoalStatus } from './enums/saving-goal-status.enum';
 import { ApiResponse } from 'src/common/dto/api-response.dto';
 import { ok } from 'src/common/utils/response.util';
-import { setStartOfDay, setEndOfDay } from 'src/common/utils/date.util';
-
-export interface SavingGoalReport {
-  milestones: SavingGoalMilestone[];
-  projection: SavingGoalProjection;
-}
-
-export interface SavingGoalMilestone {
-  label: string;
-  start_date: Date;
-  end_date: Date;
-  target: number;
-  actual: number;
-  is_completed: boolean;
-}
-
-export interface SavingGoalProjection {
-  monthlySavingCapacity: number;
-  monthsRemaining: number | null;
-  projectedDate: string | null;
-  isOnTrack: boolean | null;
-  monthsDiff: number | null;
-  hasPlan: boolean;
-}
+import { setStartOfDay, setEndOfDay, getDaysDiff, msToDays } from 'src/common/utils/date.util';
+import {
+  SavingGoalReport,
+  SavingGoalMilestone,
+  SavingGoalProjection,
+} from './interfaces/saving-goal-report.interface';
 
 @Injectable()
 export class SavingGoalsStatisticsService {
@@ -99,11 +81,7 @@ export class SavingGoalsStatisticsService {
 
     const now = new Date();
     const startDate = goal.start_date ? setStartOfDay(goal.start_date) : null;
-    let daysDiff = 1;
-    if (startDate) {
-      const diffMs = now.getTime() - startDate.getTime();
-      daysDiff = Math.max(1, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
-    }
+    const daysDiff = startDate ? Math.max(1, getDaysDiff(now, startDate)) : 1;
 
     const currentMilestoneIndex = milestones.findIndex(
       (m) => now >= m.start_date && now < m.end_date,
@@ -140,7 +118,7 @@ export class SavingGoalsStatisticsService {
       if (goal.end_date) {
         const endDate = new Date(goal.end_date);
         const projectedMs = projectedDate.getTime() - endDate.getTime();
-        monthsDiff = Math.round(projectedMs / (1000 * 60 * 60 * 24 * 30));
+        monthsDiff = Math.round(msToDays(projectedMs) / 30);
         isOnTrack = projectedDate <= endDate;
       }
 
@@ -217,11 +195,7 @@ export class SavingGoalsStatisticsService {
     const start = setStartOfDay(goal.start_date);
     const end = setEndOfDay(goal.end_date);
 
-    const totalDiffMs = end.getTime() - start.getTime();
-    const totalDays = Math.max(
-      1,
-      Math.ceil(totalDiffMs / (1000 * 60 * 60 * 24)),
-    );
+    const totalDays = Math.max(1, getDaysDiff(end, start));
 
     const milestoneDates: Date[] = [];
     const current = new Date(start);
@@ -247,8 +221,7 @@ export class SavingGoalsStatisticsService {
       const mStart = milestoneDates[i];
       const mEnd = milestoneDates[i + 1];
 
-      const segmentDiffMs = mEnd.getTime() - mStart.getTime();
-      const segmentDays = Math.ceil(segmentDiffMs / (1000 * 60 * 60 * 24));
+      const segmentDays = getDaysDiff(mEnd, mStart);
 
       const targetPerMilestone = (segmentDays / totalDays) * totalTarget;
 
