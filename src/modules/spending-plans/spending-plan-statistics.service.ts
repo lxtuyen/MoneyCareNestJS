@@ -1,7 +1,7 @@
-import { Injectable, HttpStatus } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
-import { ApiResponse } from 'src/common/dto/api-response.dto';
+import { ok } from 'src/common/utils/response.util';
 import { Transaction } from 'src/modules/transactions/entities/transaction.entity';
 import { EstimatedExpense } from 'src/modules/estimated-expenses/entities/estimated-expense.entity';
 import { SpendingPlan } from './entities/spending-plan.entity';
@@ -36,7 +36,7 @@ export class SpendingPlanStatisticsService {
   async getActiveStatistics(userId: number) {
     const plan = await this.findActivePlanEntity(userId);
     if (!plan) {
-      return this.ok(null);
+      return ok(null);
     }
 
     const period = this.getCurrentPeriod();
@@ -52,7 +52,7 @@ export class SpendingPlanStatisticsService {
 
     const daysLeft = getDaysLeftInMonthPeriod(period);
 
-    return this.ok({
+    return ok({
       planId: plan.id,
       planName: this.getPlanDisplayName(),
       mealLimit: 0,
@@ -71,7 +71,7 @@ export class SpendingPlanStatisticsService {
     const plan = await this.planRepo.findOne({
       where: { user: { id: userId }, status: SpendingPlanStatus.ACTIVE },
       relations: ['estimatedExpenses', 'user'],
-      order: { activatedAt: 'DESC' },
+      order: { updatedAt: 'DESC' },
     });
     if (plan) {
       this.applyCalculation(plan);
@@ -276,7 +276,6 @@ export class SpendingPlanStatisticsService {
   private applyCalculation(plan: SpendingPlan) {
     const calculation = this.calculator.calculate({
       totalAmount: plan.totalAmount,
-      savingTargetAmount: plan.savingTargetAmount,
       estimatedExpenses: plan.estimatedExpenses ?? [],
       ...this.getCurrentPeriod(),
     });
@@ -296,16 +295,7 @@ export class SpendingPlanStatisticsService {
     return 'Kế hoạch chi tiêu';
   }
 
-  private ok<T>(data: T): ApiResponse<T> {
-    return new ApiResponse({
-      success: true,
-      statusCode: HttpStatus.OK,
-      data,
-    });
-  }
-
   async getMonthlySavingCapacity(userId: number): Promise<{
-    savingTargetAmount: number;
     projectedEndBalance: number;
     monthlySavingCapacity: number;
     totalAmount: number;
@@ -331,12 +321,10 @@ export class SpendingPlanStatisticsService {
     const period = this.getCurrentPeriod();
     const context = await this.buildExpenseContext(plan, userId, period);
 
-    const savingTargetAmount = Number(plan.savingTargetAmount ?? 0);
     const projectedEndBalance = context.projectedEndBalance;
     const monthlySavingCapacity = roundMoney(Math.max(0, projectedEndBalance));
 
     return {
-      savingTargetAmount,
       projectedEndBalance,
       monthlySavingCapacity,
       totalAmount: Number(plan.totalAmount ?? 0),

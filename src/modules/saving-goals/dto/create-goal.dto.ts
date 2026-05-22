@@ -22,10 +22,6 @@ export class CreateSavingGoalDto {
   @IsOptional()
   saved_amount?: number;
 
-  @IsString()
-  @IsOptional()
-  template_key?: string;
-
   @IsOptional()
   @IsDateString()
   start_date?: string;
@@ -33,11 +29,4 @@ export class CreateSavingGoalDto {
   @IsOptional()
   @IsDateString()
   end_date?: string;
-
-  @IsNumber()
-  @IsOptional()
-  walletId?: number;
-
-  @IsOptional()
-  create_new_wallet?: boolean;
 }

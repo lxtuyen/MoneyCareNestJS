@@ -1,5 +1,4 @@
 import {
-  BadRequestException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -37,34 +36,24 @@ export class SavingGoalsService {
     const user = await this.userRepo.findOne({ where: { id: ownerId } });
     if (!user) throw new NotFoundException('User not found');
 
-    if (!dto.walletId && !dto.create_new_wallet) {
-      throw new BadRequestException(
-        'Mục tiêu tiết kiệm phải liên kết với một ví',
-      );
-    }
+    const newWallet = this.walletRepo.create({
+      name: `Ví ${dto.name}`,
+      user: user,
+      balance: 0,
+      is_active: true,
+      type: 'saving',
+    });
+    const savedWallet = await this.walletRepo.save(newWallet);
 
     const goal = this.goalRepo.create({
       name: dto.name,
       user,
       target: dto.target ?? 0,
       saved_amount: dto.saved_amount ?? 0,
-      template_key: dto.template_key ?? null,
       start_date: dto.start_date ? new Date(dto.start_date) : new Date(),
       end_date: dto.end_date ? new Date(dto.end_date) : null,
-      wallet: dto.walletId ? { id: dto.walletId } : null,
+      wallet: savedWallet,
     } as Partial<SavingGoal>);
-
-    if (dto.create_new_wallet) {
-      const newWallet = this.walletRepo.create({
-        name: `Ví ${dto.name}`,
-        user: user,
-        balance: 0,
-        is_active: true,
-        type: 'saving',
-      });
-      const savedWallet = await this.walletRepo.save(newWallet);
-      goal.wallet = savedWallet;
-    }
 
     const savedGoal = await this.goalRepo.save(goal);
     const reloadedGoal = await this.goalRepo.findOne({
@@ -122,7 +111,7 @@ export class SavingGoalsService {
       goal.target = dto.target;
     if (dto.saved_amount !== undefined && dto.saved_amount !== null)
       goal.saved_amount = dto.saved_amount;
-    if (dto.template_key !== undefined) goal.template_key = dto.template_key;
+
     if (dto.start_date) goal.start_date = new Date(dto.start_date);
     if (dto.end_date) goal.end_date = new Date(dto.end_date);
     if (dto.is_completed !== undefined) {

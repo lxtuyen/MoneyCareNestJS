@@ -40,9 +40,6 @@ export class SavingGoal {
   @Column({ default: false })
   is_completed!: boolean;
 
-  @Column({ type: 'varchar', nullable: true })
-  template_key!: string | null;
-
   @Column({ type: 'timestamp with time zone', nullable: true })
   start_date!: Date | null;
 

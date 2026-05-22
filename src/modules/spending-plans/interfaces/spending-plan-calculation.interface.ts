@@ -14,7 +14,7 @@ export interface SpendingPlanCalculationExpense {
 
 export interface SpendingPlanCalculationInput {
   totalAmount: number;
-  savingTargetAmount?: number | null;
+
   estimatedExpenses?: SpendingPlanCalculationExpense[] | null;
   month: number;
   year: number;

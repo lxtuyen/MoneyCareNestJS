@@ -13,7 +13,7 @@ export class SpendingPlanCalculatorService {
     input: SpendingPlanCalculationInput,
   ): SpendingPlanCalculationResult {
     const totalAmount = Number(input.totalAmount ?? 0);
-    const savingTargetAmount = Number(input.savingTargetAmount ?? 0);
+
     const daysInMonth = this.getDaysInMonth(input.month, input.year);
 
     let estimatedExpenseTotal = 0;
@@ -41,7 +41,7 @@ export class SpendingPlanCalculatorService {
     }
 
     const availableSpendingAmount =
-      totalAmount - estimatedExpenseTotal - savingTargetAmount;
+      totalAmount - estimatedExpenseTotal;
 
     return {
       estimatedExpenseTotal: roundMoney(estimatedExpenseTotal),
@@ -49,7 +49,6 @@ export class SpendingPlanCalculatorService {
       riskLevel: this.calculateRiskLevel(
         totalAmount,
         estimatedExpenseTotal,
-        savingTargetAmount,
         availableSpendingAmount,
       ),
     };
@@ -62,15 +61,13 @@ export class SpendingPlanCalculatorService {
   private calculateRiskLevel(
     totalAmount: number,
     estimatedExpenseTotal: number,
-    savingTargetAmount: number,
     availableSpendingAmount: number,
   ): SpendingPlanRiskLevel {
     if (totalAmount <= 0 || availableSpendingAmount <= 0) {
       return SpendingPlanRiskLevel.DANGER;
     }
 
-    const committedRatio =
-      (estimatedExpenseTotal + savingTargetAmount) / totalAmount;
+    const committedRatio = estimatedExpenseTotal / totalAmount;
     if (committedRatio >= 0.9) {
       return SpendingPlanRiskLevel.DANGER;
     }

@@ -69,11 +69,6 @@ export class SpendingPlansController {
     return this.spendingPlansService.pause(id, userId);
   }
 
-  @Patch(':id/archive')
-  archive(@Param('id', ParseIntPipe) id: number, @User('sub') userId: number) {
-    return this.spendingPlansService.archive(id, userId);
-  }
-
   @Delete(':id')
   remove(@Param('id', ParseIntPipe) id: number, @User('sub') userId: number) {
     return this.spendingPlansService.remove(id, userId);

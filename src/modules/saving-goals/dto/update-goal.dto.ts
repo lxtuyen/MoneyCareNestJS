@@ -32,10 +32,6 @@ export class UpdateSavingGoalDto {
   is_completed?: boolean;
 
   @IsOptional()
-  @IsString()
-  template_key?: string;
-
-  @IsOptional()
   @IsDateString()
   start_date?: string;
 

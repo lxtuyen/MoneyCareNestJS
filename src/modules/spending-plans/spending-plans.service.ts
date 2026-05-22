@@ -1,12 +1,11 @@
 import {
   BadRequestException,
-  HttpStatus,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, FindOptionsWhere, Repository } from 'typeorm';
-import { ApiResponse } from 'src/common/dto/api-response.dto';
+import { created, ok } from 'src/common/utils/response.util';
 import { User } from 'src/modules/user/entities/user.entity';
 import { CreateSpendingPlanDto } from './dto/create-spending-plan.dto';
 import { UpdateSpendingPlanDto } from './dto/update-spending-plan.dto';
@@ -59,7 +58,6 @@ export class SpendingPlansService {
 
     const calculation = this.calculator.calculate({
       totalAmount: dto.totalAmount,
-      savingTargetAmount: dto.savingTargetAmount ?? 0,
       estimatedExpenses,
       month: period.month,
       year: period.year,
@@ -67,7 +65,6 @@ export class SpendingPlansService {
 
     const plan = this.planRepo.create({
       totalAmount: dto.totalAmount,
-      savingTargetAmount: dto.savingTargetAmount ?? 0,
       status: SpendingPlanStatus.DRAFT,
       estimatedExpenses,
       user,
@@ -80,7 +77,7 @@ export class SpendingPlansService {
 
     const saved = await this.planRepo.save(plan);
     const reloaded = await this.loadPlanForUser(saved.id, userId);
-    return this.ok(await this.enrichPlanUsageForResponse(reloaded, userId));
+    return created(await this.enrichPlanUsageForResponse(reloaded, userId));
   }
 
   async findAll(userId: number, filters: SpendingPlanFilters) {
@@ -97,37 +94,33 @@ export class SpendingPlansService {
       plans.map((plan) => this.enrichPlanUsageForResponse(plan, userId)),
     );
 
-    return this.ok(enrichedPlans);
+    return ok(enrichedPlans);
   }
 
   async findOne(id: number, userId: number) {
     const plan = await this.loadPlanForUser(id, userId);
-    return this.ok(await this.enrichPlanUsageForResponse(plan, userId));
+    return ok(await this.enrichPlanUsageForResponse(plan, userId));
   }
 
   async findActive(userId: number) {
     const plan = await this.planRepo.findOne({
       where: { user: { id: userId }, status: SpendingPlanStatus.ACTIVE },
       relations: ['estimatedExpenses'],
-      order: { activatedAt: 'DESC' },
+      order: { updatedAt: 'DESC' },
     });
     if (plan) {
       this.applyCalculation(plan);
     }
 
-    return this.ok(
+    return ok(
       plan ? await this.enrichPlanUsageForResponse(plan, userId) : null,
     );
   }
 
   async update(id: number, userId: number, dto: UpdateSpendingPlanDto) {
     const plan = await this.loadPlanForUser(id, userId);
-    this.assertPlanEditable(plan);
 
     if (dto.totalAmount !== undefined) plan.totalAmount = dto.totalAmount;
-    if (dto.savingTargetAmount !== undefined) {
-      plan.savingTargetAmount = dto.savingTargetAmount;
-    }
 
     if (dto.estimatedExpenses !== undefined) {
       if (plan.estimatedExpenses?.length) {
@@ -145,7 +138,7 @@ export class SpendingPlansService {
     this.applyCalculation(plan);
     await this.planRepo.save(plan);
     const reloaded = await this.loadPlanForUser(id, userId);
-    return this.ok(await this.enrichPlanUsageForResponse(reloaded, userId));
+    return ok(await this.enrichPlanUsageForResponse(reloaded, userId));
   }
 
   async activate(id: number, userId: number) {
@@ -157,16 +150,10 @@ export class SpendingPlansService {
       if (!plan) {
         throw new NotFoundException('Spending plan not found');
       }
-      if (plan.status === SpendingPlanStatus.ARCHIVED) {
-        throw new BadRequestException(
-          'Archived spending plan cannot be activated',
-        );
-      }
 
       const activePlans = await manager.find(SpendingPlan, {
         where: { user: { id: userId }, status: SpendingPlanStatus.ACTIVE },
       });
-      const now = new Date();
 
       for (const activePlan of activePlans) {
         if (activePlan.id !== plan.id) {
@@ -176,20 +163,15 @@ export class SpendingPlansService {
       }
 
       plan.status = SpendingPlanStatus.ACTIVE;
-      plan.activatedAt = plan.activatedAt ?? now;
-      plan.archivedAt = null;
       return manager.save(plan);
     });
 
     const reloaded = await this.loadPlanForUser(activated.id, userId);
-    return this.ok(await this.enrichPlanUsageForResponse(reloaded, userId));
+    return ok(await this.enrichPlanUsageForResponse(reloaded, userId));
   }
 
   async pause(id: number, userId: number) {
     const plan = await this.loadPlanForUser(id, userId);
-    if (plan.status === SpendingPlanStatus.ARCHIVED) {
-      throw new BadRequestException('Archived spending plan cannot be paused');
-    }
     if (
       plan.status !== SpendingPlanStatus.ACTIVE &&
       plan.status !== SpendingPlanStatus.PAUSED
@@ -199,28 +181,16 @@ export class SpendingPlansService {
 
     if (plan.status !== SpendingPlanStatus.PAUSED) {
       plan.status = SpendingPlanStatus.PAUSED;
-      plan.archivedAt = null;
       await this.planRepo.save(plan);
     }
 
-    return this.ok(await this.enrichPlanUsageForResponse(plan, userId));
-  }
-
-  async archive(id: number, userId: number) {
-    const plan = await this.loadPlanForUser(id, userId);
-    if (plan.status !== SpendingPlanStatus.ARCHIVED) {
-      plan.status = SpendingPlanStatus.ARCHIVED;
-      plan.archivedAt = new Date();
-      await this.planRepo.save(plan);
-    }
-
-    return this.ok(await this.enrichPlanUsageForResponse(plan, userId));
+    return ok(await this.enrichPlanUsageForResponse(plan, userId));
   }
 
   async remove(id: number, userId: number) {
     const plan = await this.loadPlanForUser(id, userId);
     await this.planRepo.remove(plan);
-    return this.ok({ id });
+    return ok({ id });
   }
 
   async getActiveStatistics(userId: number) {
@@ -294,7 +264,6 @@ export class SpendingPlansService {
   private applyCalculation(plan: SpendingPlan) {
     const calculation = this.calculator.calculate({
       totalAmount: plan.totalAmount,
-      savingTargetAmount: plan.savingTargetAmount,
       estimatedExpenses: plan.estimatedExpenses ?? [],
       ...this.getCurrentPeriod(),
     });
@@ -316,30 +285,12 @@ export class SpendingPlansService {
     return plan;
   }
 
-  public assertPlanEditable(plan: SpendingPlan) {
-    if (plan.status === SpendingPlanStatus.ARCHIVED) {
-      throw new BadRequestException('Archived spending plan cannot be edited');
-    }
-  }
-
   private getCurrentPeriod() {
     const now = getVietnamNow();
     return {
       month: now.getMonth() + 1,
       year: now.getFullYear(),
     };
-  }
-
-  private getPlanDisplayName(): string {
-    return 'Kế hoạch chi tiêu';
-  }
-
-  private ok<T>(data: T): ApiResponse<T> {
-    return new ApiResponse({
-      success: true,
-      statusCode: HttpStatus.OK,
-      data,
-    });
   }
 
   async getMonthlySavingCapacity(userId: number) {

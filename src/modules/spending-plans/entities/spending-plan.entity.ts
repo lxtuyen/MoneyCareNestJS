@@ -36,15 +36,6 @@ export class SpendingPlan {
     default: 0,
     transformer: new ColumnNumericTransformer(),
   })
-  savingTargetAmount!: number;
-
-  @Column({
-    type: 'decimal',
-    precision: 15,
-    scale: 2,
-    default: 0,
-    transformer: new ColumnNumericTransformer(),
-  })
   estimatedExpenseTotal!: number;
 
   @Column({
@@ -87,10 +78,4 @@ export class SpendingPlan {
 
   @UpdateDateColumn()
   updatedAt!: Date;
-
-  @Column({ type: 'timestamp with time zone', nullable: true })
-  activatedAt!: Date | null;
-
-  @Column({ type: 'timestamp with time zone', nullable: true })
-  archivedAt!: Date | null;
 }

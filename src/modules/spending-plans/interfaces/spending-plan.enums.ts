@@ -2,7 +2,6 @@ export enum SpendingPlanStatus {
   DRAFT = 'draft',
   ACTIVE = 'active',
   PAUSED = 'paused',
-  ARCHIVED = 'archived',
 }
 
 export enum SpendingPlanRiskLevel {

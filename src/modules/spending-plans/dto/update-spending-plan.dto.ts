@@ -15,11 +15,6 @@ export class UpdateSpendingPlanDto {
   totalAmount?: number;
 
   @IsOptional()
-  @IsNumber()
-  @Min(0)
-  savingTargetAmount?: number;
-
-  @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => CreateEstimatedExpenseDto)
