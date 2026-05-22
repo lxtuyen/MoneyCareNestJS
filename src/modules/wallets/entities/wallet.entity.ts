@@ -29,12 +29,6 @@ export class Wallet {
   })
   balance!: number;
 
-  @Column({ nullable: true })
-  icon!: string;
-
-  @Column({ nullable: true })
-  color!: string;
-
   @Column({ default: true })
   is_active!: boolean;
 

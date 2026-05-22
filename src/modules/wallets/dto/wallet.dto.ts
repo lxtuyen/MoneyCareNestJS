@@ -1,34 +1,9 @@
 import { IsString, IsNumber, IsOptional, IsBoolean } from 'class-validator';
 
-export class CreateWalletDto {
-  @IsString()
-  name: string;
-
-  @IsNumber()
-  @IsOptional()
-  balance?: number;
-
-  @IsString()
-  @IsOptional()
-  icon?: string;
-
-  @IsString()
-  @IsOptional()
-  color?: string;
-}
-
 export class UpdateWalletDto {
   @IsString()
   @IsOptional()
   name?: string;
-
-  @IsString()
-  @IsOptional()
-  icon?: string;
-
-  @IsString()
-  @IsOptional()
-  color?: string;
 
   @IsBoolean()
   @IsOptional()
@@ -44,10 +19,6 @@ export class TransferDto {
 
   @IsNumber()
   amount: number;
-
-  @IsNumber()
-  @IsOptional()
-  fee?: number;
 
   @IsString()
   @IsOptional()

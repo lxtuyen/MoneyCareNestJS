@@ -1,21 +1,19 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In } from 'typeorm';
-import { Wallet } from './entities/wallet.entity';
 import {
-  CreateWalletDto,
-  UpdateWalletDto,
-  TransferDto,
-} from './dto/wallet.dto';
+  BadRequestException,
+  HttpStatus,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { Wallet } from './entities/wallet.entity';
+import { UpdateWalletDto, TransferDto } from './dto/wallet.dto';
 import { User } from 'src/modules/user/entities/user.entity';
 import { Transaction } from '../transactions/entities/transaction.entity';
 import { Category } from '../categories/entities/category.entity';
 import { SavingGoal } from '../saving-goals/entities/saving-goal.entity';
-import { CacheService } from 'src/common/cache/cache.service';
-import {
-  getFinancialCacheKeys,
-  getAiAnalysisRegistryKeys,
-} from 'src/common/cache/financial-cache.util';
+import { ApiResponse } from 'src/common/dto/api-response.dto';
+import { FinancialCacheInvalidationService } from 'src/common/cache/financial-cache-invalidation.service';
 
 @Injectable()
 export class WalletsService {
@@ -28,30 +26,53 @@ export class WalletsService {
     private categoryRepository: Repository<Category>,
     @InjectRepository(SavingGoal)
     private goalRepo: Repository<SavingGoal>,
-    private cacheService: CacheService,
+    private financialCacheInvalidationService: FinancialCacheInvalidationService,
   ) {}
 
-  async create(createWalletDto: CreateWalletDto, user: User): Promise<Wallet> {
-    const existingWallets = await this.walletRepository.find({
-      where: { user: { id: user.id } },
+  async create(user: User): Promise<ApiResponse<Wallet>> {
+    const walletCount = await this.walletRepository.count({
+      where: { user: { id: user.id }, is_active: true },
     });
-
     const wallet = this.walletRepository.create({
-      ...createWalletDto,
+      name: `Ví ${walletCount + 1}`,
+      balance: 0,
       user,
     });
-    return this.walletRepository.save(wallet);
+    const savedWallet = await this.walletRepository.save(wallet);
+
+    return new ApiResponse({
+      success: true,
+      statusCode: HttpStatus.CREATED,
+      data: savedWallet,
+      message: 'Tạo ví thành công',
+    });
   }
 
-  async findAll(user: User): Promise<Wallet[]> {
-    return this.walletRepository.find({
+  async findAll(user: User): Promise<ApiResponse<Wallet[]>> {
+    const wallets = await this.walletRepository.find({
       where: { user: { id: user.id }, is_active: true },
       order: { created_at: 'DESC' },
       relations: ['savingGoals'],
     });
+
+    return new ApiResponse({
+      success: true,
+      statusCode: HttpStatus.OK,
+      data: wallets,
+    });
   }
 
-  async findOne(id: number, user: User): Promise<Wallet> {
+  async findOne(id: number, user: User): Promise<ApiResponse<Wallet>> {
+    const wallet = await this.findWalletOrThrow(id, user);
+
+    return new ApiResponse({
+      success: true,
+      statusCode: HttpStatus.OK,
+      data: wallet,
+    });
+  }
+
+  private async findWalletOrThrow(id: number, user: User): Promise<Wallet> {
     const wallet = await this.walletRepository.findOne({
       where: { id, user: { id: user.id } },
       relations: ['savingGoals'],
@@ -66,54 +87,73 @@ export class WalletsService {
     id: number,
     updateWalletDto: UpdateWalletDto,
     user: User,
-  ): Promise<Wallet> {
-    const wallet = await this.findOne(id, user);
+  ): Promise<ApiResponse<Wallet>> {
+    const wallet = await this.findWalletOrThrow(id, user);
 
     Object.assign(wallet, updateWalletDto);
-    return this.walletRepository.save(wallet);
+    const savedWallet = await this.walletRepository.save(wallet);
+
+    return new ApiResponse({
+      success: true,
+      statusCode: HttpStatus.OK,
+      data: savedWallet,
+      message: 'Cập nhật ví thành công',
+    });
   }
 
-  async remove(id: number, user: User): Promise<void> {
-    const wallet = await this.findOne(id, user);
+  async remove(id: number, user: User): Promise<ApiResponse<void>> {
+    const wallet = await this.findWalletOrThrow(id, user);
     wallet.is_active = false;
     await this.walletRepository.save(wallet);
+
+    return new ApiResponse({
+      success: true,
+      statusCode: HttpStatus.OK,
+      message: 'Xóa ví thành công',
+    });
   }
 
-  async transfer(transferDto: TransferDto, user: User): Promise<void> {
+  async transfer(
+    transferDto: TransferDto,
+    user: User,
+  ): Promise<ApiResponse<void>> {
     const {
       fromWalletId,
       toWalletId,
       amount,
-      fee = 0,
       note,
       categoryId,
     } = transferDto;
 
-    const fromWallet = await this.findOne(fromWalletId, user);
-    const toWallet = await this.findOne(toWalletId, user);
+    if (fromWalletId === toWalletId) {
+      throw new BadRequestException('Không thể chuyển tiền cùng một ví');
+    }
+
+    const fromWallet = await this.findWalletOrThrow(fromWalletId, user);
+    const toWallet = await this.findWalletOrThrow(toWalletId, user);
 
     let category: Category | null = null;
     if (categoryId) {
       category = await this.categoryRepository.findOne({
         where: { id: categoryId },
       });
+      if (!category) {
+        throw new NotFoundException('Category not found');
+      }
     }
 
-    if (Number(fromWallet.balance) < amount + fee) {
-      throw new Error('Số dư không đủ để thực hiện chuyển khoản');
+    if (Number(fromWallet.balance) < amount) {
+      throw new BadRequestException('Số dư không đủ để thực hiện chuyển khoản');
     }
 
-    // 1. Update balances
-    fromWallet.balance = Number(fromWallet.balance) - (amount + fee);
+    fromWallet.balance = Number(fromWallet.balance) - amount;
     toWallet.balance = Number(toWallet.balance) + amount;
     await this.walletRepository.save([fromWallet, toWallet]);
 
-    // 2. Record transactions for history
     const now = new Date();
 
-    // Outgoing transaction from source wallet
     const outgoing = this.transactionRepository.create({
-      amount: amount + fee,
+      amount: amount,
       type: 'expense',
       transaction_date: now,
       note: note || `Chuyển tiền đến ${toWallet.name}`,
@@ -123,7 +163,6 @@ export class WalletsService {
       isTransfer: true,
     });
 
-    // Incoming transaction to target wallet
     const incoming = this.transactionRepository.create({
       amount: amount,
       type: 'income',
@@ -137,7 +176,6 @@ export class WalletsService {
 
     await this.transactionRepository.save([outgoing, incoming]);
 
-    // 3. Find and invalidate cache for goals linked to fromWallet or toWallet
     try {
       const goals = await this.goalRepo.find({
         where: [
@@ -147,40 +185,38 @@ export class WalletsService {
       });
       const affectedGoalIds = goals.map((g) => g.id);
       if (affectedGoalIds.length > 0) {
-        await this.invalidateFinancialCache(user.id, affectedGoalIds);
+        await this.financialCacheInvalidationService.invalidate(
+          user.id,
+          affectedGoalIds,
+        );
       }
     } catch (cacheError) {
-      // Non-blocking catch to ensure transfer is not rolled back if cache invalidation fails
       console.error(
         '>>> [BE] Error invalidating financial cache during transfer:',
         cacheError,
       );
     }
+
+    return new ApiResponse({
+      success: true,
+      statusCode: HttpStatus.OK,
+      message: 'Chuyển khoản thành công',
+    });
   }
 
-  private async invalidateFinancialCache(
-    userId: number,
-    goalIds: number[],
-  ): Promise<void> {
-    const keys = getFinancialCacheKeys(userId, [0, ...goalIds]);
-    await this.cacheService.delMany(keys);
-
-    const registryKeys = getAiAnalysisRegistryKeys(userId, [0, ...goalIds]);
-    const registryEntries = await Promise.all(
-      registryKeys.map((registryKey) =>
-        this.cacheService.get<string[]>(registryKey),
-      ),
+  async getTotalAssets(user: User): Promise<ApiResponse<number>> {
+    const wallets = await this.walletRepository.find({
+      where: { user: { id: user.id }, is_active: true },
+    });
+    const total = wallets.reduce(
+      (sum, wallet) => sum + Number(wallet.balance),
+      0,
     );
 
-    const analysisKeys = Array.from(
-      new Set(registryEntries.flatMap((entry) => entry ?? [])),
-    );
-
-    await this.cacheService.delMany([...analysisKeys, ...registryKeys]);
-  }
-
-  async getTotalAssets(user: User): Promise<number> {
-    const wallets = await this.findAll(user);
-    return wallets.reduce((total, wallet) => total + Number(wallet.balance), 0);
+    return new ApiResponse({
+      success: true,
+      statusCode: HttpStatus.OK,
+      data: total,
+    });
   }
 }

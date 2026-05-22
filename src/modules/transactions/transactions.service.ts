@@ -16,11 +16,7 @@ import { SavingGoal } from 'src/modules/saving-goals/entities/saving-goal.entity
 import { Wallet } from 'src/modules/wallets/entities/wallet.entity';
 import { TransactionFilterDto } from './dto/transaction-filter.dto';
 import { ApiResponse } from 'src/common/dto/api-response.dto';
-import { CacheService } from 'src/common/cache/cache.service';
-import {
-  getFinancialCacheKeys,
-  getAiAnalysisRegistryKeys,
-} from 'src/common/cache/financial-cache.util';
+import { FinancialCacheInvalidationService } from 'src/common/cache/financial-cache-invalidation.service';
 import { buildTransactionBaseQuery } from './transaction-query.util';
 
 @Injectable()
@@ -38,7 +34,7 @@ export class TransactionService {
     private goalRepo: Repository<SavingGoal>,
     @InjectRepository(Wallet)
     private walletRepo: Repository<Wallet>,
-    private cacheService: CacheService,
+    private financialCacheInvalidationService: FinancialCacheInvalidationService,
   ) {}
 
   async create(dto: CreateTransactionDto): Promise<ApiResponse<Transaction>> {
@@ -118,7 +114,10 @@ export class TransactionService {
       });
       affectedGoalIds = goals.map((g) => g.id);
     }
-    await this.invalidateFinancialCache(user.id, affectedGoalIds);
+    await this.financialCacheInvalidationService.invalidate(
+      user.id,
+      affectedGoalIds,
+    );
 
     return new ApiResponse({
       success: true,
@@ -253,10 +252,10 @@ export class TransactionService {
       newGoalIds = newGoals.map((g) => g.id);
     }
 
-    await this.invalidateFinancialCache(transaction.user.id, [
-      ...oldGoalIds,
-      ...newGoalIds,
-    ]);
+    await this.financialCacheInvalidationService.invalidate(
+      transaction.user.id,
+      [...oldGoalIds, ...newGoalIds],
+    );
 
     return new ApiResponse({
       success: true,
@@ -334,27 +333,6 @@ export class TransactionService {
     });
   }
 
-  private async invalidateFinancialCache(
-    userId: number,
-    goalIds: number[],
-  ): Promise<void> {
-    const keys = getFinancialCacheKeys(userId, [0, ...goalIds]);
-    await this.cacheService.delMany(keys);
-
-    const registryKeys = getAiAnalysisRegistryKeys(userId, [0, ...goalIds]);
-    const registryEntries = await Promise.all(
-      registryKeys.map((registryKey) =>
-        this.cacheService.get<string[]>(registryKey),
-      ),
-    );
-
-    const analysisKeys = Array.from(
-      new Set(registryEntries.flatMap((entry) => entry ?? [])),
-    );
-
-    await this.cacheService.delMany([...analysisKeys, ...registryKeys]);
-  }
-
   async remove(id: number): Promise<ApiResponse<string>> {
     const transaction = await this.transactionRepo.findOne({
       where: { id },
@@ -384,7 +362,10 @@ export class TransactionService {
       });
       affectedGoalIds = goals.map((g) => g.id);
     }
-    await this.invalidateFinancialCache(transaction.user.id, affectedGoalIds);
+    await this.financialCacheInvalidationService.invalidate(
+      transaction.user.id,
+      affectedGoalIds,
+    );
     return new ApiResponse({
       success: true,
       statusCode: HttpStatus.OK,
