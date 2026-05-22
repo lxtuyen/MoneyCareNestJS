@@ -13,6 +13,7 @@ import { Repository, SelectQueryBuilder, ObjectLiteral } from 'typeorm';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import * as fc from 'fast-check';
 import { TransactionService } from './transactions.service';
+import { TransactionStatisticsService } from './transactions-statistics.service';
 import { Transaction } from './entities/transaction.entity';
 import { User } from '../user/entities/user.entity';
 import { Category } from '../categories/entities/category.entity';
@@ -64,14 +65,14 @@ function createMockQueryBuilder() {
  * This behavior must remain unchanged after the fix.
  */
 describe('Preservation 5 — Sum by category aggregation (MUST PASS on unfixed code)', () => {
-  let service: TransactionService;
+  let service: TransactionStatisticsService;
   let transactionRepo: jest.Mocked<Repository<Transaction>>;
   let categoryRepo: jest.Mocked<Repository<Category>>;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
-        TransactionService,
+        TransactionStatisticsService,
         {
           provide: getRepositoryToken(Transaction),
           useValue: createMockRepository<Transaction>(),
@@ -101,7 +102,7 @@ describe('Preservation 5 — Sum by category aggregation (MUST PASS on unfixed c
       ],
     }).compile();
 
-    service = module.get<TransactionService>(TransactionService);
+    service = module.get<TransactionStatisticsService>(TransactionStatisticsService);
     transactionRepo = module.get(getRepositoryToken(Transaction));
     categoryRepo = module.get(getRepositoryToken(Category));
   });
@@ -297,7 +298,7 @@ describe('PBT Preservation — Sum by category with random data', () => {
         async ({ categories, transactions }) => {
           const module: TestingModule = await Test.createTestingModule({
             providers: [
-              TransactionService,
+              TransactionStatisticsService,
               {
                 provide: getRepositoryToken(Transaction),
                 useValue: createMockRepository<Transaction>(),
@@ -331,7 +332,7 @@ describe('PBT Preservation — Sum by category with random data', () => {
             ],
           }).compile();
 
-          const service = module.get<TransactionService>(TransactionService);
+          const service = module.get<TransactionStatisticsService>(TransactionStatisticsService);
           const transactionRepo = module.get<
             jest.Mocked<Repository<Transaction>>
           >(getRepositoryToken(Transaction));
@@ -418,7 +419,7 @@ describe('PBT Preservation — Existing data preservation', () => {
         async (categories) => {
           const module: TestingModule = await Test.createTestingModule({
             providers: [
-              TransactionService,
+              TransactionStatisticsService,
               {
                 provide: getRepositoryToken(Transaction),
                 useValue: createMockRepository<Transaction>(),
@@ -452,7 +453,7 @@ describe('PBT Preservation — Existing data preservation', () => {
             ],
           }).compile();
 
-          const service = module.get<TransactionService>(TransactionService);
+          const service = module.get<TransactionStatisticsService>(TransactionStatisticsService);
           const transactionRepo = module.get<
             jest.Mocked<Repository<Transaction>>
           >(getRepositoryToken(Transaction));

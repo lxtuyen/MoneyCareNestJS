@@ -13,6 +13,7 @@ import { CreateTransactionDto } from './dto/create-transaction.dto';
 import { UpdateTransactionDto } from './dto/update-transaction.dto';
 import { TransactionService } from './transactions.service';
 import { TransactionExportService } from './transactions-export.service';
+import { TransactionStatisticsService } from './transactions-statistics.service';
 import { TransactionFilterDto } from './dto/transaction-filter.dto';
 import { GetTransactionDto } from './dto/get-transaction.dto';
 import { ExportTransactionDto } from './dto/export-transaction.dto';
@@ -22,6 +23,7 @@ export class TransactionController {
   constructor(
     private readonly transactionService: TransactionService,
     private readonly transactionExportService: TransactionExportService,
+    private readonly transactionStatisticsService: TransactionStatisticsService,
   ) {}
 
   @Post()
@@ -47,7 +49,7 @@ export class TransactionController {
       endDate,
       type,
     };
-    return this.transactionService.sumByDay(dto);
+    return this.transactionStatisticsService.sumByDay(dto);
   }
 
   @Get(':userId/total-by-type')
@@ -64,7 +66,7 @@ export class TransactionController {
       type,
     };
 
-    return this.transactionService.getTotalsByType(dto);
+    return this.transactionStatisticsService.getTotalsByType(dto);
   }
 
   @Get(':userId/total-by-category')
@@ -80,12 +82,12 @@ export class TransactionController {
       endDate,
       type,
     };
-    return this.transactionService.sumByCategory(dto);
+    return this.transactionStatisticsService.sumByCategory(dto);
   }
 
   @Get(':userId/statistics-summary')
   async getStatisticsSummary(@Param('userId', ParseIntPipe) userId: number) {
-    return this.transactionService.getStatisticsSummary(userId);
+    return this.transactionStatisticsService.getStatisticsSummary(userId);
   }
 
   @Get(':userId/filter')
