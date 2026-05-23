@@ -1,6 +1,13 @@
 import { Module, Global } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AiService } from './ai.service';
+import { AiGeminiClientService } from './ai-gemini-client.service';
+import { AiChatRouterService } from './ai-chat-router.service';
+import { AiSavingGoalChatService } from './ai-saving-goal-chat.service';
+import { AiTransactionChatService } from './ai-transaction-chat.service';
+import { AiAnalysisChatService } from './ai-analysis-chat.service';
+import { AiGoalPlanInsightService } from './ai-goal-plan-insight.service';
+import { ReceiptOcrService } from './receipt-ocr.service';
 import { AiController } from './ai.controller';
 import { SavingGoal } from 'src/modules/saving-goals/entities/saving-goal.entity';
 import { Category } from 'src/modules/categories/entities/category.entity';
@@ -31,7 +38,17 @@ import { WalletsModule } from 'src/modules/wallets/wallets.module';
     WalletsModule,
   ],
   controllers: [AiController],
-  providers: [AiService, FinancialInsightsService],
-  exports: [AiService, FinancialInsightsService],
+  providers: [
+    AiService,
+    AiGeminiClientService,
+    AiChatRouterService,
+    AiSavingGoalChatService,
+    AiTransactionChatService,
+    AiAnalysisChatService,
+    AiGoalPlanInsightService,
+    FinancialInsightsService,
+    ReceiptOcrService,
+  ],
+  exports: [AiService, FinancialInsightsService, ReceiptOcrService],
 })
 export class AiModule {}

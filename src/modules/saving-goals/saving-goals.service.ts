@@ -107,7 +107,9 @@ export class SavingGoalsService {
     if (!goal) throw new NotFoundException('Saving goal not found');
 
     if (dto.walletId !== undefined) {
-      throw new BadRequestException('Updating wallet is not allowed for saving goals');
+      throw new BadRequestException(
+        'Updating wallet is not allowed for saving goals',
+      );
     }
 
     if (dto.name) goal.name = dto.name;

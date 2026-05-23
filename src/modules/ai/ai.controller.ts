@@ -7,12 +7,16 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { AiService } from './ai.service';
+import { ReceiptOcrService } from './receipt-ocr.service';
 import { ChatDto } from './dto/chat.dto';
 import { GoalPlanInsightDto } from './dto/goal-plan-insight.dto';
 
 @Controller('ai')
 export class AiController {
-  constructor(private readonly aiService: AiService) {}
+  constructor(
+    private readonly aiService: AiService,
+    private readonly receiptOcrService: ReceiptOcrService,
+  ) {}
 
   @Post('chat')
   async chat(@Body() dto: ChatDto) {
@@ -25,7 +29,6 @@ export class AiController {
     return this.aiService.handle(
       dto.message,
       dto.userId,
-      undefined,
       dto.ocrText,
       dto.ocrLines,
     );
@@ -39,6 +42,6 @@ export class AiController {
   @Post('receipt/scan')
   @UseInterceptors(FileInterceptor('file'))
   async scanReceipt(@Body() body: Record<string, string | undefined>) {
-    return this.aiService.scanReceipt(body);
+    return this.receiptOcrService.scanReceipt(body);
   }
 }

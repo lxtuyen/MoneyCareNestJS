@@ -2,8 +2,8 @@ import {
   IsString,
   IsNumber,
   IsOptional,
-  IsArray,
   IsDateString,
+  IsBoolean,
 } from 'class-validator';
 
 export class CreateSavingGoalDto {
@@ -29,4 +29,8 @@ export class CreateSavingGoalDto {
   @IsOptional()
   @IsDateString()
   end_date?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  create_new_wallet?: boolean;
 }

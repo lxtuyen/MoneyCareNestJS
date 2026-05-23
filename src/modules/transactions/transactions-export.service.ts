@@ -1,6 +1,7 @@
 import {
   Injectable,
   InternalServerErrorException,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { TransactionService } from './transactions.service';
@@ -21,6 +22,7 @@ import { Buffer } from 'buffer';
 
 @Injectable()
 export class TransactionExportService {
+  private readonly logger = new Logger(TransactionExportService.name);
 
   constructor(
     private readonly transactionService: TransactionService,
@@ -28,7 +30,7 @@ export class TransactionExportService {
     private readonly savingGoalsService: SavingGoalsService,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
-  ) { }
+  ) {}
 
   async exportAndSendEmail(
     userId: number,
@@ -83,12 +85,17 @@ export class TransactionExportService {
         contentType = 'application/pdf';
       }
     } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Unknown report generation error';
+      const stack = error instanceof Error ? error.stack : undefined;
       this.logger.error(
-        `Failed to generate ${format} report: ${error.message}`,
-        error.stack,
+        `Failed to generate ${format} report: ${message}`,
+        stack,
       );
       throw new InternalServerErrorException(
-        `Lỗi khi tạo file báo cáo: ${error.message}`,
+        `Lỗi khi tạo file báo cáo: ${message}`,
       );
     }
 
@@ -106,22 +113,13 @@ export class TransactionExportService {
       filter.endDate,
     );
 
-    try {
-      await this.mailService.sendEmailWithAttachment(
-        user.email,
-        subject,
-        html,
-        [
-          {
-            filename,
-            content: buffer,
-            contentType,
-          },
-        ],
-      );
-    } catch (error) {
-      throw error;
-    }
+    await this.mailService.sendEmailWithAttachment(user.email, subject, html, [
+      {
+        filename,
+        content: buffer,
+        contentType,
+      },
+    ]);
 
     return { success: true, message: 'Báo cáo đã được gửi đến email của bạn' };
   }

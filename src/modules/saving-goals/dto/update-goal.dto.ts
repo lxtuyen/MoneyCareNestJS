@@ -32,6 +32,10 @@ export class UpdateSavingGoalDto {
   is_completed?: boolean;
 
   @IsOptional()
+  @IsNumber()
+  walletId?: number;
+
+  @IsOptional()
   @IsDateString()
   start_date?: string;
 

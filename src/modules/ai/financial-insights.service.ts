@@ -12,11 +12,11 @@ import {
   FinancialInsightSnapshot,
   InsightCategorySummary,
 } from './types/ai.types';
-
-type DateRange = {
-  start: Date;
-  end: Date;
-};
+import {
+  DateRange,
+  getDateRange,
+  getPreviousRange,
+} from 'src/common/utils/date.util';
 
 type CategorySpendRow = {
   categoryName: string | null;
@@ -50,8 +50,8 @@ export class FinancialInsightsService {
       return cached;
     }
 
-    const currentRange = this.getDateRange(period);
-    const previousRange = this.getPreviousRange(period, currentRange);
+    const currentRange = getDateRange(period);
+    const previousRange = getPreviousRange(period, currentRange);
 
     const [currentTotals, previousTotals] = await Promise.all([
       this.getTotals(userId, resolvedGoalId, currentRange),
@@ -114,56 +114,6 @@ export class FinancialInsightsService {
     });
 
     return fallback?.id ?? null;
-  }
-
-  private getDateRange(period: FinancialInsightPeriod): DateRange {
-    const now = new Date();
-
-    if (period === 'this_month') {
-      return {
-        start: new Date(now.getFullYear(), now.getMonth(), 1),
-        end: now,
-      };
-    }
-
-    const start = new Date(now);
-    start.setDate(now.getDate() - 29);
-    start.setHours(0, 0, 0, 0);
-
-    return { start, end: now };
-  }
-
-  private getPreviousRange(
-    period: FinancialInsightPeriod,
-    currentRange: DateRange,
-  ): DateRange {
-    if (period === 'this_month') {
-      const previousMonthEnd = new Date(
-        currentRange.start.getFullYear(),
-        currentRange.start.getMonth(),
-        0,
-        23,
-        59,
-        59,
-        999,
-      );
-
-      return {
-        start: new Date(
-          previousMonthEnd.getFullYear(),
-          previousMonthEnd.getMonth(),
-          1,
-        ),
-        end: previousMonthEnd,
-      };
-    }
-
-    const currentDurationMs =
-      currentRange.end.getTime() - currentRange.start.getTime();
-    const previousEnd = new Date(currentRange.start.getTime() - 1);
-    const previousStart = new Date(previousEnd.getTime() - currentDurationMs);
-
-    return { start: previousStart, end: previousEnd };
   }
 
   private async getTotals(

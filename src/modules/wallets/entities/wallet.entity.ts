@@ -35,6 +35,12 @@ export class Wallet {
   @Column({ default: 'regular' })
   type!: string;
 
+  @Column({ nullable: true })
+  icon?: string;
+
+  @Column({ nullable: true })
+  color?: string;
+
   @ManyToOne(() => User, (user) => user.wallets, { onDelete: 'CASCADE' })
   user!: User;
 

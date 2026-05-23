@@ -76,3 +76,38 @@ export type GetTransactionQuery = {
   category_name: string | null;
   limit: number | null;
 };
+
+export enum AiMessagePrefix {
+  TRANSACTION_LIST = '__TRANSACTION_LIST__',
+  TRANSACTION_SAVED = '__TRANSACTION_SAVED__',
+  STRUCTURED_ANALYSIS = '__STRUCTURED_ANALYSIS__',
+  SAVING_GOAL_CREATED = '__SAVING_GOAL_CREATED__',
+  SAVING_GOAL_PROPOSAL = '__SAVING_GOAL_PROPOSAL__',
+  SAVING_GOAL_INITIAL_FUND_ASK = '__SAVING_GOAL_INITIAL_FUND_ASK__',
+}
+
+export interface MapTransactionInput {
+  id?: number;
+  amount: number;
+  type: 'income' | 'expense';
+  note?: string;
+  transaction_date?: string | Date;
+  transactionDate?: string | Date;
+  category?: {
+    name?: string;
+    icon?: string | null;
+  } | null;
+  subCategory?: {
+    name?: string;
+    icon?: string | null;
+  } | null;
+}
+
+export interface GeminiFunctionCall {
+  name: string;
+  args: Record<string, unknown>;
+}
+
+export interface GeminiResponse {
+  functionCalls?: GeminiFunctionCall[];
+}
