@@ -44,10 +44,9 @@ export class TransactionStatisticsService {
 
     if (dto.type) {
       categoryQuery.andWhere(
-        '(category.type = :type OR category.type = :others)',
+        'category.type = :type',
         {
           type: dto.type,
-          others: 'others',
         },
       );
     }

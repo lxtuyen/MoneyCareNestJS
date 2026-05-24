@@ -166,10 +166,7 @@ export class AiTransactionChatService {
     type: 'income' | 'expense',
   ): Promise<Category | null> {
     const allCategories = await this.categoryRepo.find({
-      where: [
-        { user: { id: userId }, type: type as Category['type'] },
-        { user: { id: userId }, type: 'others' as Category['type'] },
-      ],
+      where: { user: { id: userId }, type: type as Category['type'] },
     });
     return (
       allCategories.find(

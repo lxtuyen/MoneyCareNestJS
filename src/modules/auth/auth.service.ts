@@ -63,8 +63,6 @@ export class AuthService {
       balance: 0,
       user: user,
       is_active: true,
-      icon: '💰',
-      color: '#4CAF50',
     });
     await this.walletRepo.save(wallet);
 
@@ -82,7 +80,6 @@ export class AuthService {
       .createQueryBuilder('user')
       .leftJoinAndSelect('user.savingGoals', 'savingGoals')
       .leftJoinAndSelect('user.profile', 'profile')
-      .leftJoinAndSelect('user.categories', 'categories')
       .addSelect('user.password')
       .where('user.email = :email', { email: dto.email })
       .getOne();
@@ -112,7 +109,6 @@ export class AuthService {
           email: user.email,
           profile: user.profile,
           savingGoal: selectedGoal || null,
-          hasCategories: true,
           role: user.role,
         },
       },
@@ -137,7 +133,7 @@ export class AuthService {
 
       let user = await this.userRepo.findOne({
         where: { email },
-        relations: ['profile', 'savingGoals', 'categories'],
+        relations: ['profile', 'savingGoals'],
       });
 
       if (!user) {
@@ -163,8 +159,6 @@ export class AuthService {
           balance: 0,
           user: user,
           is_active: true,
-          icon: '💰',
-          color: '#4CAF50',
         });
         await this.walletRepo.save(wallet);
       }
@@ -189,7 +183,6 @@ export class AuthService {
             email: user.email,
             profile: user.profile,
             savingGoal: selectedGoal,
-            hasCategories: true,
             role: user.role,
           },
         },

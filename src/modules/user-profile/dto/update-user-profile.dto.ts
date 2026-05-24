@@ -8,8 +8,4 @@ export class UpdateProfileDto {
   @IsOptional()
   @IsString()
   last_name?: string;
-
-  @IsOptional()
-  @IsString()
-  avatar?: string;
 }

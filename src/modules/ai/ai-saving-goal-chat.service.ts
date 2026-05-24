@@ -127,9 +127,10 @@ export class AiSavingGoalChatService {
 
       const activeWallets = await this.walletRepo.find({
         where: { user: { id: userId }, is_active: true },
+        relations: ['savingGoals'],
       });
       const positiveWallets = activeWallets.filter(
-        (w) => w.type !== 'saving' && Number(w.balance) > 0,
+        (w) => w.savingGoals.length === 0 && Number(w.balance) > 0,
       );
 
       if (positiveWallets.length > 0 && target > 0) {
@@ -148,7 +149,6 @@ export class AiSavingGoalChatService {
           id: w.id,
           name: w.name,
           balance: Number(w.balance),
-          type: w.type,
         }));
 
         return ok(

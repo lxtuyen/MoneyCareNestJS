@@ -117,13 +117,7 @@ export class WalletsService {
     transferDto: TransferDto,
     user: User,
   ): Promise<ApiResponse<void>> {
-    const {
-      fromWalletId,
-      toWalletId,
-      amount,
-      note,
-      categoryId,
-    } = transferDto;
+    const { fromWalletId, toWalletId, amount, note, categoryId } = transferDto;
 
     if (fromWalletId === toWalletId) {
       throw new BadRequestException('Không thể chuyển tiền cùng một ví');

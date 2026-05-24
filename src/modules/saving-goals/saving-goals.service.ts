@@ -42,7 +42,6 @@ export class SavingGoalsService {
       user: user,
       balance: 0,
       is_active: true,
-      type: 'saving',
     });
     const savedWallet = await this.walletRepo.save(newWallet);
 
@@ -53,7 +52,7 @@ export class SavingGoalsService {
       saved_amount: dto.saved_amount ?? 0,
       start_date: dto.start_date ? new Date(dto.start_date) : new Date(),
       end_date: dto.end_date ? new Date(dto.end_date) : null,
-      wallet: savedWallet,
+      wallet: savedWallet as Wallet,
     } as Partial<SavingGoal>);
 
     const savedGoal = await this.goalRepo.save(goal);
