@@ -117,11 +117,11 @@ export class AiSavingGoalChatService {
       if (!args) {
         return ok(
           '',
-          'TÃ´i chÆ°a hiá»ƒu rÃµ má»¥c tiÃªu tiáº¿t kiá»‡m cá»§a báº¡n. Báº¡n cÃ³ thá»ƒ nÃ³i rÃµ hÆ¡n khÃ´ng? VÃ­ dá»¥: "TÃ´i muá»‘n tiáº¿t kiá»‡m 3 triá»‡u mua Ä‘iá»‡n thoáº¡i".',
+          'Tôi chưa hiểu rõ mục tiêu tiết kiệm của bạn. Bạn có thể nói rõ hơn không? Ví dụ: "Tôi muón tiết kiệm 3 triệu mua điện thoại".',
         );
       }
 
-      const name = args.name || 'Má»¥c tiÃªu tiáº¿t kiá»‡m';
+      const name = args.name || 'Mục tiêu tiết kiệm';
       const target = Number(args.target) || 0;
       const requestedMonths = Number(args.requested_months) || 0;
 
@@ -195,15 +195,15 @@ export class AiSavingGoalChatService {
         suggestedMonthlySaving = recommendation.suggestedMonthlySaving;
         maxMonthlySaving = recommendation.maxMonthlySaving;
 
-        aiMessage = `Vá»›i kháº£ nÄƒng tiáº¿t kiá»‡m tá»‘i Ä‘a hiá»‡n táº¡i lÃ  "${formatVnd(recommendation.maxMonthlySaving)}/thÃ¡ng", náº¿u dÃ¹ng háº¿t sá»‘ dÆ° báº¡n sáº½ cáº§n khoáº£ng "${recommendation.rawDurationText}" Ä‘á»ƒ tÃ­ch lÅ©y Ä‘á»§ "${formatVnd(target)}" cho má»¥c tiÃªu "${name}".\n\nðŸ’¡ Äá»ƒ káº¿ hoáº¡ch dá»… theo dÃµi vÃ  khÃ´ng dÃ¹ng háº¿t toÃ n bá»™ sá»‘ dÆ° má»—i thÃ¡ng, tÃ´i Ä‘á» xuáº¥t má»‘c "${recommendation.months} thÃ¡ng", tÆ°Æ¡ng Ä‘Æ°Æ¡ng khoáº£ng "${formatVnd(recommendation.suggestedMonthlySaving)}/thÃ¡ng". Báº¡n váº«n cÃ³ thá»ƒ Ä‘á»•i thá»i gian náº¿u muá»‘n hoÃ n thÃ nh nhanh hÆ¡n hoáº·c thoáº£i mÃ¡i hÆ¡n.`;
+        aiMessage = `Vậy khả năng tiết kiệm hiện tại là "${formatVnd(recommendation.maxMonthlySaving)}/tháng", nếu dùng hết số dư bạn sẽ cần khoảng "${recommendation.rawDurationText}" để tích lũy đủ "${formatVnd(target)}" cho mục tiêu "${name}".\n\n💡 Để kế hoạch dễ theo dõi và không dùng hết toàn bộ số dư mỗi tháng, tôi đề xuất mốc "${recommendation.months} tháng", tương đương khoảng "${formatVnd(recommendation.suggestedMonthlySaving)}/tháng". Bạn vẫn có thể đổi thời gian nếu muốn hoàn thành nhanh hơn hoặc thoải mái hơn.`;
       } else if (capacity) {
         monthsEstimate = 6;
         suggestedMonthlySaving = Math.round(target / 6);
-        aiMessage = `TÃ´i Ä‘Ã£ ghi nháº­n Ä‘á» xuáº¥t tÃ­ch lÅ©y "${formatVnd(target)}" cho má»¥c tiÃªu "${name}". VÃ¬ káº¿ hoáº¡ch chi tiÃªu hiá»‡n táº¡i cá»§a báº¡n chÆ°a cÃ³ tháº·ng dÆ° Ä‘á»ƒ tÃ­ch lÅ©y (kháº£ nÄƒng tiáº¿t kiá»‡m hiá»‡n táº¡i lÃ  0Ä‘/thÃ¡ng), tÃ´i Ä‘á» xuáº¥t thá»i gian tÃ­ch lÅ©y lÃ  "6 thÃ¡ng" (tÆ°Æ¡ng Ä‘Æ°Æ¡ng khoáº£ng "${formatVnd(suggestedMonthlySaving)}/thÃ¡ng"). Báº¡n hÃ£y Ä‘iá»u chá»‰nh káº¿ hoáº¡ch chi tiÃªu hoáº·c cáº¯t giáº£m chi phÃ­ Ä‘á»ƒ gia tÄƒng kháº£ nÄƒng tiáº¿t kiá»‡m nhÃ©!`;
+        aiMessage = `Tôi đã ghi nhận đề xuất tích lũy "${formatVnd(target)}" cho mục tiêu "${name}". Vì kế hoạch chi tiêu hiện tại của bạn chưa có thặng dư để tích lũy (khả năng tiết kiệm hiện tại là 0đ/tháng), tôi đề xuất thời gian tích lũy là "6 tháng" (tương đương khoảng "${formatVnd(suggestedMonthlySaving)}/tháng"). Bạn hãy điều chỉnh kế hoạch chi tiêu hoặc cắt giảm chi phí để gia tăng khả năng tiết kiệm nhé!`;
       } else {
         monthsEstimate = 6;
         suggestedMonthlySaving = Math.round(target / 6);
-        aiMessage = `TÃ´i Ä‘Ã£ ghi nháº­n Ä‘á» xuáº¥t tÃ­ch lÅ©y "${formatVnd(target)}" cho má»¥c tiÃªu "${name}". VÃ¬ báº¡n chÆ°a thiáº¿t láº­p Káº¿ hoáº¡ch chi tiÃªu, tÃ´i Ä‘á» xuáº¥t thá»i gian tÃ­ch lÅ©y lÃ  "6 thÃ¡ng" (tÆ°Æ¡ng Ä‘Æ°Æ¡ng khoáº£ng "${formatVnd(Math.round(target / 6))}/thÃ¡ng"). Báº¡n hÃ£y láº­p Káº¿ hoáº¡ch chi tiÃªu Ä‘á»ƒ theo dÃµi chÃ­nh xÃ¡c hÆ¡n nhÃ©!`;
+        aiMessage = `Tôi đã ghi nhận đề xuất tích lũy "${formatVnd(target)}" cho mục tiêu "${name}". Vì bạn chưa thiết lập Kế hoạch chi tiêu, tôi đề xuất thời gian tích lũy là "6 tháng" (tương đương khoảng "${formatVnd(Math.round(target / 6))}/tháng"). Bạn hãy lập Kế hoạch chi tiêu để theo dõi chính xác hơn nhé!`;
       }
 
       const endDate = new Date();
@@ -230,10 +230,11 @@ export class AiSavingGoalChatService {
           aiMessage,
         })}`,
       );
-    } catch {
+    } catch (error) {
+      this.logger.error('handleSavingGoalRequest failed', error);
       return ok(
         '',
-        'TÃ´i gáº·p lá»—i khi Ä‘á» xuáº¥t má»¥c tiÃªu tiáº¿t kiá»‡m. Báº¡n vui lÃ²ng thá»­ láº¡i nhÃ©!',
+        'Tôi gặp lỗi khi đề xuất mục tiêu tiết kiệm. Bạn vui lòng thử lại nhé!',
       );
     }
   }
@@ -255,7 +256,7 @@ export class AiSavingGoalChatService {
 
       const createResult = await this.savingGoalsService.create(
         {
-          name: name || 'Má»¥c tiÃªu tiáº¿t kiá»‡m',
+          name: name || 'Mục tiêu tiết kiệm',
           target: Number(target) || 0,
           start_date: new Date().toISOString(),
           end_date: endDate.toISOString(),
@@ -298,7 +299,7 @@ export class AiSavingGoalChatService {
                 fromWalletId: activeSourceWalletId,
                 toWalletId: createdGoal.wallet.id,
                 amount: activeInitFund,
-                note: `TÃ­ch lÅ©y ban Ä‘áº§u cho má»¥c tiÃªu: ${name}`,
+                note: `Tích lũy ban đầu cho mục tiêu: ${name}`,
               },
               user,
             );
@@ -312,9 +313,9 @@ export class AiSavingGoalChatService {
         }
       }
 
-      let aiMessage = `Tuyá»‡t vá»i! TÃ´i Ä‘Ã£ táº¡o thÃ nh cÃ´ng má»¥c tiÃªu "${name}" vá»›i sá»‘ tiá»n cáº§n tÃ­ch lÅ©y lÃ  "${formatVnd(target)}" trong vÃ²ng "${monthsEstimate} thÃ¡ng". Má»™t vÃ­ má»¥c tiÃªu má»›i cÅ©ng Ä‘Ã£ Ä‘Æ°á»£c kÃ­ch hoáº¡t Ä‘á»ƒ báº¡n báº¯t Ä‘áº§u tÃ­ch lÅ©y!`;
+      let aiMessage = `Tuyệt vời! Tôi đã tạo thành công mục tiêu "${name}" với số tiền cần tích lũy là "${formatVnd(target)}" trong vòng "${monthsEstimate} tháng". Một ví mục tiêu mới cũng đã được kích hoạt để bạn bắt đầu tích lũy!`;
       if (transferSuccess && activeInitFund > 0) {
-        aiMessage = `Tuyá»‡t vá»i! TÃ´i Ä‘Ã£ táº¡o thÃ nh cÃ´ng má»¥c tiÃªu "${name}" vá»›i sá»‘ tiá»n cáº§n tÃ­ch lÅ©y lÃ  "${formatVnd(target)}" trong vÃ²ng "${monthsEstimate} thÃ¡ng". Äá»“ng thá»i, tÃ´i Ä‘Ã£ tá»± Ä‘á»™ng trÃ­ch "${formatVnd(activeInitFund)}" tá»« "${sourceWalletName}" chuyá»ƒn sang vÃ­ tÃ­ch lÅ©y "${createdGoal?.wallet?.name}" cá»§a má»¥c tiÃªu nÃ y lÃ m vá»‘n ban Ä‘áº§u!`;
+        aiMessage = `Tuyệt vời! Tôi đã tạo thành công mục tiêu "${name}" với số tiền cần tích lũy là "${formatVnd(target)}" trong vòng "${monthsEstimate} tháng". Đồng thời, tôi đã tự động trích "${formatVnd(activeInitFund)}" từ "${sourceWalletName}" chuyển sang ví tích lũy "${createdGoal?.wallet?.name}" của mục tiêu này làm vốn ban đầu!`;
       }
 
       return {
@@ -335,12 +336,13 @@ export class AiSavingGoalChatService {
           aiMessage,
         })}`,
       };
-    } catch {
+    } catch (error) {
+      this.logger.error('handleConfirmSavingGoal failed', error);
       return {
         success: true,
         statusCode: 200,
         message:
-          'CÃ³ lá»—i xáº£y ra khi xÃ¡c nháº­n táº¡o má»¥c tiÃªu tiáº¿t kiá»‡m. Vui lÃ²ng thá»­ láº¡i!',
+          'Có lỗi xảy ra khi xác nhận tạo mục tiêu tiết kiệm. Vui lòng thử lại!',
       };
     }
   }
@@ -372,7 +374,7 @@ export class AiSavingGoalChatService {
       const sourceWallet = activeWallets.find(
         (w) => w.id === activeSourceWalletId,
       );
-      const sourceWalletName = sourceWallet?.name ?? 'vÃ­ Ä‘Ã£ chá»n';
+      const sourceWalletName = sourceWallet?.name ?? 'ví đã chọn';
 
       const parsedRequestedMonths = Number(requestedMonths) || 0;
       const hasRequestedMonths = parsedRequestedMonths > 0;
@@ -385,7 +387,7 @@ export class AiSavingGoalChatService {
       if (remainingTarget <= 0) {
         monthsEstimate = 0;
         suggestedMonthlySaving = 0;
-        aiMessage = `Tuyá»‡t vá»i! Báº¡n trÃ­ch "${formatVnd(activeInitFund)}" tá»« "${sourceWalletName}" lÃ m vá»‘n ban Ä‘áº§u, Ä‘á»§ Ä‘á»ƒ hoÃ n thÃ nh má»¥c tiÃªu "${name}" trá»‹ giÃ¡ "${formatVnd(target)}" ngay láº­p tá»©c! Báº¡n cÃ³ muá»‘n tiáº¿n hÃ nh táº¡o má»¥c tiÃªu ngay khÃ´ng?`;
+        aiMessage = `Tuyệt vời! Bạn trích "${formatVnd(activeInitFund)}" từ "${sourceWalletName}" làm vốn ban đầu, đủ để hoàn thành mục tiêu "${name}" trị giá "${formatVnd(target)}" ngay lập tức! Bạn có muốn tiến hành tạo mục tiêu ngay không?`;
       } else if (hasRequestedMonths) {
         monthsEstimate = Math.max(1, Math.round(parsedRequestedMonths));
         const durationMessage = buildSavingGoalDurationMessage({
@@ -412,15 +414,15 @@ export class AiSavingGoalChatService {
         suggestedMonthlySaving = recommendation.suggestedMonthlySaving;
         maxMonthlySaving = recommendation.maxMonthlySaving;
 
-        aiMessage = `Sau khi trÃ­ch "${formatVnd(activeInitFund)}" tá»« "${sourceWalletName}" lÃ m vá»‘n ban Ä‘áº§u, báº¡n cÃ²n thiáº¿u "${formatVnd(remainingTarget)}" cho má»¥c tiÃªu "${name}".\n\nðŸ’¡ Äá»ƒ káº¿ hoáº¡ch thoáº£i mÃ¡i, tÃ´i Ä‘á» xuáº¥t má»‘c "${recommendation.months} thÃ¡ng", tÆ°Æ¡ng Ä‘Æ°Æ¡ng khoáº£ng "${formatVnd(recommendation.suggestedMonthlySaving)}/thÃ¡ng" (náº±m trong kháº£ nÄƒng tiáº¿t kiá»‡m "${formatVnd(plannedSavingCapacity)}/thÃ¡ng" cá»§a báº¡n).`;
+        aiMessage = `Sau khi trích "${formatVnd(activeInitFund)}" từ "${sourceWalletName}" làm vốn ban đầu, bạn còn thiếu "${formatVnd(remainingTarget)}" cho mục tiêu "${name}".\n\n💡 Để kế hoạch thoải mái, tôi đề xuất mốc "${recommendation.months} tháng", tương đương khoảng "${formatVnd(recommendation.suggestedMonthlySaving)}/tháng" (nằm trong khả năng tiết kiệm "${formatVnd(plannedSavingCapacity)}/tháng" của bạn).`;
       } else if (capacity) {
         monthsEstimate = 6;
         suggestedMonthlySaving = Math.round(remainingTarget / 6);
-        aiMessage = `TÃ´i Ä‘Ã£ ghi nháº­n má»¥c tiÃªu "${name}" (cÃ²n thiáº¿u "${formatVnd(remainingTarget)}" sau khi trÃ­ch "${formatVnd(activeInitFund)}" tá»« "${sourceWalletName}"). VÃ¬ káº¿ hoáº¡ch chi tiÃªu hiá»‡n táº¡i cá»§a báº¡n chÆ°a cÃ³ tháº·ng dÆ° Ä‘á»ƒ tÃ­ch lÅ©y (kháº£ nÄƒng tiáº¿t kiá»‡m hiá»‡n táº¡i lÃ  0Ä‘/thÃ¡ng), tÃ´i Ä‘á» xuáº¥t thá»i gian tÃ­ch lÅ©y lÃ  "6 thÃ¡ng" (tÆ°Æ¡ng Ä‘Æ°Æ¡ng khoáº£ng "${formatVnd(suggestedMonthlySaving)}/thÃ¡ng"). Báº¡n cÃ³ thá»ƒ Ä‘iá»u chá»‰nh káº¿ hoáº¡ch chi tiÃªu Ä‘á»ƒ gia tÄƒng tÃ­ch lÅ©y nhÃ©!`;
+        aiMessage = `Tôi đã ghi nhận mục tiêu "${name}" (còn thiếu "${formatVnd(remainingTarget)}" sau khi trích "${formatVnd(activeInitFund)}" từ "${sourceWalletName}"). Vì kế hoạch chi tiêu hiện tại của bạn chưa có thặng dư để tích lũy (khả năng tiết kiệm hiện tại là 0đ/tháng), tôi đề xuất thời gian tích lũy là "6 tháng" (tương đương khoảng "${formatVnd(suggestedMonthlySaving)}/tháng"). Bạn có thể điều chỉnh kế hoạch chi tiêu để gia tăng tích lũy nhé!`;
       } else {
         monthsEstimate = 6;
         suggestedMonthlySaving = Math.round(remainingTarget / 6);
-        aiMessage = `TÃ´i Ä‘Ã£ ghi nháº­n má»¥c tiÃªu "${name}" (cÃ²n thiáº¿u "${formatVnd(remainingTarget)}" sau khi trÃ­ch "${formatVnd(activeInitFund)}" tá»« "${sourceWalletName}"). VÃ¬ báº¡n chÆ°a cÃ³ Káº¿ hoáº¡ch chi tiÃªu, tÃ´i Ä‘á» xuáº¥t thá»i gian tÃ­ch lÅ©y lÃ  "6 thÃ¡ng" (tÆ°Æ¡ng Ä‘Æ°Æ¡ng khoáº£ng "${formatVnd(suggestedMonthlySaving)}/thÃ¡ng").`;
+        aiMessage = `Tôi đã ghi nhận mục tiêu "${name}" (còn thiếu "${formatVnd(remainingTarget)}" sau khi trích "${formatVnd(activeInitFund)}" từ "${sourceWalletName}"). Vì bạn chưa có Kế hoạch chi tiêu, tôi đề xuất thời gian tích lũy là "6 tháng" (tương đương khoảng "${formatVnd(suggestedMonthlySaving)}/tháng").`;
       }
 
       const endDate = new Date();
@@ -452,12 +454,13 @@ export class AiSavingGoalChatService {
           aiMessage,
         })}`,
       };
-    } catch {
+    } catch (error) {
+      this.logger.error('handleSavingGoalInitFund failed', error);
       return {
         success: true,
         statusCode: 200,
         message:
-          'TÃ´i gáº·p lá»—i khi Ä‘á» xuáº¥t lá»™ trÃ¬nh dá»±a trÃªn sá»‘ vá»‘n ban Ä‘áº§u. Vui lÃ²ng thá»­ láº¡i!',
+          'Tôi gặp lỗi khi đề xuất lộ trình dựa trên số vốn ban đầu. Vui lòng thử lại!',
       };
     }
   }
@@ -515,12 +518,13 @@ export class AiSavingGoalChatService {
           endDate: endDate.toISOString(),
         })}`,
       };
-    } catch {
+    } catch (error) {
+      this.logger.error('handleChangeSavingGoalDuration failed', error);
       return {
         success: true,
         statusCode: 200,
         message:
-          'CÃ³ lá»—i xáº£y ra khi Ä‘iá»u chá»‰nh thá»i gian má»¥c tiÃªu. Vui lÃ²ng thá»­ láº¡i!',
+          'Có lỗi xảy ra khi điều chỉnh thời gian mục tiêu. Vui lòng thử lại!',
       };
     }
   }

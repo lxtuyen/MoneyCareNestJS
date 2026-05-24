@@ -96,10 +96,10 @@ export function buildDurationOptions(
       type,
       label:
         type === 'faster'
-          ? 'Gáº¥p'
+          ? 'Gấp'
           : type === 'recommended'
-            ? 'Khuyáº¿n nghá»‹'
-            : 'Thoáº£i mÃ¡i',
+            ? 'Khuyến nghị'
+            : 'Thoải mái',
       months,
       monthlySaving: Math.ceil(target / months),
       isRecommended: type === 'recommended',

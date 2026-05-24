@@ -415,8 +415,8 @@ export class AiTransactionChatService {
           message: `${AiMessagePrefix.TRANSACTION_SAVED}${JSON.stringify({
             amount,
             type: parsedTrans.type,
-            category: pickedCategory?.name ?? 'HÃ³a Ä‘Æ¡n',
-            categoryIcon: pickedCategory?.icon ?? 'ðŸ§¾',
+            category: pickedCategory?.name ?? 'Hóa đơn',
+            categoryIcon: pickedCategory?.icon ?? '',
             subCategory: null,
             note: parsedTrans.description,
             needsClarification: true,
@@ -462,7 +462,7 @@ export class AiTransactionChatService {
           userId,
           type: parsedTrans.type,
           amount,
-          note: parsedTrans.description ?? 'Giao dá»‹ch tá»« chatbot',
+          note: parsedTrans.description ?? 'Giao dịch từ chatbot',
           transactionDate: isValidDate(parsedTrans.time)
             ? new Date(parsedTrans.time!).toISOString()
             : new Date().toISOString(),
@@ -522,7 +522,7 @@ export class AiTransactionChatService {
 
       if (!scanResult.success || !scanResult.data) {
         throw new BadRequestException(
-          'KhÃ´ng thá»ƒ xá»­ lÃ½ hÃ³a Ä‘Æ¡n nÃ y. Vui lÃ²ng thá»­ láº¡i.',
+          'Không thể xử lý hóa đơn này. Vui lòng thử lại.',
         );
       }
 
@@ -544,7 +544,7 @@ export class AiTransactionChatService {
       if (amount <= 0) {
         return ok(
           '',
-          'TÃ´i Ä‘Ã£ Ä‘á»c hÃ³a Ä‘Æ¡n nhÆ°ng khÃ´ng tÃ¬m tháº¥y sá»‘ tiá»n há»£p lá»‡. Báº¡n vui lÃ²ng kiá»ƒm tra láº¡i áº£nh nhÃ©.',
+          'Tôi đã đọc hóa đơn nhưng không tìm thấy số tiền hợp lệ. Bạn vui lòng kiểm tra lại ảnh nhé.',
         );
       }
 
@@ -596,7 +596,7 @@ export class AiTransactionChatService {
         amount,
         note:
           data.suggested_note ||
-          `HÃ³a Ä‘Æ¡n táº¡i ${data.merchant_name || 'Cá»­a hÃ ng'}`,
+          `Hóa đơn tại ${data.merchant_name || 'Cửa hàng'}`,
         transactionDate:
           data.date && isValidDate(data.date)
             ? new Date(data.date).toISOString()
@@ -630,7 +630,7 @@ export class AiTransactionChatService {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
       throw new InternalServerErrorException(
-        `CÃ³ lá»—i xáº£y ra khi tá»± Ä‘á»™ng lÆ°u hÃ³a Ä‘Æ¡n: ${errorMessage}`,
+        `Có lỗi xảy ra khi tự động lưu hóa đơn: ${errorMessage}`,
       );
     }
   }

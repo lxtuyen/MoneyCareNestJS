@@ -38,7 +38,7 @@ export class TransactionService {
   ) {}
 
   async create(dto: CreateTransactionDto): Promise<ApiResponse<Transaction>> {
-    const [user, requestedCategory, subCategory] = await Promise.all([
+    const [user, requestedCategory, subCategory, wallet] = await Promise.all([
       this.userRepo.findOne({ where: { id: dto.userId } }),
       dto.categoryId
         ? this.categoryRepo.findOne({
@@ -51,6 +51,9 @@ export class TransactionService {
             relations: ['category'],
           })
         : Promise.resolve(null),
+      dto.walletId
+        ? this.walletRepo.findOne({ where: { id: dto.walletId } })
+        : Promise.resolve(null),
     ]);
 
     if (!user) throw new NotFoundException('User not found');
@@ -59,6 +62,9 @@ export class TransactionService {
     }
     if (dto.subCategoryId && !subCategory) {
       throw new NotFoundException('Sub category not found');
+    }
+    if (dto.walletId && !wallet) {
+      throw new NotFoundException('Wallet not found');
     }
     const category = requestedCategory ?? subCategory?.category ?? null;
     if (
@@ -87,22 +93,17 @@ export class TransactionService {
       user,
       category,
       subCategory,
-      wallet: dto.walletId ? ({ id: dto.walletId } as any) : null,
+      wallet: wallet ?? null,
       pictureURL: dto.pictureURL,
     });
 
-    if (dto.walletId) {
-      const wallet = await this.walletRepo.findOne({
-        where: { id: dto.walletId },
-      });
-      if (wallet) {
-        const amt = Number(dto.amount);
-        wallet.balance =
-          dto.type === 'income'
-            ? Number(wallet.balance) + amt
-            : Number(wallet.balance) - amt;
-        await this.walletRepo.save(wallet);
-      }
+    if (wallet) {
+      const amt = Number(dto.amount);
+      wallet.balance =
+        dto.type === 'income'
+          ? Number(wallet.balance) + amt
+          : Number(wallet.balance) - amt;
+      await this.walletRepo.save(wallet);
     }
 
     await this.transactionRepo.save(transaction);
