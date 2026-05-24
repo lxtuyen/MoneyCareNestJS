@@ -17,6 +17,7 @@ import { ApiResponse } from 'src/common/dto/api-response.dto';
 import { GoogleLoginDto } from './dto/google-login.dto';
 import { ConfigService } from '@nestjs/config';
 import { OAuth2Client } from 'google-auth-library';
+import { SpendingPlan } from 'src/modules/spending-plans/entities/spending-plan.entity';
 
 @Injectable()
 export class AuthService {
@@ -29,6 +30,8 @@ export class AuthService {
     private readonly profileRepo: Repository<UserProfile>,
     @InjectRepository(Wallet)
     private readonly walletRepo: Repository<Wallet>,
+    @InjectRepository(SpendingPlan)
+    private readonly spendingPlanRepo: Repository<SpendingPlan>,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
   ) {
@@ -110,6 +113,8 @@ export class AuthService {
           profile: user.profile,
           savingGoal: selectedGoal || null,
           role: user.role,
+          shouldRunInitialFinancialSetup:
+            await this.shouldRunInitialFinancialSetup(user.id),
         },
       },
     });
@@ -184,6 +189,8 @@ export class AuthService {
             profile: user.profile,
             savingGoal: selectedGoal,
             role: user.role,
+            shouldRunInitialFinancialSetup:
+              await this.shouldRunInitialFinancialSetup(user.id),
           },
         },
       });
@@ -191,5 +198,13 @@ export class AuthService {
       console.error(error);
       throw new UnauthorizedException('Đăng nhập Google thất bại');
     }
+  }
+
+  private async shouldRunInitialFinancialSetup(userId: number) {
+    const planCount = await this.spendingPlanRepo.count({
+      where: { user: { id: userId } },
+    });
+
+    return planCount === 0;
   }
 }

@@ -1,7 +1,9 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { ApiResponse } from 'src/common/dto/api-response.dto';
+import { ok } from 'src/common/utils/response.util';
 import { Category } from 'src/modules/categories/entities/category.entity';
 import { AiChatRouterService } from './ai-chat-router.service';
+import { AiGeminiClientService } from './ai-gemini-client.service';
 import { AiAnalysisChatService } from './ai-analysis-chat.service';
 import { AiGoalPlanInsightService } from './ai-goal-plan-insight.service';
 import { AiTransactionChatService } from './ai-transaction-chat.service';
@@ -26,6 +28,7 @@ export class AiService {
     private readonly goalPlanInsightService: AiGoalPlanInsightService,
     private readonly transactionChatService: AiTransactionChatService,
     private readonly receiptOcrService: ReceiptOcrService,
+    private readonly geminiClient: AiGeminiClientService,
   ) {}
 
   async handle(

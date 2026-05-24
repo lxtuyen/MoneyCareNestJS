@@ -4,10 +4,11 @@ import { UserService } from './user.service';
 import { UserController } from './user.controller';
 import { TransactionsModule } from 'src/modules/transactions/transactions.module';
 import { User } from './entities/user.entity';
+import { SpendingPlan } from 'src/modules/spending-plans/entities/spending-plan.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([User]),
+    TypeOrmModule.forFeature([User, SpendingPlan]),
     forwardRef(() => TransactionsModule),
   ],
   providers: [UserService],

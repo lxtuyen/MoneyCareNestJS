@@ -119,23 +119,30 @@ export class SpendingPlansService {
   async update(id: number, userId: number, dto: UpdateSpendingPlanDto) {
     const plan = await this.loadPlanForUser(id, userId);
 
-    if (dto.totalAmount !== undefined) plan.totalAmount = dto.totalAmount;
-
+    const nextEstimatedExpenses: EstimatedExpense[] = [];
     if (dto.estimatedExpenses !== undefined) {
-      if (plan.estimatedExpenses?.length) {
-        await this.estimatedExpenseRepo.remove(plan.estimatedExpenses);
-      }
-
-      plan.estimatedExpenses = [];
       for (const expense of dto.estimatedExpenses) {
-        plan.estimatedExpenses.push(
+        nextEstimatedExpenses.push(
           await this.createEstimatedExpenseEntity(expense, plan.user, plan),
         );
       }
     }
 
-    this.applyCalculation(plan);
-    await this.planRepo.save(plan);
+    await this.dataSource.transaction(async (manager) => {
+      if (dto.totalAmount !== undefined) plan.totalAmount = dto.totalAmount;
+
+      if (dto.estimatedExpenses !== undefined) {
+        if (plan.estimatedExpenses?.length) {
+          await manager.remove(EstimatedExpense, plan.estimatedExpenses);
+        }
+
+        plan.estimatedExpenses = nextEstimatedExpenses;
+      }
+
+      this.applyCalculation(plan);
+      await manager.save(SpendingPlan, plan);
+    });
+
     const reloaded = await this.loadPlanForUser(id, userId);
     return ok(await this.enrichPlanUsageForResponse(reloaded, userId));
   }
