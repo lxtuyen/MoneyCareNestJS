@@ -307,7 +307,10 @@ YEU CAU NOI DUNG BAO CAO:
    - Neu tre (vi du: duong 8 ngày): viet "Dự kiến chặng tiết kiệm tháng này sẽ hoàn thành trễ khoảng 8 ngày."
    - Neu dung tien do (0 ngay): "Kế hoạch chặng tháng này của bạn đang rất xuất sắc và đúng tiến độ."
    - Neu tre vo han (999 ngay): "Kế hoạch chặng tháng này dự kiến sẽ không thể hoàn thành nếu không có điều chỉnh kịp thời."
-2. "reason" (Ly do): Phai phan tich sau cac danh muc chi tieu (nhu An uong, Mua sam...) tu snapshot du lieu ben duoi. Chi ra chi tiet va chinh xac nhom nao dang lam anh huong, cham tre hoac thuc day tien do nhieu nhat. (Vi du: "Nhóm Ăn uống dang tieu vuot ke hoach...").
+2. "reason" (Ly do): Phai phan tich sau cac danh muc chi tieu tu snapshot du lieu ben duoi. 
+   - Neu co nhom nao co status="delayed" (actualSpent > plannedToDate): chi ra nhom do dang lam cham tre tien do.
+   - Neu tat ca cac nhom deu co status="on_track" (actualSpent <= plannedToDate): ghi nhan dieu do, khong duoc bịa ra nhom nao dang vuot ke hoach.
+   - TUYET DOI KHONG dung vi du minh hoa nhu "Nhóm Ăn uống" neu du lieu thuc te khong co nhom do bi vuot.
 3. "suggestion" (De xuat): Gợi ý các hành động thực tế, thắt chặt chi tiêu ở nhóm cụ thể nào để đưa kế hoạch trở lại đúng hạn (nếu trễ) hoặc giữ vững phong độ (nếu sớm).
 
 QUY TAC:

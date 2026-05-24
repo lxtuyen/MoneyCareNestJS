@@ -41,6 +41,7 @@ export class SavingGoalsStatisticsService {
     if (!goal) throw new NotFoundException('Saving goal not found');
 
     const categoryMap = new Map<string, number>();
+    // Stats query: exclude transfers to avoid double-counting in totals/categories
     const { income, expense, transactions } =
       await this.calculateDetailedBalance(
         goal.user.id,
@@ -60,7 +61,14 @@ export class SavingGoalsStatisticsService {
       }
     });
 
-    const milestones = this.calculateMilestones(goal, transactions);
+    // Milestone query: include transfers so money deposited into saving wallet is counted
+    const milestoneTransactions = await this.fetchWalletTransactionsForMilestones(
+      goal.user.id,
+      goal.start_date || undefined,
+      goal.end_date || undefined,
+      goal.wallet?.id,
+    );
+    const milestones = this.calculateMilestones(goal, milestoneTransactions, current_automated_balance);
 
     const target = Number(goal.target ?? 0);
     const progress_percent =
@@ -110,29 +118,39 @@ export class SavingGoalsStatisticsService {
       const monthsRemaining = Math.ceil(
         remainingTarget / capacity.monthlySavingCapacity,
       );
-      const projectedDate = new Date();
-      projectedDate.setMonth(projectedDate.getMonth() + monthsRemaining);
+
+      const now = new Date();
+      const projectedDate = new Date(now.getFullYear(), now.getMonth() + monthsRemaining, 1);
 
       let isOnTrack = true;
       let monthsDiff = 0;
       if (goal.end_date) {
         const endDate = new Date(goal.end_date);
-        const projectedMs = projectedDate.getTime() - endDate.getTime();
-        monthsDiff = Math.round(msToDays(projectedMs) / 30);
-        isOnTrack = projectedDate <= endDate;
+        const endDateNormalized = new Date(endDate.getFullYear(), endDate.getMonth(), 1);
+        const diffMonths =
+          (projectedDate.getFullYear() - endDateNormalized.getFullYear()) * 12 +
+          (projectedDate.getMonth() - endDateNormalized.getMonth());
+        isOnTrack = diffMonths <= 0;
+        monthsDiff = Math.abs(diffMonths);
       }
+
+      const requiredMonthlySaving = monthsRemaining > 0
+        ? Math.ceil(remainingTarget / monthsRemaining)
+        : remainingTarget;
 
       projection = {
         monthlySavingCapacity: capacity.monthlySavingCapacity,
+        requiredMonthlySaving,
         monthsRemaining,
         projectedDate: projectedDate.toISOString(),
         isOnTrack,
-        monthsDiff: Math.abs(monthsDiff),
+        monthsDiff,
         hasPlan: true,
       };
     } else {
       projection = {
         monthlySavingCapacity: capacity?.monthlySavingCapacity ?? 0,
+        requiredMonthlySaving: 0,
         monthsRemaining: null,
         projectedDate: null,
         isOnTrack: null,
@@ -189,6 +207,7 @@ export class SavingGoalsStatisticsService {
   private calculateMilestones(
     goal: SavingGoal,
     transactions: Transaction[],
+    currentWalletBalance?: number,
   ): SavingGoalMilestone[] {
     if (!goal.start_date || !goal.end_date) return [];
 
@@ -216,35 +235,49 @@ export class SavingGoalsStatisticsService {
 
     const totalTarget = Number(goal.target ?? 0);
     const results: SavingGoalMilestone[] = [];
+    const now = new Date();
 
     for (let i = 0; i < milestoneDates.length - 1; i++) {
       const mStart = milestoneDates[i];
       const mEnd = milestoneDates[i + 1];
 
       const segmentDays = getDaysDiff(mEnd, mStart);
-
       const targetPerMilestone = (segmentDays / totalDays) * totalTarget;
 
-      const mTransactions = transactions.filter(
-        (t) => t.transaction_date >= mStart && t.transaction_date < mEnd,
-      );
+      // For the current active milestone, use the actual wallet balance
+      // as it reflects the real accumulated savings so far
+      const isCurrentMilestone = now >= mStart && now < mEnd;
+      const isPastMilestone = mEnd <= now;
 
-      const income = mTransactions
-        .filter((t) => t.type === 'income')
-        .reduce((sum, t) => sum + Number(t.amount), 0);
-      const expense = mTransactions
-        .filter((t) => t.type === 'expense')
-        .reduce((sum, t) => sum + Number(t.amount), 0);
+      let actual: number;
 
-      const saved = income - expense;
+      if (isCurrentMilestone && currentWalletBalance !== undefined) {
+        // Current milestone: use real wallet balance (most accurate)
+        actual = currentWalletBalance;
+      } else if (isPastMilestone) {
+        // Past milestones: calculate net flow (income - expense) for that period
+        const mTransactions = transactions.filter(
+          (t) => t.transaction_date >= mStart && t.transaction_date < mEnd,
+        );
+        const income = mTransactions
+          .filter((t) => t.type === 'income')
+          .reduce((sum, t) => sum + Number(t.amount), 0);
+        const expense = mTransactions
+          .filter((t) => t.type === 'expense')
+          .reduce((sum, t) => sum + Number(t.amount), 0);
+        actual = income - expense;
+      } else {
+        // Future milestones: 0
+        actual = 0;
+      }
 
       results.push({
         label: `Tháng ${mStart.getMonth() + 1}/${mStart.getFullYear()}`,
         start_date: mStart,
         end_date: mEnd,
         target: Math.round(targetPerMilestone),
-        actual: saved,
-        is_completed: saved >= targetPerMilestone,
+        actual: Math.round(actual),
+        is_completed: actual >= targetPerMilestone,
       });
     }
 
@@ -261,7 +294,8 @@ export class SavingGoalsStatisticsService {
       .createQueryBuilder('t')
       .leftJoinAndSelect('t.category', 'category')
       .leftJoinAndSelect('t.wallet', 'wallet')
-      .where('t.userId = :userId', { userId });
+      .where('t.userId = :userId', { userId })
+      .andWhere('t.isTransfer = :isTransfer', { isTransfer: false });
 
     if (walletId) {
       query.andWhere('t.walletId = :walletId', { walletId });
@@ -289,5 +323,39 @@ export class SavingGoalsStatisticsService {
     });
 
     return { income, expense, transactions };
+  }
+
+  /**
+   * Fetch ALL transactions for a wallet (including transfers) to accurately
+   * calculate milestone actual savings. Transfers represent money deposited
+   * into the saving goal wallet and must be included.
+   */
+  private async fetchWalletTransactionsForMilestones(
+    userId: number,
+    startDate?: Date,
+    endDate?: Date,
+    walletId?: number,
+  ): Promise<Transaction[]> {
+    const query = this.transactionRepo
+      .createQueryBuilder('t')
+      .leftJoinAndSelect('t.wallet', 'wallet')
+      .where('t.userId = :userId', { userId });
+
+    if (walletId) {
+      query.andWhere('t.walletId = :walletId', { walletId });
+    }
+
+    if (startDate) {
+      query.andWhere('t.transaction_date >= :startDate', {
+        startDate: setStartOfDay(startDate),
+      });
+    }
+    if (endDate) {
+      query.andWhere('t.transaction_date <= :endDate', {
+        endDate: setEndOfDay(endDate),
+      });
+    }
+
+    return query.getMany();
   }
 }

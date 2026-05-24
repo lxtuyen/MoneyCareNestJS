@@ -14,6 +14,7 @@ export interface SavingGoalMilestone {
 
 export interface SavingGoalProjection {
   monthlySavingCapacity: number;
+  requiredMonthlySaving: number;
   monthsRemaining: number | null;
   projectedDate: string | null;
   isOnTrack: boolean | null;
