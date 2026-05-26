@@ -8,9 +8,17 @@ import {
 import { Category } from './entities/category.entity';
 import { SubCategory } from './entities/sub-category.entity';
 import { User } from 'src/modules/user/entities/user.entity';
+import { UserCategoryPreference } from './entities/user-category-preference.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Category, SubCategory, User])],
+  imports: [
+    TypeOrmModule.forFeature([
+      Category,
+      SubCategory,
+      User,
+      UserCategoryPreference,
+    ]),
+  ],
   controllers: [CategoriesController, AdminCategoriesController],
   providers: [CategoriesService],
   exports: [CategoriesService],

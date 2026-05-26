@@ -70,14 +70,16 @@ describe('saving goal proposal helper', () => {
     );
   });
 
-  it('adds one safety month when recommendation would use more than 90 percent of capacity', () => {
-    const result = buildSavingGoalRecommendation(10000000, 5000000);
+  it('estimates the recommendation by days from current saving capacity', () => {
+    const result = buildSavingGoalRecommendation(500000, 250000, 30);
 
     expect(result).toEqual(
       expect.objectContaining({
-        months: 3,
-        suggestedMonthlySaving: 3333334,
-        maxMonthlySaving: 5000000,
+        daysEstimate: 60,
+        months: 2,
+        suggestedDailySaving: 8334,
+        suggestedMonthlySaving: 250000,
+        maxMonthlySaving: 250000,
       }),
     );
   });

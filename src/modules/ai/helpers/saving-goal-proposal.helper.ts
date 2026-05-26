@@ -1,9 +1,9 @@
-import { formatDurationFromMonths } from 'src/common/utils/date.util';
 import { formatVnd } from 'src/common/utils/money.util';
 
 type SavingCapacity = {
   totalAmount: number;
   fixedExpenseTotal: number;
+  monthlySavingCapacity?: number;
 };
 
 type SavingGoalDurationMessageMode =
@@ -33,19 +33,26 @@ type SavingGoalDurationMessageResult = {
 export function buildSavingGoalRecommendation(
   target: number,
   monthlyCapacity: number,
+  daysInMonth = 30,
 ): {
   months: number;
+  daysEstimate: number;
   suggestedMonthlySaving: number;
+  suggestedDailySaving: number;
   maxMonthlySaving: number;
   rawMonths: number;
   rawDurationText: string;
   safetyRatio: number;
 } {
   const maxMonthlySaving = Math.max(0, monthlyCapacity);
+  const normalizedDaysInMonth = Math.max(1, Math.round(daysInMonth || 30));
   if (target <= 0 || maxMonthlySaving <= 0) {
     return {
       months: 6,
+      daysEstimate: normalizedDaysInMonth * 6,
       suggestedMonthlySaving: target > 0 ? Math.round(target / 6) : 0,
+      suggestedDailySaving:
+        target > 0 ? Math.ceil(target / (normalizedDaysInMonth * 6)) : 0,
       maxMonthlySaving,
       rawMonths: 0,
       rawDurationText: '6 tháng',
@@ -53,22 +60,21 @@ export function buildSavingGoalRecommendation(
     };
   }
 
-  const rawMonths = target / maxMonthlySaving;
-  let months = Math.max(1, Math.ceil(rawMonths));
-  let suggestedMonthlySaving = Math.ceil(target / months);
-
-  const safeLimit = maxMonthlySaving * 0.9;
-  if (months > 1 && suggestedMonthlySaving > safeLimit) {
-    months += 1;
-    suggestedMonthlySaving = Math.ceil(target / months);
-  }
+  const dailyCapacity = maxMonthlySaving / normalizedDaysInMonth;
+  const daysEstimate = Math.max(1, Math.ceil(target / dailyCapacity));
+  const rawMonths = daysEstimate / normalizedDaysInMonth;
+  const months = Math.max(1, Math.ceil(rawMonths));
+  const suggestedDailySaving = Math.ceil(target / daysEstimate);
+  const suggestedMonthlySaving = Math.ceil(target / rawMonths);
 
   return {
     months,
+    daysEstimate,
     suggestedMonthlySaving,
+    suggestedDailySaving,
     maxMonthlySaving,
     rawMonths,
-    rawDurationText: formatDurationFromMonths(rawMonths),
+    rawDurationText: formatDurationFromDays(daysEstimate),
     safetyRatio:
       maxMonthlySaving > 0 ? suggestedMonthlySaving / maxMonthlySaving : 0,
   };
@@ -105,6 +111,63 @@ export function buildDurationOptions(
       isRecommended: type === 'recommended',
     };
   });
+}
+
+export function buildDailyDurationOptions(
+  target: number,
+  recommendedDays: number,
+  daysInMonth = 30,
+) {
+  const normalizedDaysInMonth = Math.max(1, Math.round(daysInMonth || 30));
+  const baseDays = Math.max(1, Math.round(recommendedDays || 1));
+  const options = [
+    {
+      type: 'recommended',
+      label: 'Giữ ngân sách',
+      days: baseDays,
+      isRecommended: true,
+    },
+    {
+      type: 'balanced',
+      label: 'Giữ đệm 20%',
+      days: Math.max(baseDays + 1, Math.ceil(baseDays / 0.8)),
+      isRecommended: false,
+    },
+    {
+      type: 'relaxed',
+      label: 'Thoải mái',
+      days: Math.max(baseDays + 2, Math.ceil(baseDays / 0.6)),
+      isRecommended: false,
+    },
+  ];
+
+  return options.map((option) => {
+    const dailySaving = Math.ceil(target / option.days);
+    const monthlySaving = Math.ceil(
+      target / (option.days / normalizedDaysInMonth),
+    );
+    return {
+      type: option.type,
+      label: option.label,
+      days: option.days,
+      daysEstimate: option.days,
+      durationText: formatDurationFromDays(option.days),
+      months: Math.max(1, Math.ceil(option.days / normalizedDaysInMonth)),
+      monthlySaving,
+      dailySaving,
+      isRecommended: option.isRecommended,
+    };
+  });
+}
+
+export function formatDurationFromDays(daysValue: number): string {
+  const days = Math.max(1, Math.round(daysValue || 1));
+  if (days < 30) return `${days} ngày`;
+
+  const months = Math.floor(days / 30);
+  const remainingDays = days % 30;
+  if (remainingDays === 0) return `${months} tháng`;
+  return `${months} tháng ${remainingDays} ngày`;
 }
 
 export function buildSavingGoalDurationMessage(

@@ -1,16 +1,22 @@
 /* eslint-disable no-irregular-whitespace */
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { ok } from 'src/common/utils/response.util';
 import { formatVnd } from 'src/common/utils/money.util';
 import { norm } from 'src/common/utils/string.util';
 import { ApiResponse } from 'src/common/dto/api-response.dto';
 import { Wallet } from 'src/modules/wallets/entities/wallet.entity';
 import { User } from 'src/modules/user/entities/user.entity';
+import {
+  Category,
+  CategoryType,
+} from 'src/modules/categories/entities/category.entity';
+import { UserCategoryPreference } from 'src/modules/categories/entities/user-category-preference.entity';
 import { SpendingPlansService } from 'src/modules/spending-plans/spending-plans.service';
 import { SavingGoalsService } from 'src/modules/saving-goals/saving-goals.service';
 import { WalletsService } from 'src/modules/wallets/wallets.service';
+import { SpendingPlanExpenseFrequency } from 'src/modules/spending-plans/interfaces/spending-plan.enums';
 import { AiGeminiClientService } from './ai-gemini-client.service';
 import {
   getProposeSavingGoalPrompt,
@@ -19,9 +25,10 @@ import {
 } from './config/gemini-tools.config';
 import { AiMessagePrefix } from './types/ai.types';
 import {
-  buildDurationOptions,
+  buildDailyDurationOptions,
   buildSavingGoalDurationMessage,
   buildSavingGoalRecommendation,
+  formatDurationFromDays,
 } from './helpers/saving-goal-proposal.helper';
 
 type ConfirmSavingGoalPayload = {
@@ -30,6 +37,8 @@ type ConfirmSavingGoalPayload = {
   months: number;
   initFund?: number;
   sourceWalletId?: number;
+  totalAmount?: number;
+  budgetItems?: SavingGoalBudgetItemPayload[];
 };
 
 type InitFundPayload = {
@@ -43,8 +52,50 @@ type InitFundPayload = {
 type ChangeDurationPayload = {
   name?: string;
   target: number;
-  months: number;
+  months?: number;
+  days?: number;
+  initFund?: number;
+  sourceWalletId?: number;
 };
+
+type SavingGoalBudgetItemPayload = {
+  categoryId?: number;
+  categoryName?: string;
+  amount: number;
+  monthlyLimit?: number;
+  frequencyType?: SpendingPlanExpenseFrequency;
+  frequencyValue?: number;
+};
+
+type SavingGoalBudgetPlanProposal = {
+  totalAmount: number;
+  budgetItems: SavingGoalBudgetItemPayload[];
+  isCapped?: boolean;
+};
+
+type SavingCapacityContext = {
+  totalAmount: number;
+  fixedExpenseTotal: number;
+  monthlySavingCapacity?: number;
+  dailySavingCapacity?: number;
+  availableSpendingAmount?: number;
+  daysInMonth?: number;
+  currentDay?: number;
+  daysLeft?: number;
+  estimatedExpenses?: SavingGoalBudgetItemPayload[];
+} | null;
+
+const BUDGET_TEMPLATE: Array<{ name: string; weight: number }> = [
+  { name: 'Chợ, siêu thị', weight: 0.2 },
+  { name: 'Ăn uống', weight: 0.16 },
+  { name: 'Di chuyển', weight: 0.12 },
+  { name: 'Hóa đơn', weight: 0.14 },
+  { name: 'Nhà cửa', weight: 0.14 },
+  { name: 'Sức khỏe', weight: 0.08 },
+  { name: 'Mua sắm', weight: 0.07 },
+  { name: 'Giải trí', weight: 0.05 },
+  { name: 'Chi phí phát sinh', weight: 0.04 },
+];
 
 @Injectable()
 export class AiSavingGoalChatService {
@@ -59,6 +110,10 @@ export class AiSavingGoalChatService {
     private readonly walletRepo: Repository<Wallet>,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
+    @InjectRepository(Category)
+    private readonly categoryRepo: Repository<Category>,
+    @InjectRepository(UserCategoryPreference)
+    private readonly userCategoryPreferenceRepo: Repository<UserCategoryPreference>,
   ) {}
 
   isSavingGoalRequest(message: string): boolean {
@@ -97,7 +152,11 @@ export class AiSavingGoalChatService {
         await this.spendingPlansService.getMonthlySavingCapacity(userId);
 
       const plannedSavingCapacity = capacity
-        ? Math.max(0, capacity.totalAmount - capacity.fixedExpenseTotal)
+        ? Math.max(
+            0,
+            capacity.monthlySavingCapacity ??
+              capacity.totalAmount - capacity.fixedExpenseTotal,
+          )
         : 0;
 
       const nowIso = new Date().toISOString();
@@ -130,7 +189,7 @@ export class AiSavingGoalChatService {
         relations: ['savingGoals'],
       });
       const positiveWallets = activeWallets.filter(
-        (w) => w.savingGoals.length === 0 && Number(w.balance) > 0,
+        (w) => (w.savingGoals?.length ?? 0) === 0 && Number(w.balance) > 0,
       );
 
       if (positiveWallets.length > 0 && target > 0) {
@@ -166,8 +225,12 @@ export class AiSavingGoalChatService {
 
       const hasRequestedMonths = requestedMonths > 0;
       let monthsEstimate = Number(args.months_estimate) || 6;
+      let daysEstimate = monthsEstimate * (capacity?.daysInMonth ?? 30);
       let aiMessage = '';
       let suggestedMonthlySaving = Math.round(target / monthsEstimate);
+      let suggestedDailySaving = Math.ceil(
+        suggestedMonthlySaving / (capacity?.daysInMonth ?? 30),
+      );
       let maxMonthlySaving = plannedSavingCapacity;
       let isWarning = false;
 
@@ -183,6 +246,10 @@ export class AiSavingGoalChatService {
           mode: 'new_goal',
         });
         suggestedMonthlySaving = durationMessage.requiredPerMonth;
+        daysEstimate = monthsEstimate * (capacity?.daysInMonth ?? 30);
+        suggestedDailySaving = Math.ceil(
+          suggestedMonthlySaving / (capacity?.daysInMonth ?? 30),
+        );
         maxMonthlySaving = durationMessage.maxMonthlySaving;
         isWarning = durationMessage.isWarning;
         aiMessage = durationMessage.aiMessage;
@@ -190,10 +257,14 @@ export class AiSavingGoalChatService {
         const recommendation = buildSavingGoalRecommendation(
           target,
           plannedSavingCapacity,
+          capacity.daysInMonth ?? 30,
         );
         monthsEstimate = recommendation.months;
+        daysEstimate = recommendation.daysEstimate;
         suggestedMonthlySaving = recommendation.suggestedMonthlySaving;
+        suggestedDailySaving = recommendation.suggestedDailySaving;
         maxMonthlySaving = recommendation.maxMonthlySaving;
+        aiMessage = `Với số dư hiện tại "${formatVnd(recommendation.maxMonthlySaving)}/tháng", bạn cần khoảng "${recommendation.rawDurationText}" để tích lũy đủ "${formatVnd(target)}" cho mục tiêu "${name}". Mỗi ngày cần để dành khoảng "${formatVnd(recommendation.suggestedDailySaving)}". Nếu giữ ngân sách chi tiêu hiện tại, bạn không cần cắt giảm thêm.`;
 
         aiMessage = `Vậy khả năng tiết kiệm hiện tại là "${formatVnd(recommendation.maxMonthlySaving)}/tháng", nếu dùng hết số dư bạn sẽ cần khoảng "${recommendation.rawDurationText}" để tích lũy đủ "${formatVnd(target)}" cho mục tiêu "${name}".\n\n💡 Để kế hoạch dễ theo dõi và không dùng hết toàn bộ số dư mỗi tháng, tôi đề xuất mốc "${recommendation.months} tháng", tương đương khoảng "${formatVnd(recommendation.suggestedMonthlySaving)}/tháng". Bạn vẫn có thể đổi thời gian nếu muốn hoàn thành nhanh hơn hoặc thoải mái hơn.`;
       } else if (capacity) {
@@ -207,10 +278,22 @@ export class AiSavingGoalChatService {
       }
 
       const endDate = new Date();
-      endDate.setMonth(endDate.getMonth() + monthsEstimate);
+      endDate.setDate(endDate.getDate() + Math.max(1, daysEstimate));
       const durationOptions = hasRequestedMonths
         ? []
-        : buildDurationOptions(target, monthsEstimate);
+        : buildDailyDurationOptions(
+            target,
+            daysEstimate,
+            capacity?.daysInMonth ?? 30,
+          );
+      const budgetPlan = await this.buildBudgetPlanProposal(
+        userId,
+        capacity,
+        suggestedMonthlySaving,
+      );
+      if (!hasRequestedMonths && capacity && plannedSavingCapacity > 0) {
+        aiMessage = `Với số dư hiện tại "${formatVnd(maxMonthlySaving)}/tháng", bạn cần khoảng "${formatDurationFromDays(daysEstimate)}" để tích lũy đủ "${formatVnd(target)}" cho mục tiêu "${name}". Mỗi ngày cần để dành khoảng "${formatVnd(suggestedDailySaving)}". Nếu giữ ngân sách chi tiêu hiện tại, bạn không cần cắt giảm thêm.`;
+      }
 
       return ok(
         '',
@@ -218,11 +301,16 @@ export class AiSavingGoalChatService {
           name,
           target,
           monthsEstimate,
+          daysEstimate,
           endDate: endDate.toISOString(),
           monthlySavingCapacity: plannedSavingCapacity,
+          dailySavingCapacity: capacity?.dailySavingCapacity ?? 0,
+          totalAmount: budgetPlan.totalAmount,
           suggestedMonthlySaving,
+          suggestedDailySaving,
           maxMonthlySaving,
           durationOptions,
+          budgetItems: budgetPlan.budgetItems,
           hasPlan: !!capacity,
           isImpossible: false,
           isWarning,
@@ -269,7 +357,11 @@ export class AiSavingGoalChatService {
       const capacity =
         await this.spendingPlansService.getMonthlySavingCapacity(userId);
       const plannedSavingCapacity = capacity
-        ? Math.max(0, capacity.totalAmount - capacity.fixedExpenseTotal)
+        ? Math.max(
+            0,
+            capacity.monthlySavingCapacity ??
+              capacity.totalAmount - capacity.fixedExpenseTotal,
+          )
         : 0;
       const suggestedMonthlySaving = Math.round(
         Number(target) / monthsEstimate,
@@ -318,6 +410,16 @@ export class AiSavingGoalChatService {
         aiMessage = `Tuyệt vời! Tôi đã tạo thành công mục tiêu "${name}" với số tiền cần tích lũy là "${formatVnd(target)}" trong vòng "${monthsEstimate} tháng". Đồng thời, tôi đã tự động trích "${formatVnd(activeInitFund)}" từ "${sourceWalletName}" chuyển sang ví tích lũy "${createdGoal?.wallet?.name}" của mục tiêu này làm vốn ban đầu!`;
       }
 
+      const spendingPlanResult = await this.createAndActivateSuggestedPlan(
+        userId,
+        payload,
+        suggestedMonthlySaving,
+      );
+      if (spendingPlanResult.created) {
+        aiMessage +=
+          ' Tôi cũng đã tạo và kích hoạt kế hoạch chi tiêu mới theo ngân sách đề xuất.';
+      }
+
       return {
         success: true,
         statusCode: 200,
@@ -330,6 +432,7 @@ export class AiSavingGoalChatService {
           monthlySavingCapacity: plannedSavingCapacity,
           suggestedMonthlySaving,
           maxMonthlySaving: plannedSavingCapacity,
+          spendingPlanId: spendingPlanResult.planId,
           hasPlan: !!capacity,
           initFund: activeInitFund,
           sourceWalletId: activeSourceWalletId,
@@ -366,7 +469,11 @@ export class AiSavingGoalChatService {
       const capacity =
         await this.spendingPlansService.getMonthlySavingCapacity(userId);
       const plannedSavingCapacity = capacity
-        ? Math.max(0, capacity.totalAmount - capacity.fixedExpenseTotal)
+        ? Math.max(
+            0,
+            capacity.monthlySavingCapacity ??
+              capacity.totalAmount - capacity.fixedExpenseTotal,
+          )
         : 0;
       const activeWallets = await this.walletRepo.find({
         where: { user: { id: userId }, is_active: true },
@@ -378,18 +485,26 @@ export class AiSavingGoalChatService {
 
       const parsedRequestedMonths = Number(requestedMonths) || 0;
       const hasRequestedMonths = parsedRequestedMonths > 0;
+      const daysInMonth = capacity?.daysInMonth ?? 30;
       let monthsEstimate = 6;
+      let daysEstimate = monthsEstimate * daysInMonth;
       let suggestedMonthlySaving = Math.round(remainingTarget / monthsEstimate);
+      let suggestedDailySaving = Math.ceil(
+        suggestedMonthlySaving / daysInMonth,
+      );
       let maxMonthlySaving = plannedSavingCapacity;
       let isWarning = false;
       let aiMessage = '';
 
       if (remainingTarget <= 0) {
         monthsEstimate = 0;
+        daysEstimate = 0;
         suggestedMonthlySaving = 0;
+        suggestedDailySaving = 0;
         aiMessage = `Tuyệt vời! Bạn trích "${formatVnd(activeInitFund)}" từ "${sourceWalletName}" làm vốn ban đầu, đủ để hoàn thành mục tiêu "${name}" trị giá "${formatVnd(target)}" ngay lập tức! Bạn có muốn tiến hành tạo mục tiêu ngay không?`;
       } else if (hasRequestedMonths) {
         monthsEstimate = Math.max(1, Math.round(parsedRequestedMonths));
+        daysEstimate = monthsEstimate * daysInMonth;
         const durationMessage = buildSavingGoalDurationMessage({
           name,
           target: Number(target),
@@ -402,6 +517,7 @@ export class AiSavingGoalChatService {
           sourceWalletName,
         });
         suggestedMonthlySaving = durationMessage.requiredPerMonth;
+        suggestedDailySaving = Math.ceil(suggestedMonthlySaving / daysInMonth);
         maxMonthlySaving = durationMessage.maxMonthlySaving;
         isWarning = durationMessage.isWarning;
         aiMessage = durationMessage.aiMessage;
@@ -409,28 +525,51 @@ export class AiSavingGoalChatService {
         const recommendation = buildSavingGoalRecommendation(
           remainingTarget,
           plannedSavingCapacity,
+          daysInMonth,
         );
         monthsEstimate = recommendation.months;
+        daysEstimate = recommendation.daysEstimate;
         suggestedMonthlySaving = recommendation.suggestedMonthlySaving;
+        suggestedDailySaving = recommendation.suggestedDailySaving;
         maxMonthlySaving = recommendation.maxMonthlySaving;
 
         aiMessage = `Sau khi trích "${formatVnd(activeInitFund)}" từ "${sourceWalletName}" làm vốn ban đầu, bạn còn thiếu "${formatVnd(remainingTarget)}" cho mục tiêu "${name}".\n\n💡 Để kế hoạch thoải mái, tôi đề xuất mốc "${recommendation.months} tháng", tương đương khoảng "${formatVnd(recommendation.suggestedMonthlySaving)}/tháng" (nằm trong khả năng tiết kiệm "${formatVnd(plannedSavingCapacity)}/tháng" của bạn).`;
       } else if (capacity) {
         monthsEstimate = 6;
+        daysEstimate = monthsEstimate * daysInMonth;
         suggestedMonthlySaving = Math.round(remainingTarget / 6);
+        suggestedDailySaving = Math.ceil(suggestedMonthlySaving / daysInMonth);
         aiMessage = `Tôi đã ghi nhận mục tiêu "${name}" (còn thiếu "${formatVnd(remainingTarget)}" sau khi trích "${formatVnd(activeInitFund)}" từ "${sourceWalletName}"). Vì kế hoạch chi tiêu hiện tại của bạn chưa có thặng dư để tích lũy (khả năng tiết kiệm hiện tại là 0đ/tháng), tôi đề xuất thời gian tích lũy là "6 tháng" (tương đương khoảng "${formatVnd(suggestedMonthlySaving)}/tháng"). Bạn có thể điều chỉnh kế hoạch chi tiêu để gia tăng tích lũy nhé!`;
       } else {
         monthsEstimate = 6;
+        daysEstimate = monthsEstimate * daysInMonth;
         suggestedMonthlySaving = Math.round(remainingTarget / 6);
+        suggestedDailySaving = Math.ceil(suggestedMonthlySaving / daysInMonth);
         aiMessage = `Tôi đã ghi nhận mục tiêu "${name}" (còn thiếu "${formatVnd(remainingTarget)}" sau khi trích "${formatVnd(activeInitFund)}" từ "${sourceWalletName}"). Vì bạn chưa có Kế hoạch chi tiêu, tôi đề xuất thời gian tích lũy là "6 tháng" (tương đương khoảng "${formatVnd(suggestedMonthlySaving)}/tháng").`;
       }
 
       const endDate = new Date();
-      endDate.setMonth(endDate.getMonth() + (monthsEstimate || 1));
+      endDate.setDate(endDate.getDate() + Math.max(1, daysEstimate));
       const durationOptions =
         hasRequestedMonths || remainingTarget <= 0
           ? []
-          : buildDurationOptions(remainingTarget, monthsEstimate);
+          : buildDailyDurationOptions(
+              remainingTarget,
+              daysEstimate,
+              daysInMonth,
+            );
+      const budgetPlan = await this.buildBudgetPlanProposal(
+        userId,
+        capacity,
+        suggestedMonthlySaving,
+      );
+      if (
+        !hasRequestedMonths &&
+        remainingTarget > 0 &&
+        plannedSavingCapacity > 0
+      ) {
+        aiMessage = `Sau khi trích "${formatVnd(activeInitFund)}" từ "${sourceWalletName}" làm vốn ban đầu, bạn còn thiếu "${formatVnd(remainingTarget)}" cho mục tiêu "${name}". Với số dư hiện tại "${formatVnd(maxMonthlySaving)}/tháng", bạn cần khoảng "${formatDurationFromDays(daysEstimate)}". Mỗi ngày cần để dành khoảng "${formatVnd(suggestedDailySaving)}".`;
+      }
 
       return {
         success: true,
@@ -442,11 +581,16 @@ export class AiSavingGoalChatService {
           sourceWalletId: activeSourceWalletId,
           remainingTarget,
           monthsEstimate,
+          daysEstimate,
           endDate: endDate.toISOString(),
           monthlySavingCapacity: plannedSavingCapacity,
+          dailySavingCapacity: capacity?.dailySavingCapacity ?? 0,
+          totalAmount: budgetPlan.totalAmount,
           suggestedMonthlySaving,
+          suggestedDailySaving,
           maxMonthlySaving,
           durationOptions,
+          budgetItems: budgetPlan.budgetItems,
           hasPlan: !!capacity,
           isImpossible: false,
           isWarning,
@@ -475,30 +619,62 @@ export class AiSavingGoalChatService {
         '/change_saving_goal_duration',
       );
 
-      const { name, target, months } = payload;
-      const requestedMonths = Math.max(1, Number(months));
+      const { name, target, months, days, initFund, sourceWalletId } = payload;
+      const activeInitFund = Number(initFund) || 0;
+      const remainingTarget = Math.max(0, Number(target) - activeInitFund);
 
       const capacity =
         await this.spendingPlansService.getMonthlySavingCapacity(userId);
       const plannedSavingCapacity = capacity
-        ? Math.max(0, capacity.totalAmount - capacity.fixedExpenseTotal)
+        ? Math.max(
+            0,
+            capacity.monthlySavingCapacity ??
+              capacity.totalAmount - capacity.fixedExpenseTotal,
+          )
         : 0;
-      const requiredPerMonth = Math.round(target / requestedMonths);
+      const daysInMonth = capacity?.daysInMonth ?? 30;
+      const requestedDays = Math.max(
+        1,
+        Math.round(Number(days) || Number(months) * daysInMonth || daysInMonth),
+      );
+      const requestedMonths = Math.max(
+        1,
+        Math.ceil(requestedDays / daysInMonth),
+      );
+      const requiredPerDay = Math.ceil(remainingTarget / requestedDays);
+      const requiredPerMonth = Math.ceil(
+        remainingTarget / (requestedDays / daysInMonth),
+      );
       const maxMonthlySaving = plannedSavingCapacity;
 
       const durationMessage = buildSavingGoalDurationMessage({
         name,
         target,
-        amountToSave: target,
+        amountToSave: remainingTarget,
         months: requestedMonths,
         capacity,
         plannedSavingCapacity,
-        mode: 'change_duration',
+        mode: activeInitFund > 0 ? 'with_init_fund' : 'change_duration',
+        initFund: activeInitFund,
+        sourceWalletName: sourceWalletId ? 'ví đã chọn' : '',
       });
 
       const endDate = new Date();
-      endDate.setMonth(endDate.getMonth() + requestedMonths);
-      const durationOptions = buildDurationOptions(target, requestedMonths);
+      endDate.setDate(endDate.getDate() + requestedDays);
+      const durationOptions = buildDailyDurationOptions(
+        remainingTarget,
+        requestedDays,
+        daysInMonth,
+      );
+      const budgetPlan = await this.buildBudgetPlanProposal(
+        userId,
+        capacity,
+        requiredPerMonth,
+      );
+      const aiMessage =
+        remainingTarget <= 0
+          ? durationMessage.aiMessage
+          : `Nếu hoàn thành trong "${formatDurationFromDays(requestedDays)}", bạn cần để dành khoảng "${formatVnd(requiredPerDay)}/ngày" cho mục tiêu "${name}". Tính theo tháng là khoảng "${formatVnd(requiredPerMonth)}/tháng".`;
 
       return {
         success: true,
@@ -506,15 +682,23 @@ export class AiSavingGoalChatService {
         message: `${AiMessagePrefix.SAVING_GOAL_PROPOSAL}${JSON.stringify({
           name,
           target,
+          initFund: activeInitFund,
+          sourceWalletId: Number(sourceWalletId) || 0,
+          remainingTarget,
           monthsEstimate: requestedMonths,
+          daysEstimate: requestedDays,
           monthlySavingCapacity: plannedSavingCapacity,
+          dailySavingCapacity: capacity?.dailySavingCapacity ?? 0,
+          totalAmount: budgetPlan.totalAmount,
           suggestedMonthlySaving: requiredPerMonth,
+          suggestedDailySaving: requiredPerDay,
           maxMonthlySaving,
           durationOptions,
+          budgetItems: budgetPlan.budgetItems,
           hasPlan: !!capacity,
           isImpossible: false,
           isWarning: durationMessage.isWarning,
-          aiMessage: durationMessage.aiMessage,
+          aiMessage,
           endDate: endDate.toISOString(),
         })}`,
       };
@@ -526,6 +710,247 @@ export class AiSavingGoalChatService {
         message:
           'Có lỗi xảy ra khi điều chỉnh thời gian mục tiêu. Vui lòng thử lại!',
       };
+    }
+  }
+
+  private async buildBudgetPlanProposal(
+    userId: number,
+    capacity: SavingCapacityContext,
+    suggestedMonthlySaving: number,
+  ): Promise<SavingGoalBudgetPlanProposal> {
+    const monthlySaving = Math.max(0, Math.round(suggestedMonthlySaving || 0));
+    const totalAmount = Math.max(
+      0,
+      Math.round(
+        Number(capacity?.totalAmount ?? 0) ||
+          (monthlySaving > 0 ? monthlySaving * 5 : 0),
+      ),
+    );
+    const expenseBudget = Math.max(0, totalAmount - monthlySaving);
+    if (expenseBudget <= 0) {
+      return { totalAmount, budgetItems: [] };
+    }
+
+    const baselineItems = (capacity?.estimatedExpenses ?? [])
+      .map((item) => {
+        const monthlyLimit = Math.max(
+          0,
+          Math.round(Number(item.monthlyLimit ?? item.amount) || 0),
+        );
+        return {
+          categoryId: Number(item.categoryId) || undefined,
+          categoryName: item.categoryName || 'Khoản chi',
+          amount: monthlyLimit,
+          monthlyLimit,
+          frequencyType:
+            item.frequencyType ?? SpendingPlanExpenseFrequency.MONTHLY,
+          frequencyValue: Math.max(1, Number(item.frequencyValue) || 1),
+        };
+      })
+      .filter((item) => item.monthlyLimit > 0);
+
+    if (baselineItems.length) {
+      const baselineTotal = baselineItems.reduce(
+        (sum, item) => sum + item.monthlyLimit,
+        0,
+      );
+      if (expenseBudget >= baselineTotal) {
+        return { totalAmount, budgetItems: baselineItems };
+      }
+
+      const requiredReduction = baselineTotal - expenseBudget;
+      const reductions = this.allocateCappedReductions(
+        baselineItems.map((item) => item.monthlyLimit),
+        requiredReduction,
+      );
+      const budgetItems = baselineItems
+        .map((item, index) => {
+          const amount = Math.max(
+            0,
+            Math.round(item.monthlyLimit - reductions[index]),
+          );
+          return {
+            ...item,
+            amount,
+            monthlyLimit: amount,
+          };
+        })
+        .filter((item) => item.monthlyLimit > 0);
+      const appliedReduction = reductions.reduce(
+        (sum, value) => sum + value,
+        0,
+      );
+
+      return {
+        totalAmount,
+        budgetItems,
+        isCapped: appliedReduction + 1 < requiredReduction,
+      };
+    }
+
+    const budgetTemplate = await this.buildUserBudgetTemplate(userId);
+
+    const budgetItems = budgetTemplate.flatMap(({ category, weight }) => {
+      if (!category) return [];
+
+      const amount = Math.round(expenseBudget * weight);
+      if (amount <= 0) return [];
+
+      return [
+        {
+          categoryId: category.id,
+          categoryName: category.name,
+          amount,
+          monthlyLimit: amount,
+          frequencyType: SpendingPlanExpenseFrequency.MONTHLY,
+          frequencyValue: 1,
+        },
+      ];
+    });
+
+    return { totalAmount, budgetItems };
+  }
+
+  private allocateCappedReductions(
+    amounts: number[],
+    requiredReduction: number,
+  ): number[] {
+    const reductions = amounts.map(() => 0);
+    let remainingReduction = Math.max(0, requiredReduction);
+    let adjustableIndexes = amounts
+      .map((amount, index) => ({ amount, index }))
+      .filter((item) => item.amount > 0);
+
+    while (remainingReduction > 0.5 && adjustableIndexes.length) {
+      const totalRemainingCap = adjustableIndexes.reduce(
+        (sum, item) => sum + item.amount * 0.1 - reductions[item.index],
+        0,
+      );
+      if (totalRemainingCap <= 0) break;
+
+      let appliedInRound = 0;
+      for (const item of adjustableIndexes) {
+        const remainingCap = Math.max(
+          0,
+          item.amount * 0.1 - reductions[item.index],
+        );
+        if (remainingCap <= 0) continue;
+
+        const reduction = Math.min(
+          remainingCap,
+          remainingReduction * (remainingCap / totalRemainingCap),
+        );
+        reductions[item.index] += reduction;
+        appliedInRound += reduction;
+      }
+
+      if (appliedInRound <= 0) break;
+      remainingReduction -= appliedInRound;
+      adjustableIndexes = adjustableIndexes.filter(
+        (item) => item.amount * 0.1 - reductions[item.index] > 0.5,
+      );
+    }
+
+    return reductions;
+  }
+
+  private async buildUserBudgetTemplate(
+    userId: number,
+  ): Promise<Array<{ category: Category; weight: number }>> {
+    const preferences = await this.userCategoryPreferenceRepo.find({
+      where: {
+        user: { id: userId },
+        isEssential: true,
+        category: { type: CategoryType.EXPENSE },
+      },
+      relations: ['category'],
+      order: { id: 'ASC' },
+    });
+
+    const preferredCategories = preferences
+      .map((preference) => preference.category)
+      .filter((category): category is Category => !!category);
+
+    if (preferredCategories.length) {
+      const templateWeights = new Map(
+        BUDGET_TEMPLATE.map((item) => [norm(item.name), item.weight]),
+      );
+      const weighted = preferredCategories.map((category) => ({
+        category,
+        weight:
+          templateWeights.get(norm(category.name)) ??
+          1 / preferredCategories.length,
+      }));
+      const totalWeight = weighted.reduce((sum, item) => sum + item.weight, 0);
+      return weighted.map((item) => ({
+        category: item.category,
+        weight: totalWeight > 0 ? item.weight / totalWeight : 0,
+      }));
+    }
+
+    const categoryNames = BUDGET_TEMPLATE.map((item) => item.name);
+    const categories = await this.categoryRepo.find({
+      where: {
+        name: In(categoryNames),
+        type: CategoryType.EXPENSE,
+        is_system: true,
+      },
+    });
+    const categoriesByName = new Map(
+      categories.map((category) => [category.name, category]),
+    );
+
+    return BUDGET_TEMPLATE.flatMap((template) => {
+      const category = categoriesByName.get(template.name);
+      return category ? [{ category, weight: template.weight }] : [];
+    });
+  }
+
+  private async createAndActivateSuggestedPlan(
+    userId: number,
+    payload: ConfirmSavingGoalPayload,
+    fallbackSuggestedMonthlySaving: number,
+  ): Promise<{ created: boolean; planId?: number }> {
+    const normalizedItems = (payload.budgetItems ?? [])
+      .map((item) => ({
+        categoryId: Number(item.categoryId) || undefined,
+        category: item.categoryName,
+        amount: Math.max(0, Math.round(Number(item.amount) || 0)),
+        monthlyLimit: Math.max(
+          0,
+          Math.round(Number(item.monthlyLimit ?? item.amount) || 0),
+        ),
+        frequencyType:
+          item.frequencyType ?? SpendingPlanExpenseFrequency.MONTHLY,
+        frequencyValue: Math.max(1, Number(item.frequencyValue) || 1),
+      }))
+      .filter((item) => item.amount > 0 && (item.categoryId || item.category));
+
+    const totalAmount = Math.max(
+      0,
+      Math.round(
+        Number(payload.totalAmount) ||
+          normalizedItems.reduce((sum, item) => sum + item.amount, 0) +
+            Math.max(0, fallbackSuggestedMonthlySaving),
+      ),
+    );
+
+    try {
+      const createResult = await this.spendingPlansService.create(userId, {
+        totalAmount,
+        estimatedExpenses: normalizedItems,
+      });
+      const planId = createResult.data?.id;
+      if (!planId) return { created: false };
+
+      await this.spendingPlansService.activate(planId, userId);
+      return { created: true, planId };
+    } catch (error) {
+      this.logger.error(
+        'Failed to create and activate suggested spending plan',
+        error,
+      );
+      return { created: false };
     }
   }
 }

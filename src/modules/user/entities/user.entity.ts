@@ -6,6 +6,7 @@ import { UserProfile } from 'src/modules/user-profile/entities/user-profile.enti
 import { Notification } from 'src/modules/notifications/entities/notification.entity';
 import { Wallet } from 'src/modules/wallets/entities/wallet.entity';
 import { GamificationEntity } from 'src/modules/gamification/entities/gamification.entity';
+import { UserCategoryPreference } from 'src/modules/categories/entities/user-category-preference.entity';
 import {
   Entity,
   PrimaryGeneratedColumn,
@@ -51,6 +52,9 @@ export class User {
 
   @OneToMany(() => Category, (category) => category.user)
   categories!: Category[];
+
+  @OneToMany(() => UserCategoryPreference, (preference) => preference.user)
+  categoryPreferences!: UserCategoryPreference[];
 
   @OneToMany(() => Transaction, (trans) => trans.user)
   transactions!: Transaction[];

@@ -20,6 +20,7 @@ import { FinancialInsightsService } from './financial-insights.service';
 import { SpendingPlansModule } from 'src/modules/spending-plans/spending-plans.module';
 import { SavingGoalsModule } from 'src/modules/saving-goals/saving-goals.module';
 import { WalletsModule } from 'src/modules/wallets/wallets.module';
+import { UserCategoryPreference } from 'src/modules/categories/entities/user-category-preference.entity';
 
 @Global()
 @Module({
@@ -31,6 +32,7 @@ import { WalletsModule } from 'src/modules/wallets/wallets.module';
       User,
       Transaction,
       Wallet,
+      UserCategoryPreference,
     ]),
     TransactionsModule,
     SpendingPlansModule,

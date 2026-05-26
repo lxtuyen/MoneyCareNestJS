@@ -6,18 +6,22 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { Category, CategoryType } from './entities/category.entity';
 import { SubCategory } from './entities/sub-category.entity';
+import { User } from 'src/modules/user/entities/user.entity';
+import { UserCategoryPreference } from './entities/user-category-preference.entity';
 import { CreateCategoryDto } from './dto/create-category.dto';
+import { UpdateEssentialExpenseCategoriesDto } from './dto/update-essential-expense-categories.dto';
 import {
   CreateSubCategoryDto,
   UpdateSubCategoryDto,
 } from './dto/sub-category.dto';
 import { ApiResponse } from 'src/common/dto/api-response.dto';
+import { ok } from 'src/common/utils/response.util';
 import {
+  SYSTEM_CATEGORY_RENAME_ALIASES,
   SYSTEM_CATEGORY_SEEDS,
-  SYSTEM_SUB_CATEGORY_SEED_GROUPS,
 } from './categories.seed';
 
 @Injectable()
@@ -27,6 +31,10 @@ export class CategoriesService implements OnModuleInit {
     private categoryRepo: Repository<Category>,
     @InjectRepository(SubCategory)
     private subCategoryRepo: Repository<SubCategory>,
+    @InjectRepository(User)
+    private userRepo: Repository<User>,
+    @InjectRepository(UserCategoryPreference)
+    private preferenceRepo: Repository<UserCategoryPreference>,
   ) {}
 
   async onModuleInit() {
@@ -34,49 +42,72 @@ export class CategoriesService implements OnModuleInit {
   }
 
   private async seedSystemCategories() {
+    await this.renameLegacySystemCategories();
+
     for (const cat of SYSTEM_CATEGORY_SEEDS) {
       const exists = await this.categoryRepo.findOne({
         where: { name: cat.name, is_system: true, type: cat.type },
       });
       if (!exists) {
         await this.categoryRepo.save(this.categoryRepo.create(cat));
+      } else if (exists.icon !== cat.icon) {
+        exists.icon = cat.icon;
+        await this.categoryRepo.save(exists);
       }
     }
 
-    await this.seedSystemSubCategories();
+    await this.hideLegacySystemCategories();
+    await this.retireSystemSubCategories();
   }
 
-  private async seedSystemSubCategories() {
-    const categories = await this.categoryRepo.find({
-      where: { is_system: true, type: CategoryType.EXPENSE },
+  private async renameLegacySystemCategories() {
+    for (const alias of SYSTEM_CATEGORY_RENAME_ALIASES) {
+      const legacy = await this.categoryRepo.findOne({
+        where: { name: alias.from, is_system: true, type: alias.type },
+      });
+      if (!legacy) continue;
+
+      const target = await this.categoryRepo.findOne({
+        where: { name: alias.to, is_system: true, type: alias.type },
+      });
+
+      if (target && target.id !== legacy.id) {
+        legacy.is_system = false;
+        await this.categoryRepo.save(legacy);
+      } else {
+        const seed = SYSTEM_CATEGORY_SEEDS.find(
+          (cat) => cat.name === alias.to && cat.type === alias.type,
+        );
+        legacy.name = alias.to;
+        legacy.icon = seed?.icon ?? legacy.icon;
+        await this.categoryRepo.save(legacy);
+      }
+    }
+  }
+
+  private async hideLegacySystemCategories() {
+    const desiredKeys = new Set(
+      SYSTEM_CATEGORY_SEEDS.map((cat) => `${cat.type}:${cat.name}`),
+    );
+    const systemCategories = await this.categoryRepo.find({
+      where: { is_system: true },
     });
 
-    for (const [categoryName, subCategories] of Object.entries(
-      SYSTEM_SUB_CATEGORY_SEED_GROUPS,
-    )) {
-      const category = categories.find((cat) => cat.name === categoryName);
-      if (!category) continue;
+    for (const category of systemCategories) {
+      if (desiredKeys.has(`${category.type}:${category.name}`)) continue;
+      category.is_system = false;
+      await this.categoryRepo.save(category);
+    }
+  }
 
-      for (const subCategory of subCategories) {
-        const exists = await this.subCategoryRepo.findOne({
-          where: {
-            name: subCategory.name,
-            category: { id: category.id },
-            is_system: true,
-          },
-          relations: ['category'],
-        });
-        if (!exists) {
-          await this.subCategoryRepo.save(
-            this.subCategoryRepo.create({
-              ...subCategory,
-              type: category.type,
-              category,
-              is_system: true,
-            }),
-          );
-        }
-      }
+  private async retireSystemSubCategories() {
+    const subCategories = await this.subCategoryRepo.find({
+      where: { is_system: true },
+    });
+
+    for (const subCategory of subCategories) {
+      subCategory.deleted_at = new Date();
+      await this.subCategoryRepo.save(subCategory);
     }
   }
 
@@ -92,6 +123,74 @@ export class CategoriesService implements OnModuleInit {
       statusCode: HttpStatus.OK,
       data: categories,
     });
+  }
+
+  async findEssentialExpensePreferences(
+    userId: number,
+  ): Promise<ApiResponse<{ categoryIds: number[] }>> {
+    const preferences = await this.preferenceRepo.find({
+      where: {
+        user: { id: userId },
+        isEssential: true,
+        category: { type: CategoryType.EXPENSE },
+      },
+      relations: ['category'],
+      order: { id: 'ASC' },
+    });
+
+    return ok({
+      categoryIds: preferences
+        .map((preference) => preference.category?.id)
+        .filter((id): id is number => Number.isInteger(id)),
+    });
+  }
+
+  async updateEssentialExpensePreferences(
+    userId: number,
+    dto: UpdateEssentialExpenseCategoriesDto,
+  ): Promise<ApiResponse<{ categoryIds: number[] }>> {
+    const user = await this.userRepo.findOne({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found');
+
+    const categoryIds = [...new Set(dto.categoryIds ?? [])];
+    const categories = categoryIds.length
+      ? await this.categoryRepo.find({
+          where: { id: In(categoryIds), type: CategoryType.EXPENSE },
+        })
+      : [];
+
+    if (categories.length !== categoryIds.length) {
+      throw new BadRequestException('Chỉ được chọn danh mục chi tiêu hợp lệ');
+    }
+
+    const existingExpensePreferences = await this.preferenceRepo.find({
+      where: {
+        user: { id: userId },
+        category: { type: CategoryType.EXPENSE },
+      },
+      relations: ['category'],
+    });
+
+    if (existingExpensePreferences.length) {
+      await this.preferenceRepo.remove(existingExpensePreferences);
+    }
+
+    if (categories.length) {
+      await this.preferenceRepo.save(
+        categories.map((category) =>
+          this.preferenceRepo.create({
+            user,
+            category,
+            isEssential: true,
+          }),
+        ),
+      );
+    }
+
+    return ok(
+      { categoryIds },
+      'Cập nhật danh mục chi tiêu thiết yếu thành công',
+    );
   }
 
   async findAllForAdmin(): Promise<ApiResponse<Category[]>> {

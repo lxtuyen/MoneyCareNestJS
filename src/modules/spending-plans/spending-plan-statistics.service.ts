@@ -143,9 +143,7 @@ export class SpendingPlanStatisticsService {
       }
     }
 
-    const remainingAmount = roundMoney(
-      plan.totalAmount - spentAmount,
-    );
+    const remainingAmount = roundMoney(plan.totalAmount - spentAmount);
     const daysPassed = Math.max(1, getReportDay(period));
     const daysInMonth = this.calculator.getDaysInMonth(
       period.month,
@@ -266,9 +264,21 @@ export class SpendingPlanStatisticsService {
   async getMonthlySavingCapacity(userId: number): Promise<{
     projectedEndBalance: number;
     monthlySavingCapacity: number;
+    dailySavingCapacity: number;
     totalAmount: number;
     fixedExpenseTotal: number;
     availableSpendingAmount: number;
+    daysInMonth: number;
+    currentDay: number;
+    daysLeft: number;
+    estimatedExpenses: Array<{
+      categoryId?: number;
+      categoryName: string;
+      amount: number;
+      monthlyLimit: number;
+      frequencyType: SpendingPlanExpenseFrequency;
+      frequencyValue: number;
+    }>;
   } | null> {
     let plan = await this.findActivePlanEntity(userId);
     if (!plan) {
@@ -288,16 +298,37 @@ export class SpendingPlanStatisticsService {
 
     const period = this.getCurrentPeriod();
     const context = await this.buildExpenseContext(plan, userId, period);
+    const daysInMonth = this.calculator.getDaysInMonth(
+      period.month,
+      period.year,
+    );
+    const currentDay = getReportDay(period);
+    const daysLeft = getDaysLeftInMonthPeriod(period);
 
     const projectedEndBalance = context.projectedEndBalance;
-    const monthlySavingCapacity = roundMoney(Math.max(0, projectedEndBalance));
+    const monthlySavingCapacity = roundMoney(
+      Math.max(0, Number(plan.availableSpendingAmount ?? 0)),
+    );
+    const dailySavingCapacity = roundMoney(monthlySavingCapacity / daysInMonth);
 
     return {
       projectedEndBalance,
       monthlySavingCapacity,
+      dailySavingCapacity,
       totalAmount: Number(plan.totalAmount ?? 0),
       fixedExpenseTotal: Number(plan.estimatedExpenseTotal ?? 0),
       availableSpendingAmount: Number(plan.availableSpendingAmount ?? 0),
+      daysInMonth,
+      currentDay,
+      daysLeft,
+      estimatedExpenses: context.planItems.map((item) => ({
+        categoryId: item.category?.id,
+        categoryName: item.category?.name ?? 'Khoản chi',
+        amount: Number(item.amount ?? 0),
+        monthlyLimit: Number(item.monthlyLimit ?? item.amount ?? 0),
+        frequencyType: item.frequencyType,
+        frequencyValue: item.frequencyValue,
+      })),
     };
   }
 }

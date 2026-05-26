@@ -103,6 +103,11 @@ export class WalletsService {
 
   async remove(id: number, user: User): Promise<ApiResponse<void>> {
     const wallet = await this.findWalletOrThrow(id, user);
+
+    if (Number(wallet.balance) !== 0) {
+      throw new BadRequestException('Không thể xóa ví đang có số dư');
+    }
+
     wallet.is_active = false;
     await this.walletRepository.save(wallet);
 
