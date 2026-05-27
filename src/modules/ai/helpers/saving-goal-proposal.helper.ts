@@ -1,4 +1,4 @@
-import { formatVnd } from 'src/common/utils/money.util';
+import { formatVnd, roundVndUp } from 'src/common/utils/money.util';
 
 type SavingCapacity = {
   totalAmount: number;
@@ -16,6 +16,7 @@ type SavingGoalDurationMessageInput = {
   target: number;
   amountToSave: number;
   months: number;
+  days?: number;
   capacity: SavingCapacity | null | undefined;
   plannedSavingCapacity: number;
   mode: SavingGoalDurationMessageMode;
@@ -50,9 +51,9 @@ export function buildSavingGoalRecommendation(
     return {
       months: 6,
       daysEstimate: normalizedDaysInMonth * 6,
-      suggestedMonthlySaving: target > 0 ? Math.round(target / 6) : 0,
+      suggestedMonthlySaving: target > 0 ? roundVndUp(target / 6) : 0,
       suggestedDailySaving:
-        target > 0 ? Math.ceil(target / (normalizedDaysInMonth * 6)) : 0,
+        target > 0 ? roundVndUp(target / (normalizedDaysInMonth * 6)) : 0,
       maxMonthlySaving,
       rawMonths: 0,
       rawDurationText: '6 tháng',
@@ -64,8 +65,8 @@ export function buildSavingGoalRecommendation(
   const daysEstimate = Math.max(1, Math.ceil(target / dailyCapacity));
   const rawMonths = daysEstimate / normalizedDaysInMonth;
   const months = Math.max(1, Math.ceil(rawMonths));
-  const suggestedDailySaving = Math.ceil(target / daysEstimate);
-  const suggestedMonthlySaving = Math.ceil(target / rawMonths);
+  const suggestedDailySaving = roundVndUp(target / daysEstimate);
+  const suggestedMonthlySaving = roundVndUp(target / rawMonths);
 
   return {
     months,
@@ -107,7 +108,7 @@ export function buildDurationOptions(
             ? 'Khuyến nghị'
             : 'Thoải mái',
       months,
-      monthlySaving: Math.ceil(target / months),
+      monthlySaving: roundVndUp(target / months),
       isRecommended: type === 'recommended',
     };
   });
@@ -133,17 +134,11 @@ export function buildDailyDurationOptions(
       days: Math.max(baseDays + 1, Math.ceil(baseDays / 0.8)),
       isRecommended: false,
     },
-    {
-      type: 'relaxed',
-      label: 'Thoải mái',
-      days: Math.max(baseDays + 2, Math.ceil(baseDays / 0.6)),
-      isRecommended: false,
-    },
   ];
 
   return options.map((option) => {
-    const dailySaving = Math.ceil(target / option.days);
-    const monthlySaving = Math.ceil(
+    const dailySaving = roundVndUp(target / option.days);
+    const monthlySaving = roundVndUp(
       target / (option.days / normalizedDaysInMonth),
     );
     return {
@@ -156,6 +151,7 @@ export function buildDailyDurationOptions(
       monthlySaving,
       dailySaving,
       isRecommended: option.isRecommended,
+      preserveCurrentBudget: option.type === 'recommended',
     };
   });
 }
@@ -170,6 +166,13 @@ export function formatDurationFromDays(daysValue: number): string {
   return `${months} tháng ${remainingDays} ngày`;
 }
 
+function getDurationText(months: number, days?: number): string {
+  if (days !== undefined && days > 0) {
+    return formatDurationFromDays(days);
+  }
+  return `${months} tháng`;
+}
+
 export function buildSavingGoalDurationMessage(
   input: SavingGoalDurationMessageInput,
 ): SavingGoalDurationMessageResult {
@@ -178,16 +181,14 @@ export function buildSavingGoalDurationMessage(
     target,
     amountToSave,
     months,
+    days,
     capacity,
     plannedSavingCapacity,
     mode,
     initFund = 0,
     sourceWalletName = '',
   } = input;
-  const requiredPerMonth =
-    mode === 'change_duration'
-      ? Math.round(amountToSave / months)
-      : Math.ceil(amountToSave / months);
+  const requiredPerMonth = roundVndUp(amountToSave / months);
   const maxMonthlySaving = plannedSavingCapacity;
 
   if (!capacity) {
@@ -197,6 +198,7 @@ export function buildSavingGoalDurationMessage(
         target,
         amountToSave,
         months,
+        days,
         requiredPerMonth,
         mode,
         initFund,
@@ -218,6 +220,7 @@ export function buildSavingGoalDurationMessage(
         name,
         amountToSave,
         months,
+        days,
         requiredPerMonth,
         mode,
         income,
@@ -238,6 +241,7 @@ export function buildSavingGoalDurationMessage(
         name,
         amountToSave,
         months,
+        days,
         requiredPerMonth,
         mode,
         plannedSavingCapacity,
@@ -254,6 +258,7 @@ export function buildSavingGoalDurationMessage(
       name,
       amountToSave,
       months,
+      days,
       requiredPerMonth,
       mode,
       plannedSavingCapacity,
@@ -271,80 +276,88 @@ function buildNoPlanMessage(input: {
   target: number;
   amountToSave: number;
   months: number;
+  days?: number;
   requiredPerMonth: number;
   mode: SavingGoalDurationMessageMode;
   initFund: number;
   sourceWalletName: string;
 }): string {
+  const durationText = getDurationText(input.months, input.days);
   if (input.mode === 'change_duration') {
-    return `Bạn muốn hoàn thành mục tiêu "${input.name}" (${formatVnd(input.target)}) trong vòng "${input.months} tháng" (cần tích lũy khoảng "${formatVnd(input.requiredPerMonth)}/tháng"). Hãy tạo kế hoạch chi tiêu trước để xem chi tiết mức độ khả thi nhé!`;
+    return `Bạn muốn hoàn thành mục tiêu "${input.name}" (${formatVnd(input.target)}) trong vòng "${durationText}" (cần tích lũy khoảng "${formatVnd(input.requiredPerMonth)}/tháng"). Hãy tạo kế hoạch chi tiêu trước để xem chi tiết mức độ khả thi nhé!`;
   }
 
   if (input.mode === 'with_init_fund') {
-    return `Tôi đã ghi nhận mục tiêu "${input.name}" với số tiền còn thiếu "${formatVnd(input.amountToSave)}" (sau khi trích "${formatVnd(input.initFund)}" từ "${input.sourceWalletName}") trong "${input.months} tháng", tương đương khoảng "${formatVnd(input.requiredPerMonth)}/tháng". Hãy tạo kế hoạch chi tiêu trước để xem chi tiết mức độ khả thi nhé!`;
+    return `Tôi đã ghi nhận mục tiêu "${input.name}" với số tiền còn thiếu "${formatVnd(input.amountToSave)}" (sau khi trích "${formatVnd(input.initFund)}" từ "${input.sourceWalletName}") trong "${durationText}", tương đương khoảng "${formatVnd(input.requiredPerMonth)}/tháng". Hãy tạo kế hoạch chi tiêu trước để xem chi tiết mức độ khả thi nhé!`;
   }
 
-  return `Tôi đã ghi nhận mục tiêu "${input.name}" với số tiền "${formatVnd(input.target)}" trong "${input.months} tháng", tương đương khoảng "${formatVnd(input.requiredPerMonth)}/tháng". Vì bạn chưa thiết lập Kế hoạch chi tiêu, tôi chưa thể đánh giá chính xác mức độ khả thi.`;
+  return `Tôi đã ghi nhận mục tiêu "${input.name}" với số tiền "${formatVnd(input.target)}" trong "${durationText}", tương đương khoảng "${formatVnd(input.requiredPerMonth)}/tháng". Vì bạn chưa thiết lập Kế hoạch chi tiêu, tôi chưa thể đánh giá chính xác mức độ khả thi.`;
 }
 
 function buildOverFixedCapacityMessage(input: {
   name?: string;
   amountToSave: number;
   months: number;
+  days?: number;
   requiredPerMonth: number;
   mode: SavingGoalDurationMessageMode;
   income: number;
   fixedExpense: number;
   maxPossibleSaving: number;
 }): string {
+  const durationText = getDurationText(input.months, input.days);
   if (input.mode === 'change_duration') {
-    return `⚠️ Cảnh báo: Để hoàn thành trong "${input.months} tháng", bạn cần tiết kiệm đến "${formatVnd(input.requiredPerMonth)}/tháng". Nhưng với thu nhập hiện tại của bạn là "${formatVnd(input.income)}" và chi phí cố định là "${formatVnd(input.fixedExpense)}", mức tối đa hiện tại chỉ khoảng "${formatVnd(input.maxPossibleSaving)}/tháng". Bạn vẫn có thể tạo mục tiêu này nếu muốn thử thách bản thân, nhưng nên chuẩn bị phương án tăng thu nhập hoặc giảm thêm chi phí.`;
+    return `⚠️ Cảnh báo: Để hoàn thành trong "${durationText}", bạn cần tích lũy "${formatVnd(input.requiredPerMonth)}/tháng". Nhưng với thu nhập hiện tại là "${formatVnd(input.income)}" và chi phí cố định là "${formatVnd(input.fixedExpense)}", mức tối đa hiện tại chỉ khoảng "${formatVnd(input.maxPossibleSaving)}/tháng". Bạn nên kéo dài thời gian hoặc tăng nguồn tích lũy để kế hoạch dễ theo hơn.`;
   }
 
   if (input.mode === 'with_init_fund') {
-    return `⚠️ Cảnh báo: Bạn muốn hoàn thành mục tiêu "${input.name}" trong "${input.months} tháng", cần tiết kiệm khoảng "${formatVnd(input.requiredPerMonth)}/tháng" cho phần còn thiếu "${formatVnd(input.amountToSave)}". Nhưng với thu nhập hiện tại và chi phí cố định, mức tối đa chỉ khoảng "${formatVnd(input.maxPossibleSaving)}/tháng".`;
+    return `⚠️ Cảnh báo: Bạn muốn hoàn thành mục tiêu "${input.name}" trong "${durationText}", cần tiết kiệm khoảng "${formatVnd(input.requiredPerMonth)}/tháng" cho phần còn thiếu "${formatVnd(input.amountToSave)}". Nhưng với thu nhập hiện tại và chi phí cố định, mức tối đa chỉ khoảng "${formatVnd(input.maxPossibleSaving)}/tháng".`;
   }
 
-  return `⚠️ Cảnh báo: Bạn muốn hoàn thành mục tiêu "${input.name}" trong "${input.months} tháng", cần tiết kiệm khoảng "${formatVnd(input.requiredPerMonth)}/tháng". Nhưng với thu nhập hiện tại là "${formatVnd(input.income)}" và chi phí cố định là "${formatVnd(input.fixedExpense)}", mức tối đa hiện tại chỉ khoảng "${formatVnd(input.maxPossibleSaving)}/tháng". Bạn vẫn có thể tạo mục tiêu này nếu muốn thử thách bản thân.`;
+  return `⚠️ Cảnh báo: Bạn muốn hoàn thành mục tiêu "${input.name}" trong "${durationText}", cần tiết kiệm khoảng "${formatVnd(input.requiredPerMonth)}/tháng". Nhưng với thu nhập hiện tại là "${formatVnd(input.income)}" và chi phí cố định là "${formatVnd(input.fixedExpense)}", mức tối đa hiện tại chỉ khoảng "${formatVnd(input.maxPossibleSaving)}/tháng". Bạn vẫn có thể tạo mục tiêu này nếu muốn thử thách bản thân.`;
 }
 
 function buildOverPlannedCapacityMessage(input: {
   name?: string;
   amountToSave: number;
   months: number;
+  days?: number;
   requiredPerMonth: number;
   mode: SavingGoalDurationMessageMode;
   plannedSavingCapacity: number;
   extraNeeded: number;
 }): string {
+  const durationText = getDurationText(input.months, input.days);
   if (input.mode === 'change_duration') {
-    return `⚠️ Cần điều chỉnh chi tiêu linh hoạt! Để hoàn thành trong "${input.months} tháng", bạn cần tiết kiệm "${formatVnd(input.requiredPerMonth)}/tháng". Khả năng hiện tại của bạn là "${formatVnd(input.plannedSavingCapacity)}/tháng", nghĩa là bạn cần cắt giảm thêm khoảng "${formatVnd(input.extraNeeded)}/tháng" từ các khoản chi tiêu linh hoạt trong kế hoạch của mình. Bạn vẫn có thể tạo mục tiêu nếu chấp nhận mức thử thách này.`;
+    return `⚠️ Mốc "${durationText}" khá gắt so với kế hoạch hiện tại. Bạn cần tích lũy "${formatVnd(input.requiredPerMonth)}/tháng", trong khi khả năng hiện tại là "${formatVnd(input.plannedSavingCapacity)}/tháng". Bạn có thể kéo dài thời gian hoặc tăng nguồn tích lũy để dễ theo hơn.`;
   }
 
   if (input.mode === 'with_init_fund') {
-    return `⚠️ Để hoàn thành mục tiêu "${input.name}" trong "${input.months} tháng", bạn cần tiết kiệm khoảng "${formatVnd(input.requiredPerMonth)}/tháng" cho phần còn thiếu "${formatVnd(input.amountToSave)}", cao hơn khả năng hiện tại khoảng "${formatVnd(input.extraNeeded)}/tháng". Bạn vẫn có thể tạo mục tiêu nếu chấp nhận điều chỉnh chi tiêu.`;
+    return `⚠️ Để hoàn thành mục tiêu "${input.name}" trong "${durationText}", bạn cần tiết kiệm khoảng "${formatVnd(input.requiredPerMonth)}/tháng" cho phần còn thiếu "${formatVnd(input.amountToSave)}", cao hơn khả năng hiện tại khoảng "${formatVnd(input.extraNeeded)}/tháng". Bạn vẫn có thể tạo mục tiêu nếu chấp nhận điều chỉnh chi tiêu.`;
   }
 
-  return `⚠️ Để hoàn thành mục tiêu "${input.name}" trong "${input.months} tháng", bạn cần tiết kiệm khoảng "${formatVnd(input.requiredPerMonth)}/tháng", cao hơn khả năng hiện tại khoảng "${formatVnd(input.extraNeeded)}/tháng". Bạn vẫn có thể tạo mục tiêu nếu chấp nhận điều chỉnh chi tiêu.`;
+  return `⚠️ Để hoàn thành mục tiêu "${input.name}" trong "${durationText}", bạn cần tiết kiệm khoảng "${formatVnd(input.requiredPerMonth)}/tháng", cao hơn khả năng hiện tại khoảng "${formatVnd(input.extraNeeded)}/tháng". Bạn vẫn có thể tạo mục tiêu nếu chấp nhận điều chỉnh chi tiêu.`;
 }
 
 function buildFeasibleMessage(input: {
   name?: string;
   amountToSave: number;
   months: number;
+  days?: number;
   requiredPerMonth: number;
   mode: SavingGoalDurationMessageMode;
   plannedSavingCapacity: number;
   initFund: number;
   sourceWalletName: string;
 }): string {
+  const durationText = getDurationText(input.months, input.days);
   if (input.mode === 'change_duration') {
-    return `✨ Tuyệt vời! Kế hoạch tài chính hiện tại của bạn dư sức đạt được mục tiêu này trong "${input.months} tháng" với mức tiết kiệm chỉ "${formatVnd(input.requiredPerMonth)}/tháng" (thấp hơn khả năng tiết kiệm tối đa "${formatVnd(input.plannedSavingCapacity)}/tháng" của bạn).`;
+    return `✨ Tuyệt vời! Kế hoạch tài chính hiện tại của bạn dư sức đạt được mục tiêu này trong "${durationText}" với mức tiết kiệm chỉ "${formatVnd(input.requiredPerMonth)}/tháng" (thấp hơn khả năng tiết kiệm tối đa "${formatVnd(input.plannedSavingCapacity)}/tháng" của bạn).`;
   }
 
   if (input.mode === 'with_init_fund') {
-    return `Tôi đã ghi nhận mục tiêu "${input.name}" trong "${input.months} tháng" với số tiền còn lại cần tích lũy là "${formatVnd(input.amountToSave)}" (đã trích "${formatVnd(input.initFund)}" từ "${input.sourceWalletName}"). Với mức cần tiết kiệm khoảng "${formatVnd(input.requiredPerMonth)}/tháng", kế hoạch này nằm trong khả năng tiết kiệm hiện tại "${formatVnd(input.plannedSavingCapacity)}/tháng" của bạn.`;
+    return `Tôi đã ghi nhận mục tiêu "${input.name}" trong "${durationText}" với số tiền còn lại cần tích lũy là "${formatVnd(input.amountToSave)}" (đã trích "${formatVnd(input.initFund)}" từ "${input.sourceWalletName}"). Với mức cần tiết kiệm khoảng "${formatVnd(input.requiredPerMonth)}/tháng", kế hoạch này nằm trong khả năng tiết kiệm hiện tại "${formatVnd(input.plannedSavingCapacity)}/tháng" của bạn.`;
   }
 
-  return `Tôi đã ghi nhận mục tiêu "${input.name}" trong "${input.months} tháng". Với mức cần tiết kiệm khoảng "${formatVnd(input.requiredPerMonth)}/tháng", kế hoạch này nằm trong khả năng tiết kiệm hiện tại "${formatVnd(input.plannedSavingCapacity)}/tháng" của bạn.`;
+  return `Tôi đã ghi nhận mục tiêu "${input.name}" trong "${durationText}". Với mức cần tiết kiệm khoảng "${formatVnd(input.requiredPerMonth)}/tháng", kế hoạch này nằm trong khả năng tiết kiệm hiện tại "${formatVnd(input.plannedSavingCapacity)}/tháng" của bạn.`;
 }

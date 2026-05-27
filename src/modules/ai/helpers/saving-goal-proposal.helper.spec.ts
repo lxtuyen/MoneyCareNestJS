@@ -77,7 +77,7 @@ describe('saving goal proposal helper', () => {
       expect.objectContaining({
         daysEstimate: 60,
         months: 2,
-        suggestedDailySaving: 8334,
+        suggestedDailySaving: 9000,
         suggestedMonthlySaving: 250000,
         maxMonthlySaving: 250000,
       }),

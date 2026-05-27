@@ -157,7 +157,13 @@ export function getProposeSavingGoalTool() {
                 requested_months: {
                   type: Type.NUMBER,
                   description:
-                    'So thang nguoi dung yeu cau ro trong tin nhan; null neu khong co',
+                    'So thang nguoi dung yeu cau ro trong tin nhan (vi du "trong 5 thang" -> 5); null neu khong co',
+                  nullable: true,
+                },
+                requested_days: {
+                  type: Type.NUMBER,
+                  description:
+                    'So ngay nguoi dung yeu cau ro trong tin nhan (vi du "trong 14 ngay" -> 14); null neu khong co',
                   nullable: true,
                 },
               },
@@ -257,9 +263,11 @@ ${capacityContext}
 QUY TAC:
 1. name: Ten muc tieu (vd: "Mua dien thoai", "Du lich Da Nang").
 2. target: So tien muc tieu (VND). Neu nguoi dung noi "3 trieu" -> 3000000, "500k" -> 500000.
-3. requested_months: So thang nguoi dung noi ro trong tin nhan. Vi du "trong 5 thang", "5 thang nua", "trong vong 5 thang" -> 5. Neu nguoi dung KHONG noi thoi gian cu the thi tra ve null.
-4. months_estimate: Uoc tinh so thang can thiet = target / kha_nang_tiet_kiem_moi_thang. Lam tron len.
+3. requested_months: So thang nguoi dung noi ro trong tin nhan. Vi du "trong 5 thang", "5 thang nua", "trong vong 5 thang" -> 5. Neu nguoi dung noi thoi gian theo ngay thi de requested_months la null.
+4. requested_days: So ngay nguoi dung noi ro trong tin nhan. Vi du "trong 14 ngay", "14 ngay nua", "trong vong 10 ngay" -> 14 hoac 10. Neu nguoi dung noi thoi gian theo thang thi de requested_days la null.
+5. months_estimate: Uoc tinh so thang can thiet = target / kha_nang_tiet_kiem_moi_thang. Lam tron len.
    Neu khong co ke hoach chi tieu, hay uoc tinh khoang 6 thang. Neu co requested_months thi months_estimate van co the bang requested_months.
+   Neu co requested_days thi months_estimate bang requested_days / 30.
 
 Hom nay la ${nowIso}.
 Tin nhan: "${message}"`;
