@@ -13,6 +13,8 @@ import {
   ReceiptRuleCandidate,
   ScanReceiptModel,
   ScanReceiptResponse,
+  ScanReceiptItem,
+  ScanReceiptResponseItem,
 } from './types/receipt.types';
 import { AiGeminiClientService } from './ai-gemini-client.service';
 
@@ -106,6 +108,30 @@ export class ReceiptOcrService {
     const parsedAmount = coerceMoneyAmount(raw.totalAmount);
     const ruleAmount = coerceMoneyAmount(ruleCandidate.totalAmount);
 
+    const items: ScanReceiptItem[] = [];
+    if (Array.isArray(raw.items)) {
+      for (const item of raw.items) {
+        if (item && typeof item === 'object') {
+          const record = item as Record<string, unknown>;
+          const name = coerceString(record.name);
+          if (name) {
+            const price = coerceMoneyAmount(record.price);
+            const quantity = Number(record.quantity) || 1;
+            const amount =
+              coerceMoneyAmount(record.amount) || price * quantity;
+            const categoryName = coerceString(record.categoryName) || 'Khác';
+            items.push({
+              name,
+              price,
+              quantity,
+              amount,
+              categoryName,
+            });
+          }
+        }
+      }
+    }
+
     return {
       rawText: rawText || coerceString(raw.rawText),
       merchantName: coerceString(raw.merchantName),
@@ -115,6 +141,8 @@ export class ReceiptOcrService {
       currency: coerceString(raw.currency) || ruleCandidate.currency || 'VND',
       categoryKey: coerceString(raw.categoryKey),
       categoryName: coerceString(raw.categoryName),
+      suggestedNote: coerceString(raw.suggestedNote),
+      items: items.length > 0 ? items : undefined,
     };
   }
 
@@ -129,6 +157,15 @@ export class ReceiptOcrService {
       category_key: result.categoryKey,
       category_name: result.categoryName,
       suggested_note: result.suggestedNote,
+      items: result.items
+        ? result.items.map((item) => ({
+            name: item.name,
+            price: item.price,
+            quantity: item.quantity,
+            amount: item.amount,
+            category_name: item.categoryName,
+          }))
+        : undefined,
     };
   }
 
@@ -159,7 +196,16 @@ export class ReceiptOcrService {
    "currency": "VND",
    "categoryKey": string,
    "categoryName": string,
-   "suggestedNote": string
+   "suggestedNote": string,
+   "items": [
+     {
+       "name": string,
+       "price": integer,
+       "quantity": integer,
+       "amount": integer,
+       "categoryName": string
+     }
+   ]
  }
  
  NGUON DU LIEU:
@@ -180,6 +226,12 @@ export class ReceiptOcrService {
  - Neu la sieu thi, cho, thuc pham tuoi song -> Chon "Di cho" hoac "Mua sam".
  - Neu khong co cai nao hop le, hay tra ve "Khac".
  - Luu y: Neu day khong phai la hoa don (vd: trang sach, van ban khong lien quan), hay tra ve JSON voi totalAmount: 0.
+ 
+ QUY TAC PHAN LOAI VAT PHAM (ITEMS):
+ - Voi moi vat pham (item) trong danh sach "items", ban phai tu dong phan tich ten vat pham va chon categoryName phu hop nhat tu danh sach nay: [${categoryNames}].
+ - TUYET DOI KHONG tu y tao ra ten danh muc moi cho vat pham. Neu khong chac chan, hay chon "Khac".
+ - Vi du: "Sua tuoi TH True Milk" -> Chon "Di cho", "Oc huong xao bo" -> Chon "An uong", "Panadol" -> Chon "Suc khoe".
+ - amount cua moi vat pham phai la so nguyen bang price * quantity.
  
  QUY TAC TRICH XUAT:
  1. Khong duoc tu bia du lieu. 

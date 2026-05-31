@@ -151,6 +151,7 @@ export class FinancialInsightsService {
       .createQueryBuilder('transaction')
       .leftJoin('transaction.user', 'user')
       .leftJoin('transaction.category', 'category')
+      .leftJoin('transaction.wallet', 'wallet')
       .where('user.id = :userId', { userId })
       .andWhere('transaction.type = :type', { type })
       .andWhere('transaction.transaction_date BETWEEN :start AND :end', {
@@ -159,11 +160,15 @@ export class FinancialInsightsService {
       });
 
     if (type === 'expense' && (goalId ?? 0) > 0) {
-      query
-        .leftJoin('category.savingGoal', 'savingGoal')
-        .andWhere('savingGoal.id = :goalId', {
-          goalId,
+      const goal = await this.goalRepo.findOne({
+        where: { id: goalId },
+        relations: ['wallet'],
+      });
+      if (goal?.wallet) {
+        query.andWhere('wallet.id = :walletId', {
+          walletId: goal.wallet.id,
         });
+      }
     }
 
     const raw = await query
@@ -218,6 +223,7 @@ export class FinancialInsightsService {
       .createQueryBuilder('transaction')
       .leftJoin('transaction.user', 'user')
       .leftJoin('transaction.category', 'category')
+      .leftJoin('transaction.wallet', 'wallet')
       .where('user.id = :userId', { userId })
       .andWhere('transaction.type = :type', { type: 'expense' })
       .andWhere('transaction.transaction_date BETWEEN :start AND :end', {
@@ -226,11 +232,15 @@ export class FinancialInsightsService {
       });
 
     if (goalId > 0) {
-      query
-        .leftJoin('category.savingGoal', 'savingGoal')
-        .andWhere('savingGoal.id = :goalId', {
-          goalId,
+      const goal = await this.goalRepo.findOne({
+        where: { id: goalId },
+        relations: ['wallet'],
+      });
+      if (goal?.wallet) {
+        query.andWhere('wallet.id = :walletId', {
+          walletId: goal.wallet.id,
         });
+      }
     }
 
     return query

@@ -93,11 +93,14 @@ export interface MapTransactionInput {
   note?: string;
   transaction_date?: string | Date;
   transactionDate?: string | Date;
+  walletId?: number;
   category?: {
+    id?: number;
     name?: string;
     icon?: string | null;
   } | null;
   subCategory?: {
+    id?: number;
     name?: string;
     icon?: string | null;
   } | null;

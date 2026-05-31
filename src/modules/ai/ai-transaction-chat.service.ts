@@ -104,10 +104,21 @@ export class AiTransactionChatService {
       type: t.type,
       note: t.note,
       date: t.transaction_date ?? t.transactionDate,
-      category: t.category?.name,
-      categoryIcon: t.category?.icon,
-      subCategory: t.subCategory?.name ?? null,
-      subCategoryIcon: t.subCategory?.icon ?? null,
+      walletId: t.walletId,
+      category: t.category
+        ? {
+            id: t.category.id,
+            name: t.category.name,
+            icon: t.category.icon,
+          }
+        : null,
+      subCategory: t.subCategory
+        ? {
+            id: t.subCategory.id,
+            name: t.subCategory.name,
+            icon: t.subCategory.icon,
+          }
+        : null,
     };
   }
 
@@ -157,7 +168,8 @@ export class AiTransactionChatService {
     return typeCategories.find(
       (category) =>
         norm(category.name).includes('khac') ||
-        norm(category.name).includes('chua phan loai'),
+        norm(category.name).includes('chua phan loai') ||
+        norm(category.name).includes('chi phi phat sinh'),
     );
   }
 
@@ -166,13 +178,17 @@ export class AiTransactionChatService {
     type: 'income' | 'expense',
   ): Promise<Category | null> {
     const allCategories = await this.categoryRepo.find({
-      where: { user: { id: userId }, type: type as Category['type'] },
+      where: [
+        { user: { id: userId }, type: type as Category['type'] },
+        { is_system: true, type: type as Category['type'] },
+      ],
     });
     return (
       allCategories.find(
         (c) =>
           norm(c.name).includes('khac') ||
-          norm(c.name).includes('chua phan loai'),
+          norm(c.name).includes('chua phan loai') ||
+          norm(c.name).includes('chi phi phat sinh'),
       ) || null
     );
   }
@@ -470,7 +486,8 @@ export class AiTransactionChatService {
           subCategoryId: pickedSubCategory?.id,
           walletId: walletId,
         };
-        await this.transactionService.create(dto);
+        const createdResult = await this.transactionService.create(dto);
+        const createdTransaction = createdResult.data;
 
         return {
           success: true,
@@ -478,13 +495,15 @@ export class AiTransactionChatService {
           message: `${AiMessagePrefix.TRANSACTION_SAVED}${JSON.stringify({
             ...this.mapToAiTransaction({
               ...dto,
-              id: undefined,
+              id: createdTransaction?.id,
               category: {
+                id: pickedCategory?.id,
                 name: pickedCategory?.name,
                 icon: pickedCategory?.icon,
               },
               subCategory: pickedSubCategory
                 ? {
+                    id: pickedSubCategory.id,
                     name: pickedSubCategory.name,
                     icon: pickedSubCategory.icon,
                   }
@@ -527,6 +546,110 @@ export class AiTransactionChatService {
       }
 
       const data = scanResult.data;
+
+      let walletId: number | undefined;
+      let selectedWallet: Wallet | null = null;
+
+      if (goalId > 0) {
+        const selectedGoal = await this.goalRepo.findOne({
+          where: { id: goalId },
+          relations: ['wallet'],
+        });
+        if (selectedGoal?.wallet && selectedGoal.wallet.is_active) {
+          walletId = selectedGoal.wallet.id;
+          selectedWallet = selectedGoal.wallet;
+        }
+      }
+
+      if (!walletId && wallets.length > 0) {
+        walletId = wallets[0].id;
+        selectedWallet = wallets[0];
+      }
+
+      const transactionDateStr =
+        data.date && isValidDate(data.date)
+          ? new Date(data.date).toISOString()
+          : new Date().toISOString();
+
+      // Check if we extracted receipt items
+      if (data.items && data.items.length > 0) {
+        const savedTransactions: any[] = [];
+
+        for (const item of data.items) {
+          let itemCategory = this.pickCategoryByName(
+            categories,
+            item.category_name,
+            'expense',
+          );
+
+          if (item.category_name) {
+            const aiMatch = categories.find(
+              (c) =>
+                norm(c.name).includes(norm(item.category_name)) ||
+                norm(item.category_name).includes(norm(c.name)),
+            );
+            if (aiMatch) itemCategory = aiMatch;
+          }
+
+          if (!itemCategory) {
+            const fallback = await this.getFallbackCategoryFromDB(
+              userId,
+              'expense',
+            );
+            if (fallback) itemCategory = fallback;
+          }
+
+          const itemAmount = item.amount || item.price * item.quantity;
+
+          const dto: CreateTransactionDto = {
+            userId,
+            type: 'expense',
+            amount: itemAmount,
+            note: data.merchant_name
+              ? `${data.merchant_name} - ${item.name} (x${item.quantity})`
+              : `${item.name} (x${item.quantity})`,
+            transactionDate: transactionDateStr,
+            categoryId: itemCategory?.id,
+            walletId: walletId,
+          };
+
+          const createdResult = await this.transactionService.create(dto);
+          const createdTransaction = createdResult.data;
+
+          const mapped = {
+            ...this.mapToAiTransaction({
+              ...dto,
+              id: createdTransaction?.id,
+              category: {
+                id: itemCategory?.id,
+                name: itemCategory?.name,
+                icon: itemCategory?.icon,
+              },
+            }),
+            walletName: selectedWallet?.name,
+            note: dto.note,
+            isAutoFromReceipt: true,
+          };
+          savedTransactions.push(mapped);
+        }
+
+        if (savedTransactions.length > 0) {
+          return ok(
+            '',
+            `${AiMessagePrefix.TRANSACTION_LIST}${JSON.stringify({
+              query: {
+                type: 'expense',
+                startDate: data.date,
+                endDate: data.date,
+              },
+              transactions: savedTransactions,
+              total: savedTransactions.length,
+            })}`,
+          );
+        }
+      }
+
+      // Fallback to saving a single transaction if no items were extracted or saved
       let amount = data.total_amount;
 
       if (amount <= 0 && ocrText) {
@@ -571,25 +694,6 @@ export class AiTransactionChatService {
         if (fallback) pickedCategory = fallback;
       }
 
-      let walletId: number | undefined;
-      let selectedWallet: Wallet | null = null;
-
-      if (goalId > 0) {
-        const selectedGoal = await this.goalRepo.findOne({
-          where: { id: goalId },
-          relations: ['wallet'],
-        });
-        if (selectedGoal?.wallet && selectedGoal.wallet.is_active) {
-          walletId = selectedGoal.wallet.id;
-          selectedWallet = selectedGoal.wallet;
-        }
-      }
-
-      if (!walletId && wallets.length > 0) {
-        walletId = wallets[0].id;
-        selectedWallet = wallets[0];
-      }
-
       const dto: CreateTransactionDto = {
         userId,
         type: 'expense',
@@ -597,23 +701,22 @@ export class AiTransactionChatService {
         note:
           data.suggested_note ||
           `Hóa đơn tại ${data.merchant_name || 'Cửa hàng'}`,
-        transactionDate:
-          data.date && isValidDate(data.date)
-            ? new Date(data.date).toISOString()
-            : new Date().toISOString(),
+        transactionDate: transactionDateStr,
         categoryId: pickedCategory?.id,
         walletId: walletId,
       };
 
-      await this.transactionService.create(dto);
+      const createdResult = await this.transactionService.create(dto);
+      const createdTransaction = createdResult.data;
 
       return ok(
         '',
         `${AiMessagePrefix.TRANSACTION_SAVED}${JSON.stringify({
           ...this.mapToAiTransaction({
             ...dto,
-            id: undefined,
+            id: createdTransaction?.id,
             category: {
+              id: pickedCategory?.id,
               name: pickedCategory?.name,
               icon: pickedCategory?.icon,
             },

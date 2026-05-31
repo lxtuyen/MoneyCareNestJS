@@ -15,6 +15,22 @@ export interface ReceiptRuleCandidate {
   warnings?: string[];
 }
 
+export interface ScanReceiptItem {
+  name: string;
+  price: number;
+  quantity: number;
+  amount: number;
+  categoryName: string;
+}
+
+export interface ScanReceiptResponseItem {
+  name: string;
+  price: number;
+  quantity: number;
+  amount: number;
+  category_name: string;
+}
+
 export interface ScanReceiptModel {
   rawText: string;
   merchantName: string;
@@ -25,6 +41,7 @@ export interface ScanReceiptModel {
   categoryKey: string;
   categoryName: string;
   suggestedNote?: string;
+  items?: ScanReceiptItem[];
 }
 
 export interface ScanReceiptResponse {
@@ -37,4 +54,5 @@ export interface ScanReceiptResponse {
   category_key: string;
   category_name: string;
   suggested_note?: string;
+  items?: ScanReceiptResponseItem[];
 }
