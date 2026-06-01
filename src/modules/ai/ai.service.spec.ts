@@ -27,6 +27,7 @@ describe('AiService facade', () => {
       goalPlanInsightService as unknown as AiGoalPlanInsightService,
       transactionChatService as unknown as AiTransactionChatService,
       receiptOcrService as unknown as ReceiptOcrService,
+      {} as any,
     );
   });
 
