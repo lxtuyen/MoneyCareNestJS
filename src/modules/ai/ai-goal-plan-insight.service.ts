@@ -90,19 +90,39 @@ export class AiGoalPlanInsightService {
           if (currentMilestone) {
             Tm = Number(currentMilestone.target || 0);
             Sactual = Number(currentMilestone.actual || 0);
-            const Ractual = Sactual / daysPassed;
-            const stageTargetRemaining = Math.max(0, Tm - Sactual);
-            const daysPlannedRemaining = daysInMonth - daysPassed;
-            if (stageTargetRemaining <= 0) {
+
+            const mStart = new Date(currentMilestone.start_date);
+            const mEnd = new Date(currentMilestone.end_date);
+            const milestoneTotalDays = Math.max(
+              1,
+              Math.ceil(
+                (mEnd.getTime() - mStart.getTime()) / (1000 * 60 * 60 * 24),
+              ),
+            );
+            const milestoneDaysPassed = Math.max(
+              1,
+              Math.min(
+                Math.ceil(
+                  (now.getTime() - mStart.getTime()) /
+                    (1000 * 60 * 60 * 24),
+                ),
+                milestoneTotalDays,
+              ),
+            );
+
+            // Progressive target: how much should have been saved by now
+            // based on linear distribution across the milestone period
+            const dailyTarget = Tm / milestoneTotalDays;
+            const progressiveTarget = dailyTarget * milestoneDaysPassed;
+            const gap = Sactual - progressiveTarget;
+
+            if (Tm <= 0 || Sactual >= Tm) {
+              // Target already met or no target
               daysDiff = 0;
-              projectionStatus = 'on_track';
-            } else if (Ractual <= 0) {
-              daysDiff = 999;
-              projectionStatus = 'delayed';
-            } else {
-              const daysActualNeeded = stageTargetRemaining / Ractual;
-              daysDiff = daysActualNeeded - daysPlannedRemaining;
-              daysDiff = Math.round(daysDiff);
+              projectionStatus = Sactual >= Tm ? 'early' : 'on_track';
+            } else if (dailyTarget > 0) {
+              // Convert money gap to days: positive gap = ahead, negative = behind
+              daysDiff = -Math.round(gap / dailyTarget);
               if (daysDiff > 0) {
                 projectionStatus = 'delayed';
               } else if (daysDiff < 0) {
