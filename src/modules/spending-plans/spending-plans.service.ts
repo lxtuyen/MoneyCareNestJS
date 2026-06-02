@@ -199,8 +199,8 @@ export class SpendingPlansService {
     return ok({ id });
   }
 
-  async getActiveStatistics(userId: number) {
-    return this.statisticsService.getActiveStatistics(userId);
+  async getActiveStatistics(userId: number, month?: number, year?: number) {
+    return this.statisticsService.getActiveStatistics(userId, month, year);
   }
 
   async buildExpenseContext(
