@@ -1,7 +1,11 @@
 import { Module, Global } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { JwtModule } from '@nestjs/jwt';
 import { AiService } from './ai.service';
 import { AiGeminiClientService } from './ai-gemini-client.service';
+import { AiVoiceGateway } from './ai-voice.gateway';
+import { AiVoiceSessionService } from './ai-voice-session.service';
 import { AiChatRouterService } from './ai-chat-router.service';
 import { AiSavingGoalChatService } from './ai-saving-goal-chat.service';
 import { AiTransactionChatService } from './ai-transaction-chat.service';
@@ -38,11 +42,20 @@ import { UserCategoryPreference } from 'src/modules/categories/entities/user-cat
     SpendingPlansModule,
     SavingGoalsModule,
     WalletsModule,
+    JwtModule.registerAsync({
+      imports: [ConfigModule],
+      useFactory: (config: ConfigService) => ({
+        secret: config.get<string>('JWT_SECRET'),
+      }),
+      inject: [ConfigService],
+    }),
   ],
   controllers: [AiController],
   providers: [
     AiService,
     AiGeminiClientService,
+    AiVoiceGateway,
+    AiVoiceSessionService,
     AiChatRouterService,
     AiSavingGoalChatService,
     AiTransactionChatService,

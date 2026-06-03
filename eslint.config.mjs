@@ -27,6 +27,7 @@ export default tseslint.config(
   {
     rules: {
       '@typescript-eslint/no-explicit-any': 'off',
+<<<<<<< Updated upstream
       '@typescript-eslint/no-floating-promises': 'warn',
       '@typescript-eslint/no-unsafe-argument': 'warn',
       'prettier/prettier': [
@@ -42,6 +43,12 @@ export default tseslint.config(
           endOfLine: 'auto',
         },
       ],
+=======
+      '@typescript-eslint/no-floating-promises': 'off',
+      '@typescript-eslint/no-unsafe-argument': 'off',
+
+      'linebreak-style': 'off',
+>>>>>>> Stashed changes
     },
   },
 );
