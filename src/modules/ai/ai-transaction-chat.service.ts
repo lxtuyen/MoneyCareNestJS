@@ -601,13 +601,19 @@ export class AiTransactionChatService {
 
           const itemAmount = item.amount || item.price * item.quantity;
 
+          const isMerchantPlaceholder =
+            !data.merchant_name ||
+            ['cua hang', 'cửa hàng', 'placeholder'].includes(
+              data.merchant_name.trim().toLowerCase(),
+            );
+
           const dto: CreateTransactionDto = {
             userId,
             type: 'expense',
             amount: itemAmount,
-            note: data.merchant_name
-              ? `${data.merchant_name} - ${item.name} (x${item.quantity})`
-              : `${item.name} (x${item.quantity})`,
+            note: isMerchantPlaceholder
+              ? `${item.name} (x${item.quantity})`
+              : `${data.merchant_name} - ${item.name} (x${item.quantity})`,
             transactionDate: transactionDateStr,
             categoryId: itemCategory?.id,
             walletId: walletId,

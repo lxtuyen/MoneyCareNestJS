@@ -33,13 +33,13 @@ export class SpendingPlanStatisticsService {
     private readonly calculator: SpendingPlanCalculatorService,
   ) {}
 
-  async getActiveStatistics(userId: number) {
-    const plan = await this.findActivePlanEntity(userId);
+  async getActiveStatistics(userId: number, month?: number, year?: number) {
+    const plan = await this.findActivePlanEntity(userId, month, year);
     if (!plan) {
       return ok(null);
     }
 
-    const period = this.getCurrentPeriod();
+    const period = this.getCurrentPeriod(month, year);
     const context = await this.buildExpenseContext(plan, userId, period);
     const currentDay = getReportDay(period);
     const dailySeries = this.buildDailySeries(
@@ -67,13 +67,13 @@ export class SpendingPlanStatisticsService {
     });
   }
 
-  private async findActivePlanEntity(userId: number) {
+  private async findActivePlanEntity(userId: number, month?: number, year?: number) {
     const plan = await this.planRepo.findOne({
       where: { user: { id: userId }, status: SpendingPlanStatus.ACTIVE },
       relations: ['estimatedExpenses', 'user'],
     });
     if (plan) {
-      this.applyCalculation(plan);
+      this.applyCalculation(plan, month, year);
     }
     return plan;
   }
@@ -239,21 +239,21 @@ export class SpendingPlanStatisticsService {
     return amount * frequencyValue;
   }
 
-  private applyCalculation(plan: SpendingPlan) {
+  private applyCalculation(plan: SpendingPlan, month?: number, year?: number) {
     const calculation = this.calculator.calculate({
       totalAmount: plan.totalAmount,
       estimatedExpenses: plan.estimatedExpenses ?? [],
-      ...this.getCurrentPeriod(),
+      ...this.getCurrentPeriod(month, year),
     });
 
     Object.assign(plan, calculation);
   }
 
-  private getCurrentPeriod() {
+  private getCurrentPeriod(month?: number, year?: number) {
     const now = getVietnamNow();
     return {
-      month: now.getMonth() + 1,
-      year: now.getFullYear(),
+      month: month !== undefined ? month : now.getMonth() + 1,
+      year: year !== undefined ? year : now.getFullYear(),
     };
   }
 

@@ -226,17 +226,21 @@ export class ReceiptOcrService {
  - Neu la sieu thi, cho, thuc pham tuoi song -> Chon "Di cho" hoac "Mua sam".
  - Neu khong co cai nao hop le, hay tra ve "Khac".
  - Luu y: Neu day khong phai la hoa don (vd: trang sach, van ban khong lien quan), hay tra ve JSON voi totalAmount: 0.
- 
- QUY TAC PHAN LOAI VAT PHAM (ITEMS):
- - Voi moi vat pham (item) trong danh sach "items", ban phai tu dong phan tich ten vat pham va chon categoryName phu hop nhat tu danh sach nay: [${categoryNames}].
- - TUYET DOI KHONG tu y tao ra ten danh muc moi cho vat pham. Neu khong chac chan, hay chon "Khac".
- - Vi du: "Sua tuoi TH True Milk" -> Chon "Di cho", "Oc huong xao bo" -> Chon "An uong", "Panadol" -> Chon "Suc khoe".
- - amount cua moi vat pham phai la so nguyen bang price * quantity.
- 
+  
+  QUY TAC PHAN LOAI VAT PHAM (ITEMS):
+  - Voi moi vat pham (item) trong danh sach "items", ban phai tu dong phan tich ten vat pham va chon categoryName phu hop nhat tu danh sach nay: [${categoryNames}].
+  - TUYET DOI KHONG tu y tao ra ten danh muc moi cho vat pham. Neu khong chac chan, hay chon "Khac".
+  - Vi du: "Sua tuoi TH True Milk" -> Chon "Di cho", "Oc huong xao bo" -> Chon "An uong", "Panadol" -> Chon "Suc khoe".
+  - amount cua moi vat pham phai la so nguyen bang price * quantity.
+  
+  QUY TAC SUA LOI TIENG VIET VA OCR:
+  - Dau vao duoc trich xuat bang Google MLKit nen thuong bi thieu dau, sai font, hoac loi ky tu tieng Viet (vi du: "GÖI ĐU Đủ" -> "Gỏi đu đủ", "Oc huong nuon" -> "Ốc hương nướng", "Hau nuong mo" -> "Hàu nướng mỡ").
+  - Ban phai lam nhiem vu sua loi: TU DONG SUA tat ca loi chinh ta, sai dau tieng Viet, thieu tu cua ten mon an/mat hang (items) va ten cua hang (merchantName) tro nen dung dinh dang, day du dau va co nghia tieng Viet hoan chinh.
+
  QUY TAC TRICH XUAT:
  1. Khong duoc tu bia du lieu. 
  2. totalAmount phai la so nguyen duong. Neu thay nhieu con so, hay tim "Tong cong", "Thanh tien", "Total", "Tong thanh toan".
- 3. Neu khong co ten cua hang ro rang, hay de merchantName la "Cua hang" hoac ten mon do dau tien.
+ 3. Neu khong co ten cua hang ro rang, hay de merchantName la null.
  4. currency mac dinh la "VND".
  5. date phai la YYYY-MM-DD. Neu khong co nam, hay lay nam hien tai (2026).
  6. suggestedNote: Tao mot ghi chu ngan gon, tu nhien. Neu co ten mon an thi ghi "An [ten mon dau tien]...", neu khong thi ghi "Mua sam tai [ten cua hang]".
