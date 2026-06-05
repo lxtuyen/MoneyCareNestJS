@@ -78,7 +78,10 @@ export async function generateCsv(transactions: any[]): Promise<Buffer> {
   csv += `\n"Tổng chi tiêu","${totalExpense}"`;
   csv += `\n"Số dư ròng","${netBalance}"`;
 
-  return Buffer.from(csv, 'utf-8');
+  return Buffer.concat([
+    Buffer.from('\ufeff', 'utf-8'),
+    Buffer.from(csv, 'utf-8'),
+  ]);
 }
 
 export async function generatePdf(

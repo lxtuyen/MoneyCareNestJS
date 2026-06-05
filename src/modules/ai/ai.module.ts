@@ -21,6 +21,7 @@ import { SpendingPlansModule } from 'src/modules/spending-plans/spending-plans.m
 import { SavingGoalsModule } from 'src/modules/saving-goals/saving-goals.module';
 import { WalletsModule } from 'src/modules/wallets/wallets.module';
 import { UserCategoryPreference } from 'src/modules/categories/entities/user-category-preference.entity';
+import { PersonalizationModule } from 'src/modules/personalization/personalization.module';
 
 @Global()
 @Module({
@@ -38,6 +39,7 @@ import { UserCategoryPreference } from 'src/modules/categories/entities/user-cat
     SpendingPlansModule,
     SavingGoalsModule,
     WalletsModule,
+    PersonalizationModule,
   ],
   controllers: [AiController],
   providers: [

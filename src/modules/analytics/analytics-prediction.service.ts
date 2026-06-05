@@ -1,0 +1,240 @@
+import { Injectable, Logger } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Between, Repository } from 'typeorm';
+import { AiPredictionRun } from './entities/ai-prediction-run.entity';
+
+@Injectable()
+export class AnalyticsPredictionService {
+  private readonly logger = new Logger(AnalyticsPredictionService.name);
+
+  constructor(
+    @InjectRepository(AiPredictionRun)
+    private readonly runRepo: Repository<AiPredictionRun>,
+  ) {}
+
+  /**
+   * Entry point: lưu prediction run từ analytics response.
+   * Gọi sau khi nhận response từ FastAPI hoặc fallback.
+   */
+  async logFromAnalyticsResponse(
+    userId: number,
+    mappedData: any,
+    metadata: {
+      transactionCount: number;
+      period: string;
+      hasSpendingPlan: boolean;
+      activeGoalCount: number;
+    },
+  ): Promise<void> {
+    const now = new Date();
+
+    if (mappedData.forecasting) {
+      await this.logForecastingRun(
+        userId,
+        mappedData.forecasting,
+        metadata,
+        now,
+      );
+    }
+
+    if (mappedData.aiBudgeting) {
+      await this.logBudgetingRun(userId, mappedData.aiBudgeting, metadata, now);
+    }
+  }
+
+  /**
+   * Lưu forecasting prediction run với dedupe theo ngày.
+   */
+  async logForecastingRun(
+    userId: number,
+    forecasting: any,
+    metadata: any,
+    now: Date,
+  ): Promise<AiPredictionRun | null> {
+    const modelName = forecasting.method || 'unknown';
+
+    const existing = await this.findExistingRunForToday(
+      userId,
+      'forecasting',
+      modelName,
+    );
+    if (existing) {
+      // Update existing run thay vì tạo mới
+      existing.predictionPayload = {
+        totalForecast: forecasting.totalForecast,
+        dailyPoints: forecasting.dailyPoints,
+        categoryForecasts: forecasting.categoryForecasts,
+      };
+      existing.confidence = forecasting.confidence || 0;
+      existing.inputSnapshot = metadata;
+      await this.runRepo.save(existing);
+      this.logger.log(
+        `Updated existing forecasting run #${existing.id} for user ${userId}`,
+      );
+      return existing;
+    }
+
+    const horizonDays = forecasting.horizonDays || 30;
+    const targetStart = new Date(now);
+    targetStart.setDate(targetStart.getDate() + 1);
+    targetStart.setHours(0, 0, 0, 0);
+
+    const targetEnd = new Date(targetStart);
+    targetEnd.setDate(targetEnd.getDate() + horizonDays - 1);
+    targetEnd.setHours(23, 59, 59, 999);
+
+    const inputPeriodEnd = new Date(now);
+    const inputPeriodStart = new Date(now);
+    inputPeriodStart.setFullYear(inputPeriodStart.getFullYear() - 1);
+
+    const run = this.runRepo.create({
+      userId,
+      modelType: 'forecasting',
+      modelName,
+      modelVersion: 'v1',
+      inputPeriodStart,
+      inputPeriodEnd,
+      predictionTargetStart: targetStart,
+      predictionTargetEnd: targetEnd,
+      predictionPayload: {
+        totalForecast: forecasting.totalForecast,
+        dailyPoints: forecasting.dailyPoints,
+        categoryForecasts: forecasting.categoryForecasts,
+      },
+      inputSnapshot: metadata,
+      confidence: forecasting.confidence || 0,
+      status: 'pending',
+    });
+
+    const saved = await this.runRepo.save(run);
+    this.logger.log(
+      `Logged forecasting run #${saved.id} for user ${userId}, model: ${modelName}`,
+    );
+    return saved;
+  }
+
+  /**
+   * Lưu budgeting prediction run với dedupe theo ngày.
+   */
+  async logBudgetingRun(
+    userId: number,
+    budgeting: any,
+    metadata: any,
+    now: Date,
+  ): Promise<AiPredictionRun | null> {
+    const modelName = budgeting.method || 'unknown';
+
+    const existing = await this.findExistingRunForToday(
+      userId,
+      'budgeting',
+      modelName,
+    );
+    if (existing) {
+      existing.predictionPayload = {
+        recommendedTotalBudget: budgeting.recommendedTotalBudget,
+        expectedSavingsAmount: budgeting.expectedSavingsAmount,
+        items: budgeting.items,
+      };
+      existing.confidence =
+        budgeting.confidence || budgeting.items?.[0]?.confidence || 0;
+      existing.inputSnapshot = metadata;
+      await this.runRepo.save(existing);
+      this.logger.log(
+        `Updated existing budgeting run #${existing.id} for user ${userId}`,
+      );
+      return existing;
+    }
+
+    // Target period: từ đầu tháng hiện tại đến cuối tháng
+    const targetStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const targetEnd = new Date(
+      now.getFullYear(),
+      now.getMonth() + 1,
+      0,
+      23,
+      59,
+      59,
+      999,
+    );
+
+    const inputPeriodEnd = new Date(now);
+    const inputPeriodStart = new Date(now);
+    inputPeriodStart.setFullYear(inputPeriodStart.getFullYear() - 1);
+
+    const run = this.runRepo.create({
+      userId,
+      modelType: 'budgeting',
+      modelName,
+      modelVersion: budgeting.modelVersion || 'v1',
+      inputPeriodStart,
+      inputPeriodEnd,
+      predictionTargetStart: targetStart,
+      predictionTargetEnd: targetEnd,
+      predictionPayload: {
+        recommendedTotalBudget: budgeting.recommendedTotalBudget,
+        expectedSavingsAmount: budgeting.expectedSavingsAmount,
+        items: budgeting.items,
+      },
+      inputSnapshot: metadata,
+      confidence: budgeting.confidence || budgeting.items?.[0]?.confidence || 0,
+      status: 'pending',
+    });
+
+    const saved = await this.runRepo.save(run);
+    this.logger.log(
+      `Logged budgeting run #${saved.id} for user ${userId}, model: ${modelName}`,
+    );
+    return saved;
+  }
+
+  /**
+   * Kiểm tra dedupe: có run nào cùng user/modelType/modelName trong ngày hôm nay không.
+   */
+  async findExistingRunForToday(
+    userId: number,
+    modelType: string,
+    modelName: string,
+  ): Promise<AiPredictionRun | null> {
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const todayEnd = new Date();
+    todayEnd.setHours(23, 59, 59, 999);
+
+    return this.runRepo.findOne({
+      where: {
+        userId,
+        modelType: modelType as any,
+        modelName,
+        createdAt: Between(todayStart, todayEnd),
+      },
+    });
+  }
+
+  /**
+   * Tìm các prediction runs pending đã đến hạn evaluate.
+   */
+  async findDuePredictionRuns(limit: number = 50): Promise<AiPredictionRun[]> {
+    const now = new Date();
+    return this.runRepo
+      .createQueryBuilder('run')
+      .where('run.status = :status', { status: 'pending' })
+      .andWhere('run.predictionTargetEnd < :now', { now })
+      .orderBy('run.predictionTargetEnd', 'ASC')
+      .limit(limit)
+      .getMany();
+  }
+
+  /**
+   * Đánh dấu run đã evaluated.
+   */
+  async markEvaluated(runId: number): Promise<void> {
+    await this.runRepo.update(runId, { status: 'evaluated' });
+  }
+
+  /**
+   * Đánh dấu run bị skipped (thiếu dữ liệu thực tế).
+   */
+  async markSkipped(runId: number): Promise<void> {
+    await this.runRepo.update(runId, { status: 'skipped' });
+  }
+}

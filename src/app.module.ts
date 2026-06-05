@@ -19,6 +19,9 @@ import { AiModule } from './modules/ai/ai.module';
 import { WalletsModule } from './modules/wallets/wallets.module';
 import { SpendingPlansModule } from './modules/spending-plans/spending-plans.module';
 import { EstimatedExpensesModule } from './modules/estimated-expenses/estimated-expenses.module';
+import { AnalyticsModule } from './modules/analytics/analytics.module';
+import { PersonalizationModule } from './modules/personalization/personalization.module';
+import { AiFeedbackModule } from './modules/ai-feedback/ai-feedback.module';
 
 @Module({
   imports: [
@@ -73,6 +76,9 @@ import { EstimatedExpensesModule } from './modules/estimated-expenses/estimated-
     WalletsModule,
     SpendingPlansModule,
     EstimatedExpensesModule,
+    AnalyticsModule,
+    PersonalizationModule,
+    AiFeedbackModule,
   ],
   controllers: [AppController],
   providers: [AppService],

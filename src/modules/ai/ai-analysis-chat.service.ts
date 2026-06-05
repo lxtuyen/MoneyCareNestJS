@@ -13,6 +13,7 @@ import {
 } from 'src/common/cache/financial-cache.util';
 import { FinancialInsightsService } from './financial-insights.service';
 import { AiGeminiClientService } from './ai-gemini-client.service';
+import { PersonalizationService } from 'src/modules/personalization/personalization.service';
 import {
   AiMessagePrefix,
   FinancialAnalysisResult,
@@ -37,6 +38,7 @@ export class AiAnalysisChatService {
     private readonly geminiClient: AiGeminiClientService,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
+    private readonly personalizationService: PersonalizationService,
   ) {}
 
   isAnalysisRequest(message: string): boolean {
@@ -92,7 +94,7 @@ export class AiAnalysisChatService {
       return ok('', cachedResult);
     }
 
-    const [user, insights] = await Promise.all([
+    const [user, insights, personalizationProfile] = await Promise.all([
       this.userRepo.findOne({
         where: { id: userId },
         relations: ['profile'],
@@ -102,6 +104,7 @@ export class AiAnalysisChatService {
         resolvedGoalId || undefined,
         'last_30_days',
       ),
+      this.personalizationService.getProfileSummary(userId),
     ]);
 
     const userName = user?.profile
@@ -112,6 +115,7 @@ export class AiAnalysisChatService {
       message,
       insights,
       userName || 'Nguoi dung',
+      personalizationProfile,
     );
 
     const resultString =
@@ -137,11 +141,13 @@ export class AiAnalysisChatService {
     text: string,
     insightData: FinancialInsightSnapshot,
     userName: string,
+    personalizationProfile?: any,
   ): Promise<FinancialAnalysisResult | string> {
     const prompt = getFinancialHealthAnalysisPrompt(
       userName,
       JSON.stringify(insightData),
       text,
+      personalizationProfile ? JSON.stringify(personalizationProfile) : undefined,
     );
 
     try {

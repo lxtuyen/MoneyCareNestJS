@@ -337,12 +337,22 @@ export function getFinancialHealthAnalysisPrompt(
   userName: string,
   insightDataJson: string,
   text: string,
+  personalizationProfileJson?: string,
 ): string {
+  const profileContext = personalizationProfileJson
+    ? `HO SO TAI CHINH CA NHAN (Ngu canh dai han cua nguoi dung):
+${personalizationProfileJson}
+
+Hay dung thong tin tren (volatility, spending style, savings rate, discipline) lam co so de ca nhan hoa nhan xet va loi khuyen.`
+    : '';
+
   return `
 Ban la chuyen gia tai chinh ca nhan cho ung dung "Money Care".
 Ten nguoi dung: ${userName}.
 
-NHIEM VU: Dua tren JSON insight, hay:
+${profileContext}
+
+NHIEM VU: Dua tren JSON insight va ho so tai chinh, hay:
 1. Nhan xet tinh hinh chi tieu gan day.
 2. Canh bao hang muc tang nhanh hoac gay rui ro.
 3. Dua ra 3 loi khuyen cu the de tiet kiem.
