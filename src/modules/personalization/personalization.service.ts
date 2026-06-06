@@ -9,6 +9,14 @@ import { UserCategoryPreference } from 'src/modules/categories/entities/user-cat
 import { User } from 'src/modules/user/entities/user.entity';
 import { SpendingPlanStatus } from 'src/modules/spending-plans/interfaces/spending-plan.enums';
 import { AiFeedbackService } from 'src/modules/ai-feedback/ai-feedback.service';
+import { formatDateInTimeZone } from 'src/common/utils/date.util';
+
+interface MonthlyAverageSummary {
+  averageMonthlyIncome: number;
+  averageMonthlyExpense: number;
+  averageMonthlySavings: number;
+  activeMonths: number;
+}
 
 @Injectable()
 export class PersonalizationService {
@@ -124,20 +132,12 @@ export class PersonalizationService {
     const activeMonths = daysCount / 30.4;
 
     // 5. Calculate Average Monthly Income / Expense / Savings
-    let totalIncome = 0;
-    let totalExpense = 0;
-    for (const tx of transactions) {
-      const amt = Number(tx.amount || 0);
-      if (tx.type === 'income') {
-        totalIncome += amt;
-      } else if (tx.type === 'expense') {
-        totalExpense += amt;
-      }
-    }
-
-    const averageMonthlyIncome = totalIncome / activeMonths;
-    const averageMonthlyExpense = totalExpense / activeMonths;
-    const averageMonthlySavings = averageMonthlyIncome - averageMonthlyExpense;
+    const monthlyAverageSummary =
+      this.calculateMonthlyAverageSummary(transactions);
+    const averageMonthlyIncome = monthlyAverageSummary.averageMonthlyIncome;
+    const averageMonthlyExpense = monthlyAverageSummary.averageMonthlyExpense;
+    const averageMonthlySavings = monthlyAverageSummary.averageMonthlySavings;
+    const averageActiveMonths = monthlyAverageSummary.activeMonths;
     const savingsRate =
       averageMonthlyIncome > 0
         ? averageMonthlySavings / averageMonthlyIncome
@@ -454,7 +454,7 @@ export class PersonalizationService {
 
     // 17. Confidence Score
     let confidence = 0;
-    confidence += Math.min(40, activeMonths * 8);
+    confidence += Math.min(40, averageActiveMonths * 8);
     confidence += Math.min(30, transactionCount / 5);
     if (activePlan) {
       confidence += 15;
@@ -542,5 +542,59 @@ export class PersonalizationService {
     profile.profileVersion = 'v1';
 
     return this.profileRepo.save(profile);
+  }
+
+  private calculateMonthlyAverageSummary(
+    transactions: Transaction[],
+  ): MonthlyAverageSummary {
+    const currentMonthKey = formatDateInTimeZone(new Date()).slice(0, 7);
+    const monthlyTotals = new Map<
+      string,
+      { income: number; expense: number }
+    >();
+
+    for (const tx of transactions) {
+      if (tx.isTransfer || !tx.transaction_date) continue;
+
+      const monthKey = formatDateInTimeZone(tx.transaction_date).slice(0, 7);
+      if (monthKey === currentMonthKey) continue;
+
+      const current = monthlyTotals.get(monthKey) ?? {
+        income: 0,
+        expense: 0,
+      };
+      const amount = Number(tx.amount || 0);
+
+      if (tx.type === 'income') {
+        current.income += amount;
+      } else if (tx.type === 'expense') {
+        current.expense += amount;
+      }
+
+      monthlyTotals.set(monthKey, current);
+    }
+
+    const months = Array.from(monthlyTotals.values());
+    if (months.length === 0) {
+      return {
+        averageMonthlyIncome: 0,
+        averageMonthlyExpense: 0,
+        averageMonthlySavings: 0,
+        activeMonths: 0,
+      };
+    }
+
+    const totalIncome = months.reduce((sum, month) => sum + month.income, 0);
+    const totalExpense = months.reduce((sum, month) => sum + month.expense, 0);
+    const activeMonths = months.length;
+    const averageMonthlyIncome = totalIncome / activeMonths;
+    const averageMonthlyExpense = totalExpense / activeMonths;
+
+    return {
+      averageMonthlyIncome,
+      averageMonthlyExpense,
+      averageMonthlySavings: averageMonthlyIncome - averageMonthlyExpense,
+      activeMonths,
+    };
   }
 }

@@ -22,6 +22,7 @@ import { EstimatedExpensesModule } from './modules/estimated-expenses/estimated-
 import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { PersonalizationModule } from './modules/personalization/personalization.module';
 import { AiFeedbackModule } from './modules/ai-feedback/ai-feedback.module';
+import { ScenarioPlanningModule } from './modules/scenario-planning/scenario-planning.module';
 
 @Module({
   imports: [
@@ -79,6 +80,7 @@ import { AiFeedbackModule } from './modules/ai-feedback/ai-feedback.module';
     AnalyticsModule,
     PersonalizationModule,
     AiFeedbackModule,
+    ScenarioPlanningModule,
   ],
   controllers: [AppController],
   providers: [AppService],

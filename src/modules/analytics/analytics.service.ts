@@ -12,6 +12,8 @@ import { PersonalizationService } from '../personalization/personalization.servi
 import { AnalyticsPredictionService } from './analytics-prediction.service';
 import { AiFeedbackService } from '../ai-feedback/ai-feedback.service';
 import { AnalyticsEvaluationService } from './analytics-evaluation.service';
+import { GoalAchievementPredictionService } from '../saving-goals/goal-achievement-prediction.service';
+import { GoalAchievementPredictionSummaryDto } from '../saving-goals/dto/goal-achievement-prediction.dto';
 import {
   formatDateInTimeZone,
   getVietnamNow,
@@ -37,6 +39,7 @@ export class AnalyticsService {
     private readonly predictionService: AnalyticsPredictionService,
     private readonly aiFeedbackService: AiFeedbackService,
     private readonly evaluationService: AnalyticsEvaluationService,
+    private readonly goalAchievementPredictionService: GoalAchievementPredictionService,
   ) {}
 
   async getFinancialSummary(userId: number): Promise<ApiResponse<any>> {
@@ -96,6 +99,7 @@ export class AnalyticsService {
         this.aiFeedbackService.getSummary(userId, undefined, 'last_180_days'),
         this.buildModelEvaluationPayload(userId),
       ]);
+    const goalAchievement = await this.buildGoalAchievementPayload(userId);
     const essentialCategories = Array.isArray(
       profileSummary.essentialCategories,
     )
@@ -182,7 +186,7 @@ export class AnalyticsService {
       }
 
       const data = await response.json();
-      const mapped = this.mapAnalyticsResponse(data);
+      const mapped = this.mapAnalyticsResponse(data, goalAchievement);
 
       // Log prediction run (không ảnh hưởng response nếu lỗi)
       try {
@@ -207,6 +211,7 @@ export class AnalyticsService {
         transactions,
         spendingPlanPayload,
         savingGoals,
+        goalAchievement,
       );
 
       // Log fallback prediction run
@@ -234,7 +239,10 @@ export class AnalyticsService {
     }
   }
 
-  private mapAnalyticsResponse(data: any) {
+  private mapAnalyticsResponse(
+    data: any,
+    goalAchievement: GoalAchievementPredictionSummaryDto | null,
+  ) {
     return {
       financialHealthScore: data.financial_health_score,
       cashFlowTrend: data.cash_flow_trend,
@@ -275,8 +283,14 @@ export class AnalyticsService {
       })),
       forecasting: data.forecasting
         ? {
-            currentMonthProjection: this.mapMonthlyForecast(data.forecasting.current_month_projection || data.forecasting.currentMonthProjection),
-            nextMonthForecast: this.mapMonthlyForecast(data.forecasting.next_month_forecast || data.forecasting.nextMonthForecast),
+            currentMonthProjection: this.mapMonthlyForecast(
+              data.forecasting.current_month_projection ||
+                data.forecasting.currentMonthProjection,
+            ),
+            nextMonthForecast: this.mapMonthlyForecast(
+              data.forecasting.next_month_forecast ||
+                data.forecasting.nextMonthForecast,
+            ),
           }
         : null,
       aiBudgeting: data.ai_budgeting
@@ -311,6 +325,7 @@ export class AnalyticsService {
             summary: data.ai_budgeting.summary,
           }
         : null,
+      goalAchievement,
     };
   }
 
@@ -325,25 +340,47 @@ export class AnalyticsService {
       targetYear: m.target_year || m.targetYear,
       periodStart: m.period_start || m.periodStart,
       periodEnd: m.period_end || m.periodEnd,
-      actualAmount: m.actual_amount !== undefined ? m.actual_amount : m.actualAmount,
-      predictedRemainingAmount: m.predicted_remaining_amount !== undefined ? m.predicted_remaining_amount : m.predictedRemainingAmount,
-      totalForecast: m.total_forecast !== undefined ? m.total_forecast : m.totalForecast,
+      actualAmount:
+        m.actual_amount !== undefined ? m.actual_amount : m.actualAmount,
+      predictedRemainingAmount:
+        m.predicted_remaining_amount !== undefined
+          ? m.predicted_remaining_amount
+          : m.predictedRemainingAmount,
+      totalForecast:
+        m.total_forecast !== undefined ? m.total_forecast : m.totalForecast,
       confidence: m.confidence,
       riskLevel: m.risk_level || m.riskLevel || 'low',
       modelNotes: m.model_notes || m.modelNotes || '',
-      weeklyForecasts: (m.weekly_forecasts || m.weeklyForecasts || []).map((w: any) => ({
-        weekIndex: w.week_index || w.weekIndex,
-        periodStart: w.period_start || w.periodStart,
-        periodEnd: w.period_end || w.periodEnd,
-        predictedAmount: w.predicted_amount !== undefined ? w.predicted_amount : w.predictedAmount,
-        actualAmount: w.actual_amount !== undefined ? w.actual_amount : w.actualAmount,
-        riskLevel: w.risk_level || w.riskLevel || 'low',
-      })),
-      categoryForecasts: (m.category_forecasts || m.categoryForecasts || []).map((c: any) => ({
+      weeklyForecasts: (m.weekly_forecasts || m.weeklyForecasts || []).map(
+        (w: any) => ({
+          weekIndex: w.week_index || w.weekIndex,
+          periodStart: w.period_start || w.periodStart,
+          periodEnd: w.period_end || w.periodEnd,
+          predictedAmount:
+            w.predicted_amount !== undefined
+              ? w.predicted_amount
+              : w.predictedAmount,
+          actualAmount:
+            w.actual_amount !== undefined ? w.actual_amount : w.actualAmount,
+          riskLevel: w.risk_level || w.riskLevel || 'low',
+        }),
+      ),
+      categoryForecasts: (
+        m.category_forecasts ||
+        m.categoryForecasts ||
+        []
+      ).map((c: any) => ({
         categoryName: c.category_name || c.categoryName,
-        predictedAmount: c.predicted_amount !== undefined ? c.predicted_amount : c.predictedAmount,
-        actualAmount: c.actual_amount !== undefined ? c.actual_amount : c.actualAmount,
-        remainingForecastAmount: c.remaining_forecast_amount !== undefined ? c.remaining_forecast_amount : c.remainingForecastAmount,
+        predictedAmount:
+          c.predicted_amount !== undefined
+            ? c.predicted_amount
+            : c.predictedAmount,
+        actualAmount:
+          c.actual_amount !== undefined ? c.actual_amount : c.actualAmount,
+        remainingForecastAmount:
+          c.remaining_forecast_amount !== undefined
+            ? c.remaining_forecast_amount
+            : c.remainingForecastAmount,
         trend: c.trend || 'stable',
         confidence: c.confidence,
         dataPoints: c.data_points !== undefined ? c.data_points : c.dataPoints,
@@ -354,13 +391,19 @@ export class AnalyticsService {
         periodStart: r.period_start || r.periodStart,
         periodEnd: r.period_end || r.periodEnd,
         riskLevel: r.risk_level || r.riskLevel || 'low',
-        predictedAmount: r.predicted_amount !== undefined ? r.predicted_amount : r.predictedAmount,
+        predictedAmount:
+          r.predicted_amount !== undefined
+            ? r.predicted_amount
+            : r.predictedAmount,
         reason: r.reason || '',
         reasonCodes: r.reason_codes || r.reasonCodes || [],
       })),
       dailyPoints: (m.daily_points || m.dailyPoints || []).map((p: any) => ({
         date: p.date,
-        predictedAmount: p.predicted_amount !== undefined ? p.predicted_amount : p.predictedAmount,
+        predictedAmount:
+          p.predicted_amount !== undefined
+            ? p.predicted_amount
+            : p.predictedAmount,
       })),
     };
   }
@@ -369,6 +412,7 @@ export class AnalyticsService {
     transactions: Transaction[],
     spendingPlan: any,
     savingGoals: SavingGoal[],
+    goalAchievement: GoalAchievementPredictionSummaryDto | null,
   ) {
     const now = getVietnamNow();
     const currentMonth = now.getMonth() + 1;
@@ -382,10 +426,8 @@ export class AnalyticsService {
     );
     const isCurrentMonthTransaction = (t: Transaction) => {
       const dateKey = formatDateInTimeZone(t.transaction_date);
-      return (
-        dateKey.startsWith(
-          `${currentYear}-${currentMonth.toString().padStart(2, '0')}-`,
-        )
+      return dateKey.startsWith(
+        `${currentYear}-${currentMonth.toString().padStart(2, '0')}-`,
       );
     };
     const currentMonthExpenses = expenses.filter(isCurrentMonthTransaction);
@@ -490,8 +532,20 @@ export class AnalyticsService {
           forecastMode: 'current_month_projection',
           targetMonth: new Date().getMonth() + 1,
           targetYear: new Date().getFullYear(),
-          periodStart: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0],
-          periodEnd: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).toISOString().split('T')[0],
+          periodStart: new Date(
+            new Date().getFullYear(),
+            new Date().getMonth(),
+            1,
+          )
+            .toISOString()
+            .split('T')[0],
+          periodEnd: new Date(
+            new Date().getFullYear(),
+            new Date().getMonth() + 1,
+            0,
+          )
+            .toISOString()
+            .split('T')[0],
           actualAmount: currentMonthExpense,
           predictedRemainingAmount: predictedRemainingForecast,
           totalForecast: currentMonthExpense + predictedRemainingForecast,
@@ -508,10 +562,26 @@ export class AnalyticsService {
           modelVersion: 'v2',
           periodType: 'month',
           forecastMode: 'next_month_forecast',
-          targetMonth: new Date().getMonth() === 11 ? 1 : new Date().getMonth() + 2,
-          targetYear: new Date().getMonth() === 11 ? new Date().getFullYear() + 1 : new Date().getFullYear(),
-          periodStart: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 1).toISOString().split('T')[0],
-          periodEnd: new Date(new Date().getFullYear(), new Date().getMonth() + 2, 0).toISOString().split('T')[0],
+          targetMonth:
+            new Date().getMonth() === 11 ? 1 : new Date().getMonth() + 2,
+          targetYear:
+            new Date().getMonth() === 11
+              ? new Date().getFullYear() + 1
+              : new Date().getFullYear(),
+          periodStart: new Date(
+            new Date().getFullYear(),
+            new Date().getMonth() + 1,
+            1,
+          )
+            .toISOString()
+            .split('T')[0],
+          periodEnd: new Date(
+            new Date().getFullYear(),
+            new Date().getMonth() + 2,
+            0,
+          )
+            .toISOString()
+            .split('T')[0],
           actualAmount: 0,
           predictedRemainingAmount: fallbackTotalForecast,
           totalForecast: fallbackTotalForecast,
@@ -522,7 +592,7 @@ export class AnalyticsService {
           categoryForecasts: [],
           riskWindows: [],
           dailyPoints: [],
-        }
+        },
       },
       aiBudgeting: {
         method: 'fallback_budgeting',
@@ -536,6 +606,7 @@ export class AnalyticsService {
         summary:
           'Chưa có kết quả AI Budgeting nâng cao, hệ thống tạm dùng dữ liệu dự phòng.',
       },
+      goalAchievement,
     };
   }
 
@@ -579,6 +650,19 @@ export class AnalyticsService {
         evaluated_runs: 0,
         category_mape: {},
       };
+    }
+  }
+
+  private async buildGoalAchievementPayload(userId: number) {
+    try {
+      return await this.goalAchievementPredictionService.predictAllGoals(
+        userId,
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Cannot load goal achievement predictions: ${error.message}`,
+      );
+      return null;
     }
   }
 }

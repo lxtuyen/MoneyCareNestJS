@@ -7,6 +7,7 @@ import { SpendingPlan } from '../spending-plans/entities/spending-plan.entity';
 import { SpendingPlansModule } from '../spending-plans/spending-plans.module';
 import { PersonalizationModule } from '../personalization/personalization.module';
 import { AiFeedbackModule } from '../ai-feedback/ai-feedback.module';
+import { SavingGoalsModule } from '../saving-goals/saving-goals.module';
 import { AiPredictionRun } from './entities/ai-prediction-run.entity';
 import { AiPredictionEvaluation } from './entities/ai-prediction-evaluation.entity';
 import { AnalyticsController } from './analytics.controller';
@@ -27,6 +28,7 @@ import { AnalyticsEvaluationScheduler } from './analytics-evaluation.scheduler';
     SpendingPlansModule,
     PersonalizationModule,
     AiFeedbackModule,
+    SavingGoalsModule,
     ConfigModule,
   ],
   controllers: [AnalyticsController],

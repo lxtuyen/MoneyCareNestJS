@@ -19,8 +19,11 @@ describe('PersonalizationService', () => {
   let preferenceRepo: any;
   let userRepo: any;
   let aiFeedbackService: any;
+  const fixedNow = new Date('2026-06-15T03:00:00.000Z');
 
   beforeEach(async () => {
+    jest.useFakeTimers().setSystemTime(fixedNow);
+
     profileRepo = {
       findOne: jest.fn(),
       create: jest.fn().mockImplementation((dto) => dto),
@@ -94,6 +97,10 @@ describe('PersonalizationService', () => {
     service = module.get<PersonalizationService>(PersonalizationService);
   });
 
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
   it('should compile successfully', () => {
     expect(service).toBeDefined();
   });
@@ -102,6 +109,9 @@ describe('PersonalizationService', () => {
     const profile = await service.rebuildProfile(1);
     expect(profile).toBeDefined();
     expect(profile.spendingStyle).toBe('insufficient_data');
+    expect(profile.averageMonthlyIncome).toBe(0);
+    expect(profile.averageMonthlyExpense).toBe(0);
+    expect(profile.averageMonthlySavings).toBe(0);
     expect(profile.confidenceScore).toBeLessThanOrEqual(30);
   });
 
@@ -134,9 +144,54 @@ describe('PersonalizationService', () => {
     transactionRepo.createQueryBuilder().getMany.mockResolvedValueOnce(mockTxs);
 
     const profile = await service.rebuildProfile(1);
-    expect(profile.averageMonthlyIncome).toBeGreaterThan(0);
-    expect(profile.averageMonthlyExpense).toBeGreaterThan(0);
-    expect(profile.savingsRate).toBeGreaterThan(0.5);
-    expect(profile.riskLevel).toBe('low');
+    expect(profile.averageMonthlyIncome).toBe(0);
+    expect(profile.averageMonthlyExpense).toBe(0);
+    expect(profile.averageMonthlySavings).toBe(0);
+    expect(profile.savingsRate).toBe(0);
+    expect(profile.riskLevel).toBe('medium');
   });
+
+  it('should average monthly income and expense from months with data only', async () => {
+    const mockTxs = [
+      buildTx('income', 10000000, '2026-01-05'),
+      buildTx('expense', 4000000, '2026-01-20', {
+        category: { id: 1, name: 'Ăn uống' },
+      }),
+      buildTx('income', 6000000, '2026-03-10'),
+      buildTx('expense', 1000000, '2026-03-11', {
+        category: { id: 1, name: 'Ăn uống' },
+      }),
+      buildTx('expense', 2000000, '2026-06-01', {
+        category: { id: 2, name: 'Giải trí' },
+      }),
+      buildTx('income', 9000000, '2026-06-02', { isTransfer: true }),
+    ];
+    transactionRepo.createQueryBuilder().getMany.mockResolvedValueOnce(mockTxs);
+
+    const profile = await service.rebuildProfile(1);
+
+    expect(profile.averageMonthlyIncome).toBe(8000000);
+    expect(profile.averageMonthlyExpense).toBe(2500000);
+    expect(profile.averageMonthlySavings).toBe(5500000);
+    expect(profile.savingsRate).toBeCloseTo(0.6875, 4);
+  });
+
+  function buildTx(
+    type: 'income' | 'expense',
+    amount: number,
+    date: string,
+    options: {
+      isTransfer?: boolean;
+      category?: { id: number; name: string };
+    } = {},
+  ) {
+    return {
+      id: Number(`${date.replace(/\D/g, '')}${type === 'income' ? 1 : 2}`),
+      amount,
+      type,
+      transaction_date: new Date(`${date}T08:00:00.000Z`),
+      isTransfer: options.isTransfer ?? false,
+      category: options.category,
+    };
+  }
 });

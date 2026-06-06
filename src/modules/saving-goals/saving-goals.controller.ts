@@ -19,6 +19,8 @@ import { ExtendFundDto } from './dto/extend-fund.dto';
 import { ApiResponse as SwaggerApiResponse } from '@nestjs/swagger';
 import { JwtAuthGuard } from 'src/modules/auth/jwt-auth.guard';
 import { User } from 'src/common/decorators/user.decorator';
+import { GoalAchievementPredictionService } from './goal-achievement-prediction.service';
+import { ok } from 'src/common/utils/response.util';
 
 @Controller('saving-goals')
 @UseGuards(JwtAuthGuard)
@@ -26,6 +28,7 @@ export class SavingGoalsController {
   constructor(
     private readonly savingGoalsService: SavingGoalsService,
     private readonly savingGoalsStatisticsService: SavingGoalsStatisticsService,
+    private readonly goalAchievementPredictionService: GoalAchievementPredictionService,
   ) {}
 
   @Post()
@@ -38,6 +41,13 @@ export class SavingGoalsController {
   @SwaggerApiResponse({ type: [SavingGoalResponseDto] })
   findAllByUser(@User('sub') userId: number) {
     return this.savingGoalsService.findAllByUser(userId);
+  }
+
+  @Get('predictions')
+  async getGoalPredictions(@User('sub') userId: number) {
+    const data =
+      await this.goalAchievementPredictionService.predictAllGoals(userId);
+    return ok(data, 'Lấy dự báo các mục tiêu tiết kiệm thành công');
   }
 
   @Get(':id')
@@ -107,5 +117,17 @@ export class SavingGoalsController {
     @User('sub') userId: number,
   ) {
     return this.savingGoalsStatisticsService.getGoalReport(id, userId);
+  }
+
+  @Get(':id/prediction')
+  async getGoalPrediction(
+    @Param('id', ParseIntPipe) id: number,
+    @User('sub') userId: number,
+  ) {
+    const data = await this.goalAchievementPredictionService.predictGoal(
+      userId,
+      id,
+    );
+    return ok(data, 'Lấy dự báo mục tiêu tiết kiệm thành công');
   }
 }
