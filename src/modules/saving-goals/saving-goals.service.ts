@@ -15,6 +15,7 @@ import { ApiResponse } from 'src/common/dto/api-response.dto';
 import { created, ok } from 'src/common/utils/response.util';
 import { SavingGoalStatus } from './enums/saving-goal-status.enum';
 import { Wallet } from 'src/modules/wallets/entities/wallet.entity';
+import { Transaction } from 'src/modules/transactions/entities/transaction.entity';
 
 @Injectable()
 export class SavingGoalsService {
@@ -27,6 +28,9 @@ export class SavingGoalsService {
 
     @InjectRepository(Wallet)
     private readonly walletRepo: Repository<Wallet>,
+
+    @InjectRepository(Transaction)
+    private readonly transactionRepo: Repository<Transaction>,
   ) {}
 
   async create(
@@ -135,9 +139,65 @@ export class SavingGoalsService {
   async remove(id: number, userId?: number): Promise<ApiResponse<string>> {
     const goal = await this.goalRepo.findOne({
       where: userId ? { id, user: { id: userId } } : { id },
+      relations: ['wallet', 'user'],
     });
     if (!goal) throw new NotFoundException('Saving goal not found');
+
+    const ownerId = userId ?? goal.user?.id;
+    const goalWallet = goal.wallet;
+
+    if (ownerId && goalWallet) {
+      // Find default/main wallet "Ví 1"
+      let defaultWallet = await this.walletRepo.findOne({
+        where: { user: { id: ownerId }, name: 'Ví 1', is_active: true },
+      });
+
+      // Fallback to the first active wallet that is not a saving goal wallet
+      if (!defaultWallet) {
+        const allActiveWallets = await this.walletRepo.find({
+          where: { user: { id: ownerId }, is_active: true },
+          order: { id: 'ASC' },
+          relations: ['savingGoals'],
+        });
+        defaultWallet = allActiveWallets.find(w => !w.savingGoals || w.savingGoals.length === 0) 
+                        || allActiveWallets[0];
+      }
+
+      if (defaultWallet && goalWallet.id !== defaultWallet.id) {
+        // Move all transactions in goal wallet to the default wallet
+        const transactions = await this.transactionRepo.find({
+          where: { wallet: { id: goalWallet.id } },
+        });
+
+        let balanceAdjustment = 0;
+        for (const tx of transactions) {
+          tx.wallet = defaultWallet;
+          const amt = Number(tx.amount);
+          if (tx.type === 'income') {
+            balanceAdjustment += amt;
+          } else if (tx.type === 'expense') {
+            balanceAdjustment -= amt;
+          }
+        }
+
+        if (transactions.length > 0) {
+          await this.transactionRepo.save(transactions);
+        }
+
+        // Adjust default wallet balance
+        defaultWallet.balance = Number(defaultWallet.balance) + balanceAdjustment;
+        await this.walletRepo.save(defaultWallet);
+      }
+    }
+
+    // Delete saving goal first
     await this.goalRepo.remove(goal);
+
+    // Delete the goal wallet
+    if (goalWallet) {
+      await this.walletRepo.remove(goalWallet);
+    }
+
     return ok('Deleted successfully');
   }
 

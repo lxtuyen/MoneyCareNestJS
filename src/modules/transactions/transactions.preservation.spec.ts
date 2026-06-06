@@ -211,6 +211,10 @@ describe('Preservation 5 — Sum by category aggregation (MUST PASS on unfixed c
  *
  * This behavior must remain unchanged after the fix.
  */
+import { SubCategory } from '../categories/entities/sub-category.entity';
+import { Wallet } from '../wallets/entities/wallet.entity';
+import { FinancialCacheInvalidationService } from '../../common/cache/financial-cache-invalidation.service';
+
 describe('Preservation 6 — Filter transactions by fundId (MUST PASS on unfixed code)', () => {
   let service: TransactionService;
   let transactionRepo: jest.Mocked<Repository<Transaction>>;
@@ -233,8 +237,16 @@ describe('Preservation 6 — Filter transactions by fundId (MUST PASS on unfixed
           useValue: createMockRepository<Category>(),
         },
         {
+          provide: getRepositoryToken(SubCategory),
+          useValue: createMockRepository<SubCategory>(),
+        },
+        {
           provide: getRepositoryToken(SavingGoal),
           useValue: createMockRepository<SavingGoal>(),
+        },
+        {
+          provide: getRepositoryToken(Wallet),
+          useValue: createMockRepository<Wallet>(),
         },
         {
           provide: CacheService,
@@ -245,6 +257,10 @@ describe('Preservation 6 — Filter transactions by fundId (MUST PASS on unfixed
           useValue: {
             sendPushNotification: jest.fn(),
           },
+        },
+        {
+          provide: FinancialCacheInvalidationService,
+          useValue: { invalidate: jest.fn() },
         },
       ],
     }).compile();

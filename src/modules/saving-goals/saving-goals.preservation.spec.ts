@@ -13,6 +13,7 @@ import { SavingGoalsService } from './saving-goals.service';
 import { SavingGoal } from './entities/saving-goal.entity';
 import { User } from '../user/entities/user.entity';
 import { Wallet } from '../wallets/entities/wallet.entity';
+import { Transaction } from '../transactions/entities/transaction.entity';
 import { CreateSavingGoalDto } from './dto/create-goal.dto';
 import { UpdateSavingGoalDto } from './dto/update-goal.dto';
 
@@ -53,6 +54,10 @@ describe('Preservation 1 — Create fund with name, dates (MUST PASS)', () => {
           provide: getRepositoryToken(Wallet),
           useValue: createMockRepository<Wallet>(),
         },
+        {
+          provide: getRepositoryToken(Transaction),
+          useValue: createMockRepository<Transaction>(),
+        },
       ],
     }).compile();
 
@@ -75,6 +80,7 @@ describe('Preservation 1 — Create fund with name, dates (MUST PASS)', () => {
     } as any as SavingGoal;
 
     userRepo.findOne.mockResolvedValue(mockUser);
+    walletRepo.save.mockResolvedValue({ id: 2 } as Wallet);
     fundRepo.create.mockReturnValue(mockSavingGoal);
     fundRepo.save.mockResolvedValue(mockSavingGoal);
     fundRepo.findOne.mockResolvedValue(mockSavingGoal);
@@ -122,6 +128,10 @@ describe('Preservation 2 — Update fund works correctly (MUST PASS)', () => {
         {
           provide: getRepositoryToken(Wallet),
           useValue: createMockRepository<Wallet>(),
+        },
+        {
+          provide: getRepositoryToken(Transaction),
+          useValue: createMockRepository<Transaction>(),
         },
       ],
     }).compile();
@@ -176,6 +186,10 @@ describe('Preservation 3 — Delete fund works correctly (MUST PASS)', () => {
           provide: getRepositoryToken(Wallet),
           useValue: createMockRepository<Wallet>(),
         },
+        {
+          provide: getRepositoryToken(Transaction),
+          useValue: createMockRepository<Transaction>(),
+        },
       ],
     }).compile();
 
@@ -222,6 +236,10 @@ describe('Preservation 4 — Select fund works correctly (MUST PASS)', () => {
           provide: getRepositoryToken(Wallet),
           useValue: createMockRepository<Wallet>(),
         },
+        {
+          provide: getRepositoryToken(Transaction),
+          useValue: createMockRepository<Transaction>(),
+        },
       ],
     }).compile();
 
@@ -267,6 +285,7 @@ describe('PBT Preservation — Create fund with random valid data', () => {
   let service: SavingGoalsService;
   let fundRepo: jest.Mocked<Repository<SavingGoal>>;
   let userRepo: jest.Mocked<Repository<User>>;
+  let walletRepo: jest.Mocked<Repository<Wallet>>;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -284,12 +303,17 @@ describe('PBT Preservation — Create fund with random valid data', () => {
           provide: getRepositoryToken(Wallet),
           useValue: createMockRepository<Wallet>(),
         },
+        {
+          provide: getRepositoryToken(Transaction),
+          useValue: createMockRepository<Transaction>(),
+        },
       ],
     }).compile();
 
     service = module.get<SavingGoalsService>(SavingGoalsService);
     fundRepo = module.get(getRepositoryToken(SavingGoal));
     userRepo = module.get(getRepositoryToken(User));
+    walletRepo = module.get(getRepositoryToken(Wallet));
   });
 
   it('should preserve name, dates, and target for all valid inputs', async () => {
@@ -311,6 +335,7 @@ describe('PBT Preservation — Create fund with random valid data', () => {
           } as any as SavingGoal;
 
           userRepo.findOne.mockResolvedValue(mockUser);
+          walletRepo.save.mockResolvedValue({ id: fundData.walletId } as Wallet);
           fundRepo.create.mockReturnValue(mockSavingGoal);
           fundRepo.save.mockResolvedValue(mockSavingGoal);
           fundRepo.findOne.mockResolvedValue(mockSavingGoal);

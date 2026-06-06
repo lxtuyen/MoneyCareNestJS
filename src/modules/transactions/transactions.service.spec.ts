@@ -7,6 +7,9 @@ import { Category } from '../categories/entities/category.entity';
 import { SavingGoal } from '../saving-goals/entities/saving-goal.entity';
 import { NotificationsService } from '../notifications/notifications.service';
 import { CacheService } from 'src/common/cache/cache.service';
+import { SubCategory } from '../categories/entities/sub-category.entity';
+import { Wallet } from '../wallets/entities/wallet.entity';
+import { FinancialCacheInvalidationService } from 'src/common/cache/financial-cache-invalidation.service';
 import {
   buildAiAnalysisRegistryKey,
   getFinancialCacheKeys,
@@ -19,6 +22,8 @@ describe('TransactionsService', () => {
   let userRepo: any;
   let categoryRepo: any;
   let cacheService: any;
+  let walletRepo: any;
+  let financialCacheInvalidationService: any;
 
   beforeEach(async () => {
     transactionRepo = {
@@ -58,6 +63,30 @@ describe('TransactionsService', () => {
       delMany: jest.fn().mockResolvedValue(undefined),
       delByPrefix: jest.fn(),
     };
+    walletRepo = {
+      findOne: jest.fn(),
+      save: jest.fn(),
+    };
+    financialCacheInvalidationService = {
+      invalidate: jest.fn().mockImplementation(async (userId: number, goalIds: number[]) => {
+        const uniqueGoalIds = Array.from(new Set([0, ...goalIds]));
+        const keys = getFinancialCacheKeys(userId, uniqueGoalIds);
+        await cacheService.delMany(keys);
+
+        const registryKeys = uniqueGoalIds.map(id => buildAiAnalysisRegistryKey(userId, id));
+        const registryEntries = await Promise.all(
+          registryKeys.map((registryKey) =>
+            cacheService.get(registryKey),
+          ),
+        );
+
+        const analysisKeys = Array.from(
+          new Set(registryEntries.flatMap((entry: any) => entry ?? [])),
+        );
+
+        await cacheService.delMany([...analysisKeys, ...registryKeys]);
+      }),
+    };
 
     module = await Test.createTestingModule({
       providers: [
@@ -69,14 +98,29 @@ describe('TransactionsService', () => {
         { provide: getRepositoryToken(User), useValue: userRepo },
         { provide: getRepositoryToken(Category), useValue: categoryRepo },
         {
-          provide: getRepositoryToken(SavingGoal),
+          provide: getRepositoryToken(SubCategory),
           useValue: { findOne: jest.fn() },
+        },
+        {
+          provide: getRepositoryToken(SavingGoal),
+          useValue: {
+            findOne: jest.fn(),
+            find: jest.fn().mockResolvedValue([]),
+          },
+        },
+        {
+          provide: getRepositoryToken(Wallet),
+          useValue: walletRepo,
         },
         {
           provide: NotificationsService,
           useValue: { sendPushNotification: jest.fn() },
         },
         { provide: CacheService, useValue: cacheService },
+        {
+          provide: FinancialCacheInvalidationService,
+          useValue: financialCacheInvalidationService,
+        },
       ],
     }).compile();
 
@@ -131,14 +175,21 @@ describe('TransactionsService', () => {
       pictuteURL: null,
       transaction_date: new Date(),
       user: { id: 5 },
-      category: { id: 100, fund: { id: 1 } },
+      category: { id: 100 },
+      wallet: { id: 22 },
     };
-    const newCategory = { id: 200, fund: { id: 2 } };
+    const newCategory = { id: 200 };
     const registryKeys = [
       buildAiAnalysisRegistryKey(5, 0),
       buildAiAnalysisRegistryKey(5, 1),
       buildAiAnalysisRegistryKey(5, 2),
     ];
+
+    const mockGoalRepo = module.get(getRepositoryToken(SavingGoal)) as any;
+    mockGoalRepo.find.mockResolvedValue([
+      { id: 1 } as SavingGoal,
+      { id: 2 } as SavingGoal,
+    ]);
 
     transactionRepo.findOne.mockResolvedValueOnce(transaction);
     categoryRepo.findOne.mockResolvedValueOnce(newCategory);
@@ -173,12 +224,18 @@ describe('TransactionsService', () => {
     const transaction = {
       id: 9,
       user: { id: 11 },
-      category: { fund: { id: 6 } },
+      category: {},
+      wallet: { id: 33 },
     };
     const registryKeys = [
       buildAiAnalysisRegistryKey(11, 0),
       buildAiAnalysisRegistryKey(11, 6),
     ];
+
+    const mockGoalRepo = module.get(getRepositoryToken(SavingGoal)) as any;
+    mockGoalRepo.find.mockResolvedValue([
+      { id: 6 } as SavingGoal,
+    ]);
 
     transactionRepo.findOne.mockResolvedValueOnce(transaction);
     transactionRepo.remove.mockResolvedValueOnce(transaction);

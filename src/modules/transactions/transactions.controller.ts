@@ -32,7 +32,7 @@ export class TransactionController {
   }
 
   @Put(':id')
-  async update(@Param('id') id: number, @Body() dto: UpdateTransactionDto) {
+  async update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateTransactionDto) {
     return this.transactionService.update(id, dto);
   }
 
@@ -139,7 +139,7 @@ export class TransactionController {
   }
 
   @Delete(':id')
-  async remove(@Param('id') id: number) {
+  async remove(@Param('id', ParseIntPipe) id: number) {
     return this.transactionService.remove(id);
   }
 }

@@ -173,6 +173,11 @@ export class TransactionService {
     } else if (dto.subCategoryId === null) {
       transaction.subCategory = null;
     }
+
+    const oldAmount = Number(transaction.amount);
+    const oldType = transaction.type;
+    const oldWalletId = transaction.wallet?.id;
+
     transaction.amount = dto.amount ?? transaction.amount;
     transaction.type = dto.type ?? transaction.type;
     transaction.note = dto.note ?? transaction.note;
@@ -184,11 +189,8 @@ export class TransactionService {
       }
     }
 
-    const oldAmount = Number(transaction.amount);
     const newAmount = dto.amount !== undefined ? Number(dto.amount) : oldAmount;
-    const oldType = transaction.type;
     const newType = dto.type ?? oldType;
-    const oldWalletId = transaction.wallet?.id;
     const newWalletId = dto.walletId !== undefined ? dto.walletId : oldWalletId;
 
     if (oldWalletId || newWalletId) {
