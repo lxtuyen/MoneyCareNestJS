@@ -10,6 +10,14 @@ export class ScenarioGoalImpactDto {
   newPredictedCompletionDate!: string | null;
   impactDays!: number | null;
   impactText!: string;
+  currentStatus!: string;
+  newStatus!: string;
+  currentMonthlySavingRate!: number;
+  newMonthlySavingRate!: number;
+  requiredMonthlySavingRate!: number;
+  newRequiredMonthlySavingRate!: number;
+  currentDaysDifference!: number | null;
+  newDaysDifference!: number | null;
 }
 
 export class ScenarioRecommendedActionDto {

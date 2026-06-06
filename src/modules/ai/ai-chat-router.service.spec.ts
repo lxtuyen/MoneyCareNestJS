@@ -3,6 +3,7 @@ import { FinancialInsightsService } from './financial-insights.service';
 import { AiAnalysisChatService } from './ai-analysis-chat.service';
 import { AiSavingGoalChatService } from './ai-saving-goal-chat.service';
 import { AiTransactionChatService } from './ai-transaction-chat.service';
+import { AiScenarioWhatIfChatService } from './ai-scenario-what-if-chat.service';
 
 describe('AiChatRouterService', () => {
   const financialInsightsService = { getSelectedGoalId: jest.fn() };
@@ -23,6 +24,10 @@ describe('AiChatRouterService', () => {
     handleGetTransactions: jest.fn(),
     handleRecordOrChat: jest.fn(),
   };
+  const scenarioWhatIfChatService = {
+    isWhatIfRequest: jest.fn(),
+    handleWhatIf: jest.fn(),
+  };
 
   let router: AiChatRouterService;
 
@@ -33,6 +38,7 @@ describe('AiChatRouterService', () => {
       analysisChatService as unknown as AiAnalysisChatService,
       savingGoalChatService as unknown as AiSavingGoalChatService,
       transactionChatService as unknown as AiTransactionChatService,
+      scenarioWhatIfChatService as unknown as AiScenarioWhatIfChatService,
     );
   });
 
@@ -92,6 +98,29 @@ describe('AiChatRouterService', () => {
     expect(
       transactionChatService.isGetTransactionRequest,
     ).not.toHaveBeenCalled();
+    expect(transactionChatService.handleRecordOrChat).not.toHaveBeenCalled();
+  });
+
+  it('routes what-if before transaction recording', async () => {
+    financialInsightsService.getSelectedGoalId.mockResolvedValueOnce(7);
+    scenarioWhatIfChatService.isWhatIfRequest.mockReturnValueOnce(true);
+    scenarioWhatIfChatService.handleWhatIf.mockResolvedValueOnce({
+      success: true,
+      statusCode: 200,
+      message: 'what-if answer',
+    });
+
+    const result = await router.handle(
+      'nếu tôi đi ăn Haidilao 100k thì sao',
+      4,
+    );
+
+    expect(result.message).toBe('what-if answer');
+    expect(scenarioWhatIfChatService.handleWhatIf).toHaveBeenCalledWith(
+      'nếu tôi đi ăn Haidilao 100k thì sao',
+      4,
+      7,
+    );
     expect(transactionChatService.handleRecordOrChat).not.toHaveBeenCalled();
   });
 });

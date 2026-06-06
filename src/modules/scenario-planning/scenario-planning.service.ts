@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ok } from 'src/common/utils/response.util';
+import { norm } from 'src/common/utils/string.util';
 import { Transaction } from 'src/modules/transactions/entities/transaction.entity';
 import { PersonalizationService } from 'src/modules/personalization/personalization.service';
 import { SpendingPlansService } from 'src/modules/spending-plans/spending-plans.service';
@@ -130,6 +131,20 @@ export class ScenarioPlanningService {
         newMonthlyExpense: roundMoney(monthlyExpenseAfter),
         newMonthlySaving: roundMoney(expectedSavingsAfter),
         categoryDeltas: scenario.delta.categoryDeltas,
+        categoryContext: this.buildCategoryContext(
+          dto,
+          baseline,
+          scenario.delta,
+        ),
+        plannedMonthlyBudget: roundMoney(baseline.capacity?.totalAmount ?? 0),
+        projectedFlexibleBalanceBefore: roundMoney(
+          baseline.capacity?.projectedEndBalance ??
+            baseline.monthlySavingsForecast,
+        ),
+        projectedFlexibleBalanceAfter: roundMoney(
+          (baseline.capacity?.projectedEndBalance ??
+            baseline.monthlySavingsForecast) + scenario.delta.monthlySaving,
+        ),
         oneTimeCashOutflow: scenario.delta.oneTimeCashOutflow,
         activeMonths: Math.round(baseline.activeMonths * 10) / 10,
         transactionCount: baseline.transactionCount,
@@ -307,7 +322,7 @@ export class ScenarioPlanningService {
       monthlyReductionAmount: reductionAmount,
     });
     const categoryBaseline =
-      baseline.categoryMonthlyAverages[categoryName.toLowerCase()] ?? 0;
+      baseline.categoryMonthlyAverages[norm(categoryName)] ?? 0;
     if (categoryBaseline > 0 && reductionAmount > categoryBaseline) {
       delta.reasonCodes.push('category_reduction_too_high');
     }
@@ -374,7 +389,7 @@ export class ScenarioPlanningService {
 
     return {
       delta,
-      title: 'Mua một khoản lớn',
+      title: 'Chi một khoản phát sinh',
       summary: `Khoản chi một lần ${roundMoney(amount).toLocaleString('vi-VN')} VND sẽ làm giảm dòng tiền tháng này.`,
       confidenceAdjustment: 0.04,
       recommendedActions: [
@@ -514,6 +529,14 @@ export class ScenarioPlanningService {
       newPredictedCompletionDate: adjusted.predictedCompletionDate,
       impactDays,
       impactText: this.buildImpactText(impactDays),
+      currentStatus: current.status,
+      newStatus: adjusted.status,
+      currentMonthlySavingRate: current.currentMonthlySavingRate,
+      newMonthlySavingRate: adjusted.currentMonthlySavingRate,
+      requiredMonthlySavingRate: current.requiredMonthlySavingRate,
+      newRequiredMonthlySavingRate: adjusted.requiredMonthlySavingRate,
+      currentDaysDifference: current.daysDifference,
+      newDaysDifference: adjusted.daysDifference,
     };
   }
 
@@ -629,7 +652,7 @@ export class ScenarioPlanningService {
       if (transaction.type !== 'expense') continue;
       const name = transaction.category?.name?.trim();
       if (!name) continue;
-      const key = name.toLowerCase();
+      const key = norm(name);
       totals[key] = (totals[key] ?? 0) + Number(transaction.amount ?? 0);
     }
 
@@ -659,6 +682,57 @@ export class ScenarioPlanningService {
       .map(([name, amount]) => ({ name, amount }))
       .sort((a, b) => b.amount - a.amount)
       .slice(0, 5);
+  }
+
+  private buildCategoryContext(
+    dto: SimulateScenarioDto,
+    baseline: BaselineState,
+    delta: ScenarioDelta,
+  ) {
+    const rawCategoryName =
+      typeof dto.params.categoryName === 'string'
+        ? dto.params.categoryName.trim()
+        : '';
+    if (!rawCategoryName) return null;
+
+    const categoryKey = norm(rawCategoryName);
+    const planItem = baseline.capacity?.estimatedExpenses.find((item) => {
+      const itemKey = norm(item.categoryName ?? '');
+      return (
+        itemKey === categoryKey ||
+        itemKey.includes(categoryKey) ||
+        categoryKey.includes(itemKey)
+      );
+    });
+    const monthlyAverage = roundMoney(
+      baseline.categoryMonthlyAverages[categoryKey] ?? 0,
+    );
+    const monthlyLimit = roundMoney(Number(planItem?.monthlyLimit ?? 0));
+    const categoryDelta = roundMoney(
+      Object.entries(delta.categoryDeltas).find(
+        ([name]) => norm(name) === categoryKey,
+      )?.[1] ?? 0,
+    );
+    const forecastBefore = monthlyAverage;
+    const forecastAfter = roundMoney(
+      Math.max(0, forecastBefore + categoryDelta),
+    );
+
+    return {
+      categoryName: rawCategoryName,
+      monthlyAverage,
+      monthlyLimit,
+      forecastBefore,
+      forecastAfter,
+      remainingLimitBefore:
+        monthlyLimit > 0 ? roundMoney(monthlyLimit - forecastBefore) : null,
+      remainingLimitAfter:
+        monthlyLimit > 0 ? roundMoney(monthlyLimit - forecastAfter) : null,
+      usagePctAfter:
+        monthlyLimit > 0
+          ? Math.round((forecastAfter / monthlyLimit) * 1000) / 10
+          : null,
+    };
   }
 
   private estimateAverageAmount(
@@ -781,8 +855,9 @@ export class ScenarioPlanningService {
       },
       {
         scenarioType: 'one_time_purchase',
-        title: 'Mua một khoản lớn',
-        description: 'Xem khoản chi một lần ảnh hưởng thế nào đến mục tiêu.',
+        title: 'Chi một khoản phát sinh',
+        description:
+          'Xem một bữa ăn, món đồ hoặc khoản chi bất ngờ ảnh hưởng thế nào.',
         fields: [
           { name: 'amount', type: 'money', label: 'Số tiền', required: true },
           {

@@ -179,6 +179,94 @@ export function getProposeSavingGoalTool() {
   };
 }
 
+export function getWhatIfScenarioTool() {
+  return {
+    tools: [
+      {
+        functionDeclarations: [
+          {
+            name: 'parse_what_if_scenario',
+            description:
+              'Trich xuat kich ban mo phong tai chinh gia dinh tu tin nhan nguoi dung',
+            parameters: {
+              type: Type.OBJECT,
+              properties: {
+                scenarioType: {
+                  type: Type.STRING,
+                  description: 'Loai kich ban what-if',
+                  enum: [
+                    'one_time_purchase',
+                    'reduce_frequency_expense',
+                    'reduce_category_spending',
+                    'income_drop',
+                  ],
+                },
+                itemName: {
+                  type: Type.STRING,
+                  description:
+                    'Ten khoan chi/thoi quen, vi du Haidilao, tra sua, xem phim',
+                  nullable: true,
+                },
+                categoryName: {
+                  type: Type.STRING,
+                  description:
+                    'Danh muc hoac noi dung chi tieu, vi du An uong, Shopping, Haidilao',
+                  nullable: true,
+                },
+                amount: {
+                  type: Type.NUMBER,
+                  description:
+                    'So tien VND cho one_time_purchase. Vi du 100k -> 100000',
+                  nullable: true,
+                },
+                monthlyReductionAmount: {
+                  type: Type.NUMBER,
+                  description:
+                    'So tien VND muon giam moi thang cho reduce_category_spending',
+                  nullable: true,
+                },
+                incomeDropPct: {
+                  type: Type.NUMBER,
+                  description:
+                    'Phan tram thu nhap bi giam cho income_drop, vi du 20',
+                  nullable: true,
+                },
+                currentFrequencyPerWeek: {
+                  type: Type.NUMBER,
+                  description:
+                    'Tan suat hien tai moi tuan cho reduce_frequency_expense',
+                  nullable: true,
+                },
+                newFrequencyPerWeek: {
+                  type: Type.NUMBER,
+                  description:
+                    'Tan suat moi moi tuan cho reduce_frequency_expense',
+                  nullable: true,
+                },
+                averageAmount: {
+                  type: Type.NUMBER,
+                  description:
+                    'So tien moi lan VND cho reduce_frequency_expense',
+                  nullable: true,
+                },
+                needsAmount: {
+                  type: Type.BOOLEAN,
+                  description:
+                    'true neu cau hoi can so tien nhung nguoi dung chua cung cap',
+                },
+              },
+              required: ['scenarioType'],
+            },
+          },
+        ],
+      },
+    ],
+    toolConfig: {
+      functionCallingConfig: { mode: FunctionCallingConfigMode.ANY },
+    },
+  };
+}
+
 export function getQueryTransactionsPrompt(
   message: string,
   nowIso: string,
@@ -268,6 +356,23 @@ QUY TAC:
 5. months_estimate: Uoc tinh so thang can thiet = target / kha_nang_tiet_kiem_moi_thang. Lam tron len.
    Neu khong co ke hoach chi tieu, hay uoc tinh khoang 6 thang. Neu co requested_months thi months_estimate van co the bang requested_months.
    Neu co requested_days thi months_estimate bang requested_days / 30.
+
+Hom nay la ${nowIso}.
+Tin nhan: "${message}"`;
+}
+
+export function getWhatIfScenarioPrompt(message: string, nowIso: string) {
+  return `Ban la may trich xuat scenario what-if cho ung dung Money Care.
+NHIEM VU: Bat buoc dung cong cu parse_what_if_scenario de chuyen cau hoi gia dinh tai chinh thanh payload mo phong.
+
+QUY TAC:
+1. Chi trich xuat gia dinh, khong ghi giao dich that.
+2. Neu nguoi dung hoi "neu/what if/gia su ... an/mua/di/uong/choi ... 100k thi sao" => scenarioType="one_time_purchase", amount=100000, categoryName hoac itemName la noi dung chi.
+3. Neu "giam X tu A lan/ly/tuan xuong B ..., moi lan C" => scenarioType="reduce_frequency_expense".
+4. Neu "giam [danh muc] 500k moi thang/thang" => scenarioType="reduce_category_spending".
+5. Neu "luong/thu nhap giam 20%" => scenarioType="income_drop".
+6. Neu can so tien nhung khong co so tien, dat needsAmount=true.
+7. Quy doi tien: 100k/100 nghin = 100000; 1 trieu = 1000000; 1.5 trieu = 1500000.
 
 Hom nay la ${nowIso}.
 Tin nhan: "${message}"`;

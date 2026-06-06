@@ -5,6 +5,7 @@ import {
   IsOptional,
   IsString,
   ValidateNested,
+  IsDefined,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -62,10 +63,12 @@ export class GoalPlanInsightDto {
   @IsString()
   selectedMonth: string;
 
+  @IsDefined()
   @ValidateNested()
   @Type(() => GoalPlanInsightGoalDto)
   goal: GoalPlanInsightGoalDto;
 
+  @IsDefined()
   @ValidateNested()
   @Type(() => GoalPlanInsightPlanDto)
   plan: GoalPlanInsightPlanDto;

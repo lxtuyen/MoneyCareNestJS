@@ -6,6 +6,7 @@ import { AiChatRouterService } from './ai-chat-router.service';
 import { AiSavingGoalChatService } from './ai-saving-goal-chat.service';
 import { AiTransactionChatService } from './ai-transaction-chat.service';
 import { AiAnalysisChatService } from './ai-analysis-chat.service';
+import { AiScenarioWhatIfChatService } from './ai-scenario-what-if-chat.service';
 import { AiGoalPlanInsightService } from './ai-goal-plan-insight.service';
 import { ReceiptOcrService } from './receipt-ocr.service';
 import { AiController } from './ai.controller';
@@ -22,6 +23,7 @@ import { SavingGoalsModule } from 'src/modules/saving-goals/saving-goals.module'
 import { WalletsModule } from 'src/modules/wallets/wallets.module';
 import { UserCategoryPreference } from 'src/modules/categories/entities/user-category-preference.entity';
 import { PersonalizationModule } from 'src/modules/personalization/personalization.module';
+import { ScenarioPlanningModule } from 'src/modules/scenario-planning/scenario-planning.module';
 
 @Global()
 @Module({
@@ -40,6 +42,7 @@ import { PersonalizationModule } from 'src/modules/personalization/personalizati
     SavingGoalsModule,
     WalletsModule,
     PersonalizationModule,
+    ScenarioPlanningModule,
   ],
   controllers: [AiController],
   providers: [
@@ -49,6 +52,7 @@ import { PersonalizationModule } from 'src/modules/personalization/personalizati
     AiSavingGoalChatService,
     AiTransactionChatService,
     AiAnalysisChatService,
+    AiScenarioWhatIfChatService,
     AiGoalPlanInsightService,
     FinancialInsightsService,
     ReceiptOcrService,

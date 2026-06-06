@@ -70,7 +70,12 @@ export class SpendingPlanStatisticsService {
   private async findActivePlanEntity(userId: number, month?: number, year?: number) {
     const plan = await this.planRepo.findOne({
       where: { user: { id: userId }, status: SpendingPlanStatus.ACTIVE },
-      relations: ['estimatedExpenses', 'user'],
+      relations: [
+        'estimatedExpenses',
+        'estimatedExpenses.category',
+        'estimatedExpenses.subCategory',
+        'user',
+      ],
     });
     if (plan) {
       this.applyCalculation(plan, month, year);
@@ -104,6 +109,7 @@ export class SpendingPlanStatisticsService {
       getReportDay(period),
     );
     let spentAmount = 0;
+    let plannedSpentAmount = 0;
     const planItemTotals = new Map<
       number,
       { spentThisMonth: number; todaySpent: number }
@@ -121,6 +127,7 @@ export class SpendingPlanStatisticsService {
         (dailySpentMap.get(transactionDateKey) ?? 0) + amount,
       );
 
+      let matchedPlanItem = false;
       for (const item of plan.estimatedExpenses ?? []) {
         const matchesSubCategory =
           item.subCategory?.id &&
@@ -131,6 +138,7 @@ export class SpendingPlanStatisticsService {
           transaction.category?.id === item.category.id;
         if (!matchesSubCategory && !matchesCategory) continue;
 
+        matchedPlanItem = true;
         const totals = planItemTotals.get(item.id) ?? {
           spentThisMonth: 0,
           todaySpent: 0,
@@ -141,6 +149,9 @@ export class SpendingPlanStatisticsService {
         }
         planItemTotals.set(item.id, totals);
       }
+      if (matchedPlanItem) {
+        plannedSpentAmount += amount;
+      }
     }
 
     const remainingAmount = roundMoney(plan.totalAmount - spentAmount);
@@ -150,8 +161,11 @@ export class SpendingPlanStatisticsService {
       period.year,
     );
 
-    const avgDaily = daysPassed > 0 ? spentAmount / daysPassed : 0;
-    const projectedMonthlySpending = avgDaily * daysInMonth;
+    const unplannedSpentAmount = Math.max(0, spentAmount - plannedSpentAmount);
+    const avgDailyUnplanned =
+      daysPassed > 0 ? unplannedSpentAmount / daysPassed : 0;
+    const projectedMonthlySpending =
+      Number(plan.estimatedExpenseTotal ?? 0) + avgDailyUnplanned * daysInMonth;
     const projectedEndBalance = roundMoney(
       plan.totalAmount - projectedMonthlySpending,
     );
@@ -287,7 +301,12 @@ export class SpendingPlanStatisticsService {
           user: { id: userId },
           status: In([SpendingPlanStatus.DRAFT, SpendingPlanStatus.PAUSED]),
         },
-        relations: ['estimatedExpenses', 'user'],
+        relations: [
+          'estimatedExpenses',
+          'estimatedExpenses.category',
+          'estimatedExpenses.subCategory',
+          'user',
+        ],
         order: { updatedAt: 'DESC' },
       });
       if (plan) {
