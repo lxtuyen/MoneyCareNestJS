@@ -12,6 +12,10 @@ import { PersonalizationService } from '../personalization/personalization.servi
 import { AnalyticsPredictionService } from './analytics-prediction.service';
 import { AiFeedbackService } from '../ai-feedback/ai-feedback.service';
 import { AnalyticsEvaluationService } from './analytics-evaluation.service';
+import {
+  formatDateInTimeZone,
+  getVietnamNow,
+} from 'src/common/utils/date.util';
 
 @Injectable()
 export class AnalyticsService {
@@ -73,6 +77,7 @@ export class AnalyticsService {
           id: activePlan.id,
           month: new Date().getMonth() + 1,
           year: new Date().getFullYear(),
+          planned_budget: Number(activePlan.totalAmount || 0),
           planned_income: Number(activePlan.totalAmount || 0),
           items: (planStats.fixedExpenses || []).map((item: any) => ({
             id: item.id,
@@ -270,26 +275,8 @@ export class AnalyticsService {
       })),
       forecasting: data.forecasting
         ? {
-            method: data.forecasting.method,
-            horizonDays: data.forecasting.horizon_days,
-            totalForecast: data.forecasting.total_forecast,
-            confidence: data.forecasting.confidence,
-            dailyPoints: (data.forecasting.daily_points || []).map(
-              (p: any) => ({
-                date: p.date,
-                predictedAmount: p.predicted_amount,
-              }),
-            ),
-            categoryForecasts: (data.forecasting.category_forecasts || []).map(
-              (c: any) => ({
-                categoryName: c.category_name,
-                predictedAmount: c.predicted_amount,
-                confidence: c.confidence,
-                trend: c.trend,
-                dataPoints: c.data_points,
-              }),
-            ),
-            modelNotes: data.forecasting.model_notes,
+            currentMonthProjection: this.mapMonthlyForecast(data.forecasting.current_month_projection || data.forecasting.currentMonthProjection),
+            nextMonthForecast: this.mapMonthlyForecast(data.forecasting.next_month_forecast || data.forecasting.nextMonthForecast),
           }
         : null,
       aiBudgeting: data.ai_budgeting
@@ -327,21 +314,89 @@ export class AnalyticsService {
     };
   }
 
+  private mapMonthlyForecast(m: any) {
+    if (!m) return null;
+    return {
+      method: m.method,
+      modelVersion: m.model_version || m.modelVersion || 'v2',
+      periodType: m.period_type || m.periodType || 'month',
+      forecastMode: m.forecast_mode || m.forecastMode,
+      targetMonth: m.target_month || m.targetMonth,
+      targetYear: m.target_year || m.targetYear,
+      periodStart: m.period_start || m.periodStart,
+      periodEnd: m.period_end || m.periodEnd,
+      actualAmount: m.actual_amount !== undefined ? m.actual_amount : m.actualAmount,
+      predictedRemainingAmount: m.predicted_remaining_amount !== undefined ? m.predicted_remaining_amount : m.predictedRemainingAmount,
+      totalForecast: m.total_forecast !== undefined ? m.total_forecast : m.totalForecast,
+      confidence: m.confidence,
+      riskLevel: m.risk_level || m.riskLevel || 'low',
+      modelNotes: m.model_notes || m.modelNotes || '',
+      weeklyForecasts: (m.weekly_forecasts || m.weeklyForecasts || []).map((w: any) => ({
+        weekIndex: w.week_index || w.weekIndex,
+        periodStart: w.period_start || w.periodStart,
+        periodEnd: w.period_end || w.periodEnd,
+        predictedAmount: w.predicted_amount !== undefined ? w.predicted_amount : w.predictedAmount,
+        actualAmount: w.actual_amount !== undefined ? w.actual_amount : w.actualAmount,
+        riskLevel: w.risk_level || w.riskLevel || 'low',
+      })),
+      categoryForecasts: (m.category_forecasts || m.categoryForecasts || []).map((c: any) => ({
+        categoryName: c.category_name || c.categoryName,
+        predictedAmount: c.predicted_amount !== undefined ? c.predicted_amount : c.predictedAmount,
+        actualAmount: c.actual_amount !== undefined ? c.actual_amount : c.actualAmount,
+        remainingForecastAmount: c.remaining_forecast_amount !== undefined ? c.remaining_forecast_amount : c.remainingForecastAmount,
+        trend: c.trend || 'stable',
+        confidence: c.confidence,
+        dataPoints: c.data_points !== undefined ? c.data_points : c.dataPoints,
+        riskLevel: c.risk_level || c.riskLevel || 'low',
+        reasonCodes: c.reason_codes || c.reasonCodes || [],
+      })),
+      riskWindows: (m.risk_windows || m.riskWindows || []).map((r: any) => ({
+        periodStart: r.period_start || r.periodStart,
+        periodEnd: r.period_end || r.periodEnd,
+        riskLevel: r.risk_level || r.riskLevel || 'low',
+        predictedAmount: r.predicted_amount !== undefined ? r.predicted_amount : r.predictedAmount,
+        reason: r.reason || '',
+        reasonCodes: r.reason_codes || r.reasonCodes || [],
+      })),
+      dailyPoints: (m.daily_points || m.dailyPoints || []).map((p: any) => ({
+        date: p.date,
+        predictedAmount: p.predicted_amount !== undefined ? p.predicted_amount : p.predictedAmount,
+      })),
+    };
+  }
+
   private generateFallbackData(
     transactions: Transaction[],
     spendingPlan: any,
     savingGoals: SavingGoal[],
   ) {
+    const now = getVietnamNow();
+    const currentMonth = now.getMonth() + 1;
+    const currentYear = now.getFullYear();
+
     const incomes = transactions.filter(
       (t) => t.type === 'income' && !t.isTransfer,
     );
     const expenses = transactions.filter(
       (t) => t.type === 'expense' && !t.isTransfer,
     );
+    const isCurrentMonthTransaction = (t: Transaction) => {
+      const dateKey = formatDateInTimeZone(t.transaction_date);
+      return (
+        dateKey.startsWith(
+          `${currentYear}-${currentMonth.toString().padStart(2, '0')}-`,
+        )
+      );
+    };
+    const currentMonthExpenses = expenses.filter(isCurrentMonthTransaction);
 
     const totalIncome = incomes.reduce((sum, t) => sum + Number(t.amount), 0);
     const totalExpense = expenses.reduce((sum, t) => sum + Number(t.amount), 0);
     const netBalance = totalIncome - totalExpense;
+    const currentMonthExpense = currentMonthExpenses.reduce(
+      (sum, t) => sum + Number(t.amount),
+      0,
+    );
 
     let score = 70;
     if (totalExpense > totalIncome) score = 40;
@@ -362,7 +417,32 @@ export class AnalyticsService {
         })
       : [];
 
-    const monthlyForecast = totalExpense > 0 ? totalExpense / 12 : 0;
+    const completedMonthTotals = new Map<string, number>();
+    for (const expense of expenses) {
+      const dateKey = formatDateInTimeZone(expense.transaction_date);
+      const [yearText, monthText] = dateKey.split('-');
+      const year = Number(yearText);
+      const month = Number(monthText);
+      const isCompletedMonth =
+        year < currentYear || (year === currentYear && month < currentMonth);
+      if (!isCompletedMonth) continue;
+
+      const monthKey = `${yearText}-${monthText}`;
+      completedMonthTotals.set(
+        monthKey,
+        (completedMonthTotals.get(monthKey) ?? 0) + Number(expense.amount),
+      );
+    }
+    const completedMonthValues = Array.from(completedMonthTotals.values());
+    const fallbackTotalForecast =
+      completedMonthValues.length > 0
+        ? completedMonthValues.reduce((sum, amount) => sum + amount, 0) /
+          completedMonthValues.length
+        : currentMonthExpense;
+    const predictedRemainingForecast = Math.max(
+      0,
+      fallbackTotalForecast - currentMonthExpense,
+    );
     const savingProjections = savingGoals.map((g) => {
       const remaining = Math.max(0, Number(g.target) - Number(g.saved_amount));
       const monthlyRate = netBalance > 0 ? netBalance / 12 : 500000;
@@ -381,7 +461,7 @@ export class AnalyticsService {
     return {
       financialHealthScore: score,
       cashFlowTrend: netBalance >= 0 ? 'stable' : 'worsening',
-      monthlyForecast,
+      monthlyForecast: fallbackTotalForecast,
       anomalies: [],
       budgetRisk: {
         riskLevel: budgetItems.some((item) => item.status === 'danger')
@@ -403,13 +483,46 @@ export class AnalyticsService {
         },
       ],
       forecasting: {
-        method: 'fallback_average',
-        horizonDays: 30,
-        totalForecast: monthlyForecast,
-        confidence: 0.35,
-        dailyPoints: [],
-        categoryForecasts: [],
-        modelNotes: 'Dự báo dự phòng từ dữ liệu thống kê cơ bản.',
+        currentMonthProjection: {
+          method: 'fallback_average',
+          modelVersion: 'v2',
+          periodType: 'month',
+          forecastMode: 'current_month_projection',
+          targetMonth: new Date().getMonth() + 1,
+          targetYear: new Date().getFullYear(),
+          periodStart: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0],
+          periodEnd: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).toISOString().split('T')[0],
+          actualAmount: currentMonthExpense,
+          predictedRemainingAmount: predictedRemainingForecast,
+          totalForecast: currentMonthExpense + predictedRemainingForecast,
+          confidence: 0.35,
+          riskLevel: 'low',
+          modelNotes: 'Dự báo dự phòng từ dữ liệu thống kê cơ bản.',
+          weeklyForecasts: [],
+          categoryForecasts: [],
+          riskWindows: [],
+          dailyPoints: [],
+        },
+        nextMonthForecast: {
+          method: 'fallback_average',
+          modelVersion: 'v2',
+          periodType: 'month',
+          forecastMode: 'next_month_forecast',
+          targetMonth: new Date().getMonth() === 11 ? 1 : new Date().getMonth() + 2,
+          targetYear: new Date().getMonth() === 11 ? new Date().getFullYear() + 1 : new Date().getFullYear(),
+          periodStart: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 1).toISOString().split('T')[0],
+          periodEnd: new Date(new Date().getFullYear(), new Date().getMonth() + 2, 0).toISOString().split('T')[0],
+          actualAmount: 0,
+          predictedRemainingAmount: fallbackTotalForecast,
+          totalForecast: fallbackTotalForecast,
+          confidence: 0.3,
+          riskLevel: 'low',
+          modelNotes: 'Dự báo dự phòng từ dữ liệu thống kê cơ bản.',
+          weeklyForecasts: [],
+          categoryForecasts: [],
+          riskWindows: [],
+          dailyPoints: [],
+        }
       },
       aiBudgeting: {
         method: 'fallback_budgeting',

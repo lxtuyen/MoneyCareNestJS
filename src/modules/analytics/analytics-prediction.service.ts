@@ -29,12 +29,22 @@ export class AnalyticsPredictionService {
     const now = new Date();
 
     if (mappedData.forecasting) {
-      await this.logForecastingRun(
-        userId,
-        mappedData.forecasting,
-        metadata,
-        now,
-      );
+      if (mappedData.forecasting.currentMonthProjection) {
+        await this.logForecastingRun(
+          userId,
+          mappedData.forecasting.currentMonthProjection,
+          metadata,
+          now,
+        );
+      }
+      if (mappedData.forecasting.nextMonthForecast) {
+        await this.logForecastingRun(
+          userId,
+          mappedData.forecasting.nextMonthForecast,
+          metadata,
+          now,
+        );
+      }
     }
 
     if (mappedData.aiBudgeting) {
@@ -53,10 +63,17 @@ export class AnalyticsPredictionService {
   ): Promise<AiPredictionRun | null> {
     const modelName = forecasting.method || 'unknown';
 
+    const targetStart = forecasting.periodStart ? new Date(forecasting.periodStart) : new Date(now);
+    targetStart.setHours(0, 0, 0, 0);
+
+    const targetEnd = forecasting.periodEnd ? new Date(forecasting.periodEnd) : new Date(targetStart);
+    targetEnd.setHours(23, 59, 59, 999);
+
     const existing = await this.findExistingRunForToday(
       userId,
       'forecasting',
       modelName,
+      targetStart,
     );
     if (existing) {
       // Update existing run thay vì tạo mới
@@ -64,6 +81,8 @@ export class AnalyticsPredictionService {
         totalForecast: forecasting.totalForecast,
         dailyPoints: forecasting.dailyPoints,
         categoryForecasts: forecasting.categoryForecasts,
+        weeklyForecasts: forecasting.weeklyForecasts,
+        riskWindows: forecasting.riskWindows,
       };
       existing.confidence = forecasting.confidence || 0;
       existing.inputSnapshot = metadata;
@@ -74,15 +93,6 @@ export class AnalyticsPredictionService {
       return existing;
     }
 
-    const horizonDays = forecasting.horizonDays || 30;
-    const targetStart = new Date(now);
-    targetStart.setDate(targetStart.getDate() + 1);
-    targetStart.setHours(0, 0, 0, 0);
-
-    const targetEnd = new Date(targetStart);
-    targetEnd.setDate(targetEnd.getDate() + horizonDays - 1);
-    targetEnd.setHours(23, 59, 59, 999);
-
     const inputPeriodEnd = new Date(now);
     const inputPeriodStart = new Date(now);
     inputPeriodStart.setFullYear(inputPeriodStart.getFullYear() - 1);
@@ -91,7 +101,7 @@ export class AnalyticsPredictionService {
       userId,
       modelType: 'forecasting',
       modelName,
-      modelVersion: 'v1',
+      modelVersion: 'v2',
       inputPeriodStart,
       inputPeriodEnd,
       predictionTargetStart: targetStart,
@@ -100,6 +110,8 @@ export class AnalyticsPredictionService {
         totalForecast: forecasting.totalForecast,
         dailyPoints: forecasting.dailyPoints,
         categoryForecasts: forecasting.categoryForecasts,
+        weeklyForecasts: forecasting.weeklyForecasts,
+        riskWindows: forecasting.riskWindows,
       },
       inputSnapshot: metadata,
       confidence: forecasting.confidence || 0,
@@ -194,19 +206,26 @@ export class AnalyticsPredictionService {
     userId: number,
     modelType: string,
     modelName: string,
+    predictionTargetStart?: Date,
   ): Promise<AiPredictionRun | null> {
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
     const todayEnd = new Date();
     todayEnd.setHours(23, 59, 59, 999);
 
+    const whereClause: any = {
+      userId,
+      modelType: modelType as any,
+      modelName,
+      createdAt: Between(todayStart, todayEnd),
+    };
+
+    if (predictionTargetStart) {
+      whereClause.predictionTargetStart = predictionTargetStart;
+    }
+
     return this.runRepo.findOne({
-      where: {
-        userId,
-        modelType: modelType as any,
-        modelName,
-        createdAt: Between(todayStart, todayEnd),
-      },
+      where: whereClause,
     });
   }
 
