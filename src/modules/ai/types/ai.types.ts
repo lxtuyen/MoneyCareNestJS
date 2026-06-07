@@ -54,7 +54,9 @@ export type InsightCategorySummary = {
 };
 
 export type FinancialInsightSnapshot = {
-  period: 'this_month' | 'last_30_days';
+  period: 'this_month' | 'last_30_days' | 'target_month';
+  targetMonth?: number;
+  targetYear?: number;
   generatedAt: string;
   incomeTotal: number;
   expenseTotal: number;

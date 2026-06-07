@@ -33,4 +33,3 @@ export class InitialFinancialPlanExpenseDto {
   @Min(1)
   frequencyValue!: number;
 }
-

@@ -1,4 +1,12 @@
-import { Body, Controller, Get, Logger, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Logger,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { JwtAuthGuard } from 'src/modules/auth/jwt-auth.guard';
 import { User } from 'src/common/decorators/user.decorator';
 import { AnalyticsService } from './analytics.service';
@@ -18,8 +26,15 @@ export class AnalyticsController {
   ) {}
 
   @Get('financial-summary')
-  async getFinancialSummary(@User('sub') userId: number) {
-    return this.analyticsService.getFinancialSummary(userId);
+  async getFinancialSummary(
+    @User('sub') userId: number,
+    @Query('targetMonth') targetMonth?: string,
+    @Query('targetYear') targetYear?: string,
+  ) {
+    return this.analyticsService.getFinancialSummary(userId, {
+      targetMonth: targetMonth ? Number(targetMonth) : undefined,
+      targetYear: targetYear ? Number(targetYear) : undefined,
+    });
   }
 
   @Get('model-evaluation')

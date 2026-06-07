@@ -24,6 +24,11 @@ import {
   AnalyticsServiceResponse,
 } from './types/analytics-service-response.type';
 
+export interface FinancialSummaryOptions {
+  targetMonth?: number;
+  targetYear?: number;
+}
+
 @Injectable()
 export class AnalyticsService {
   private readonly logger = new Logger(AnalyticsService.name);
@@ -49,15 +54,25 @@ export class AnalyticsService {
 
   async getFinancialSummary(
     userId: number,
+    options: FinancialSummaryOptions = {},
   ): Promise<ApiResponse<AnalyticsMappedResponse>> {
     const period = 'last_12_months';
-    const startDate = new Date();
+    const targetPeriod = this.resolveTargetPeriod(options);
+    const targetMonthStart = new Date(
+      targetPeriod.year,
+      targetPeriod.month - 1,
+      1,
+    );
+    const targetMonthEnd = new Date(targetPeriod.year, targetPeriod.month, 0);
+    targetMonthEnd.setHours(23, 59, 59, 999);
+    const startDate = new Date(targetMonthStart);
     startDate.setFullYear(startDate.getFullYear() - 1);
+    const endDate = targetMonthEnd;
 
     const transactions = await this.transactionRepo.find({
       where: {
         user: { id: userId },
-        transaction_date: Between(startDate, new Date()),
+        transaction_date: Between(startDate, endDate),
       },
       relations: ['category'],
       order: { transaction_date: 'DESC' },
@@ -71,8 +86,11 @@ export class AnalyticsService {
       order: { updated_at: 'DESC' },
     });
 
-    const planStatsRes =
-      await this.planStatsService.getActiveStatistics(userId);
+    const planStatsRes = await this.planStatsService.getActiveStatistics(
+      userId,
+      targetPeriod.month,
+      targetPeriod.year,
+    );
     const planStats = planStatsRes.success ? planStatsRes.data : null;
 
     let spendingPlanPayload: any = null;
@@ -85,8 +103,8 @@ export class AnalyticsService {
       if (activePlan) {
         spendingPlanPayload = {
           id: activePlan.id,
-          month: new Date().getMonth() + 1,
-          year: new Date().getFullYear(),
+          month: targetPeriod.month,
+          year: targetPeriod.year,
           planned_budget: Number(activePlan.totalAmount || 0),
           planned_income: Number(activePlan.totalAmount || 0),
           items: (planStats.fixedExpenses || []).map((item: any) => ({
@@ -156,6 +174,8 @@ export class AnalyticsService {
       feedback_summary: feedbackSummary,
       model_evaluation: modelEvaluation,
       essential_categories: essentialCategories,
+      target_month: targetPeriod.month,
+      target_year: targetPeriod.year,
     };
 
     const url =
@@ -225,6 +245,7 @@ export class AnalyticsService {
         spendingPlanPayload,
         savingGoals,
         goalAchievement,
+        targetPeriod,
       );
 
       // Log fallback prediction run
@@ -252,15 +273,35 @@ export class AnalyticsService {
     }
   }
 
+  private resolveTargetPeriod(options: FinancialSummaryOptions): {
+    month: number;
+    year: number;
+  } {
+    const now = getVietnamNow();
+    const month = Number(options.targetMonth);
+    const year = Number(options.targetYear);
+
+    return {
+      month:
+        Number.isInteger(month) && month >= 1 && month <= 12
+          ? month
+          : now.getMonth() + 1,
+      year:
+        Number.isInteger(year) && year >= 2000 && year <= 2100
+          ? year
+          : now.getFullYear(),
+    };
+  }
+
   private generateFallbackData(
     transactions: Transaction[],
     spendingPlan: any,
     savingGoals: SavingGoal[],
     goalAchievement: GoalAchievementPredictionSummaryDto | null,
+    targetPeriod: { month: number; year: number },
   ): AnalyticsMappedResponse {
-    const now = getVietnamNow();
-    const currentMonth = now.getMonth() + 1;
-    const currentYear = now.getFullYear();
+    const currentMonth = targetPeriod.month;
+    const currentYear = targetPeriod.year;
 
     const incomes = transactions.filter(
       (t) => t.type === 'income' && !t.isTransfer,
@@ -374,20 +415,12 @@ export class AnalyticsService {
           modelVersion: 'v2',
           periodType: 'month',
           forecastMode: 'current_month_projection',
-          targetMonth: new Date().getMonth() + 1,
-          targetYear: new Date().getFullYear(),
-          periodStart: new Date(
-            new Date().getFullYear(),
-            new Date().getMonth(),
-            1,
-          )
+          targetMonth: currentMonth,
+          targetYear: currentYear,
+          periodStart: new Date(currentYear, currentMonth - 1, 1)
             .toISOString()
             .split('T')[0],
-          periodEnd: new Date(
-            new Date().getFullYear(),
-            new Date().getMonth() + 1,
-            0,
-          )
+          periodEnd: new Date(currentYear, currentMonth, 0)
             .toISOString()
             .split('T')[0],
           actualAmount: currentMonthExpense,
@@ -406,22 +439,18 @@ export class AnalyticsService {
           modelVersion: 'v2',
           periodType: 'month',
           forecastMode: 'next_month_forecast',
-          targetMonth:
-            new Date().getMonth() === 11 ? 1 : new Date().getMonth() + 2,
-          targetYear:
-            new Date().getMonth() === 11
-              ? new Date().getFullYear() + 1
-              : new Date().getFullYear(),
+          targetMonth: currentMonth === 12 ? 1 : currentMonth + 1,
+          targetYear: currentMonth === 12 ? currentYear + 1 : currentYear,
           periodStart: new Date(
-            new Date().getFullYear(),
-            new Date().getMonth() + 1,
+            currentMonth === 12 ? currentYear + 1 : currentYear,
+            currentMonth === 12 ? 0 : currentMonth,
             1,
           )
             .toISOString()
             .split('T')[0],
           periodEnd: new Date(
-            new Date().getFullYear(),
-            new Date().getMonth() + 2,
+            currentMonth === 12 ? currentYear + 1 : currentYear,
+            currentMonth === 12 ? 1 : currentMonth + 1,
             0,
           )
             .toISOString()

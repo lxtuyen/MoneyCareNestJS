@@ -41,7 +41,10 @@ export class AnalyticsEvaluationService {
   /**
    * Evaluate tất cả prediction runs đến hạn.
    */
-  async evaluateDuePredictions(userId?: number, modelType?: string): Promise<number> {
+  async evaluateDuePredictions(
+    userId?: number,
+    modelType?: string,
+  ): Promise<number> {
     const dueRuns = await this.predictionService.findDuePredictionRuns(50);
 
     let evaluatedCount = 0;
@@ -75,7 +78,9 @@ export class AnalyticsEvaluationService {
       .where('t.userId = :userId', { userId: run.userId })
       .andWhere('t.type = :type', { type: 'expense' })
       .andWhere('t.isTransfer = :isTransfer', { isTransfer: false })
-      .andWhere('t.transaction_date >= :start', { start: run.predictionTargetStart })
+      .andWhere('t.transaction_date >= :start', {
+        start: run.predictionTargetStart,
+      })
       .andWhere('t.transaction_date <= :end', { end: run.predictionTargetEnd })
       .getMany();
 
@@ -95,14 +100,16 @@ export class AnalyticsEvaluationService {
     const dailyActual: Record<string, number> = {};
     for (const t of actualTransactions) {
       const dateStr = new Date(t.transaction_date).toISOString().split('T')[0];
-      dailyActual[dateStr] = (dailyActual[dateStr] || 0) + Number(t.amount || 0);
+      dailyActual[dateStr] =
+        (dailyActual[dateStr] || 0) + Number(t.amount || 0);
     }
 
     // Actual category expenses
     const categoryActual: Record<string, number> = {};
     for (const t of actualTransactions) {
       const catName = t.category?.name || 'Khác';
-      categoryActual[catName] = (categoryActual[catName] || 0) + Number(t.amount || 0);
+      categoryActual[catName] =
+        (categoryActual[catName] || 0) + Number(t.amount || 0);
     }
 
     const payload = run.predictionPayload;
@@ -136,7 +143,8 @@ export class AnalyticsEvaluationService {
           predictedAmount: cf.predictedAmount || 0,
           actualAmount: actual,
           absoluteError: Math.abs(actual - (cf.predictedAmount || 0)),
-          absolutePercentageError: ape !== null ? Math.round(ape * 100) / 100 : null,
+          absolutePercentageError:
+            ape !== null ? Math.round(ape * 100) / 100 : null,
         });
       }
     }
@@ -148,20 +156,25 @@ export class AnalyticsEvaluationService {
     const mape = meanAbsolutePercentageError(pairsForMetrics);
 
     const totalErrorAmount = Math.abs(actualTotalExpense - predictedTotal);
-    const totalErrorPct = actualTotalExpense > 0
-      ? Math.round((totalErrorAmount / actualTotalExpense) * 10000) / 100
-      : 0;
+    const totalErrorPct =
+      actualTotalExpense > 0
+        ? Math.round((totalErrorAmount / actualTotalExpense) * 10000) / 100
+        : 0;
 
     const evaluation = this.evalRepo.create({
       predictionRunId: run.id,
       userId: run.userId,
       actualPayload: {
         actualTotalExpense,
-        actualDailyExpenses: Object.entries(dailyActual).map(([date, amount]) => ({ date, amount })),
-        actualCategoryExpenses: Object.entries(categoryActual).map(([categoryName, amount]) => ({
-          categoryName,
-          amount,
-        })),
+        actualDailyExpenses: Object.entries(dailyActual).map(
+          ([date, amount]) => ({ date, amount }),
+        ),
+        actualCategoryExpenses: Object.entries(categoryActual).map(
+          ([categoryName, amount]) => ({
+            categoryName,
+            amount,
+          }),
+        ),
       },
       metrics: {
         totalErrorAmount,
@@ -177,7 +190,9 @@ export class AnalyticsEvaluationService {
 
     await this.evalRepo.save(evaluation);
     await this.predictionService.markEvaluated(run.id);
-    this.logger.log(`Evaluated forecasting run #${run.id}: MAE=${Math.round(mae)}, MAPE=${Math.round(mape * 100) / 100}%`);
+    this.logger.log(
+      `Evaluated forecasting run #${run.id}: MAE=${Math.round(mae)}, MAPE=${Math.round(mape * 100) / 100}%`,
+    );
   }
 
   /**
@@ -190,7 +205,9 @@ export class AnalyticsEvaluationService {
       .where('t.userId = :userId', { userId: run.userId })
       .andWhere('t.type = :type', { type: 'expense' })
       .andWhere('t.isTransfer = :isTransfer', { isTransfer: false })
-      .andWhere('t.transaction_date >= :start', { start: run.predictionTargetStart })
+      .andWhere('t.transaction_date >= :start', {
+        start: run.predictionTargetStart,
+      })
       .andWhere('t.transaction_date <= :end', { end: run.predictionTargetEnd })
       .getMany();
 
@@ -208,7 +225,8 @@ export class AnalyticsEvaluationService {
     const categoryActual: Record<string, number> = {};
     for (const t of actualTransactions) {
       const catName = t.category?.name || 'Khác';
-      categoryActual[catName] = (categoryActual[catName] || 0) + Number(t.amount || 0);
+      categoryActual[catName] =
+        (categoryActual[catName] || 0) + Number(t.amount || 0);
     }
 
     const payload = run.predictionPayload;
@@ -231,7 +249,10 @@ export class AnalyticsEvaluationService {
       }
 
       // Heuristic adoption: nếu actual gần recommended (±10%), coi như adopted
-      if (recommended > 0 && Math.abs(actual - recommended) / recommended <= 0.1) {
+      if (
+        recommended > 0 &&
+        Math.abs(actual - recommended) / recommended <= 0.1
+      ) {
         adoptedCount++;
       }
 
@@ -247,17 +268,20 @@ export class AnalyticsEvaluationService {
 
     const overrunRate = items.length > 0 ? overrunCount / items.length : 0;
     const adoptionRate = items.length > 0 ? adoptedCount / items.length : 0;
-    const avgOverrunAmount = overrunCount > 0 ? totalOverrunAmount / overrunCount : 0;
+    const avgOverrunAmount =
+      overrunCount > 0 ? totalOverrunAmount / overrunCount : 0;
 
     const evaluation = this.evalRepo.create({
       predictionRunId: run.id,
       userId: run.userId,
       actualPayload: {
         actualTotalExpense,
-        actualCategoryExpenses: Object.entries(categoryActual).map(([categoryName, amount]) => ({
-          categoryName,
-          amount,
-        })),
+        actualCategoryExpenses: Object.entries(categoryActual).map(
+          ([categoryName, amount]) => ({
+            categoryName,
+            amount,
+          }),
+        ),
       },
       metrics: {
         recommendedTotalBudget: recommendedTotal,
@@ -276,13 +300,17 @@ export class AnalyticsEvaluationService {
 
     await this.evalRepo.save(evaluation);
     await this.predictionService.markEvaluated(run.id);
-    this.logger.log(`Evaluated budgeting run #${run.id}: overrunRate=${Math.round(overrunRate * 100)}%`);
+    this.logger.log(
+      `Evaluated budgeting run #${run.id}: overrunRate=${Math.round(overrunRate * 100)}%`,
+    );
   }
 
   /**
    * Lấy summary tổng hợp cho model evaluation API.
    */
-  async getModelEvaluationSummary(userId: number): Promise<ModelEvaluationSummaryDto> {
+  async getModelEvaluationSummary(
+    userId: number,
+  ): Promise<ModelEvaluationSummaryDto> {
     const forecastingSummary = await this.buildForecastingSummary(userId);
     const budgetingSummary = await this.buildBudgetingSummary(userId);
 
@@ -295,7 +323,9 @@ export class AnalyticsEvaluationService {
   /**
    * Lấy chi tiết forecasting evaluation.
    */
-  async getForecastingEvaluation(userId: number): Promise<ForecastingEvaluationDetailDto> {
+  async getForecastingEvaluation(
+    userId: number,
+  ): Promise<ForecastingEvaluationDetailDto> {
     const summary = await this.buildForecastingSummary(userId);
 
     // Recent runs
@@ -323,7 +353,10 @@ export class AnalyticsEvaluationService {
     for (const ev of recentEvals) {
       const catMetrics = ev.metrics?.categoryMetrics || [];
       for (const cm of catMetrics) {
-        if (cm.absolutePercentageError !== null && cm.absolutePercentageError !== undefined) {
+        if (
+          cm.absolutePercentageError !== null &&
+          cm.absolutePercentageError !== undefined
+        ) {
           if (!categoryMap[cm.categoryName]) {
             categoryMap[cm.categoryName] = { totalAPE: 0, count: 0 };
           }
@@ -333,13 +366,13 @@ export class AnalyticsEvaluationService {
       }
     }
 
-    const categoryMetrics: CategoryMetricDto[] = Object.entries(categoryMap).map(
-      ([categoryName, data]) => ({
-        categoryName,
-        mape: Math.round((data.totalAPE / data.count) * 100) / 100,
-        evaluatedRuns: data.count,
-      }),
-    );
+    const categoryMetrics: CategoryMetricDto[] = Object.entries(
+      categoryMap,
+    ).map(([categoryName, data]) => ({
+      categoryName,
+      mape: Math.round((data.totalAPE / data.count) * 100) / 100,
+      evaluatedRuns: data.count,
+    }));
 
     return {
       summary: summary || {
@@ -359,7 +392,9 @@ export class AnalyticsEvaluationService {
   /**
    * Lấy chi tiết budgeting evaluation.
    */
-  async getBudgetingEvaluation(userId: number): Promise<BudgetingEvaluationDetailDto> {
+  async getBudgetingEvaluation(
+    userId: number,
+  ): Promise<BudgetingEvaluationDetailDto> {
     const summary = await this.buildBudgetingSummary(userId);
 
     const recentEvals = await this.evalRepo
@@ -377,9 +412,12 @@ export class AnalyticsEvaluationService {
       actualTotalExpense: ev.actualPayload?.actualTotalExpense || 0,
       overrunAmount: Math.max(
         0,
-        (ev.actualPayload?.actualTotalExpense || 0) - (ev.metrics?.recommendedTotalBudget || 0),
+        (ev.actualPayload?.actualTotalExpense || 0) -
+          (ev.metrics?.recommendedTotalBudget || 0),
       ),
-      wasOverBudget: (ev.actualPayload?.actualTotalExpense || 0) > (ev.metrics?.recommendedTotalBudget || 0),
+      wasOverBudget:
+        (ev.actualPayload?.actualTotalExpense || 0) >
+        (ev.metrics?.recommendedTotalBudget || 0),
     }));
 
     return {
@@ -396,7 +434,9 @@ export class AnalyticsEvaluationService {
 
   // ── Private helpers ──
 
-  private async buildForecastingSummary(userId: number): Promise<ForecastingSummaryDto | null> {
+  private async buildForecastingSummary(
+    userId: number,
+  ): Promise<ForecastingSummaryDto | null> {
     const evals = await this.evalRepo
       .createQueryBuilder('eval')
       .leftJoinAndSelect('eval.predictionRun', 'run')
@@ -411,7 +451,8 @@ export class AnalyticsEvaluationService {
     const rmses = evals.filter((e) => e.rmse !== null).map((e) => e.rmse!);
     const mapes = evals.filter((e) => e.mape !== null).map((e) => e.mape!);
 
-    const avg = (arr: number[]) => arr.length > 0 ? arr.reduce((s, v) => s + v, 0) / arr.length : null;
+    const avg = (arr: number[]) =>
+      arr.length > 0 ? arr.reduce((s, v) => s + v, 0) / arr.length : null;
 
     return {
       evaluatedRuns: evals.length,
@@ -424,7 +465,9 @@ export class AnalyticsEvaluationService {
     };
   }
 
-  private async buildBudgetingSummary(userId: number): Promise<BudgetingSummaryDto | null> {
+  private async buildBudgetingSummary(
+    userId: number,
+  ): Promise<BudgetingSummaryDto | null> {
     const evals = await this.evalRepo
       .createQueryBuilder('eval')
       .leftJoinAndSelect('eval.predictionRun', 'run')
@@ -447,13 +490,21 @@ export class AnalyticsEvaluationService {
       .filter((e) => e.metrics?.adoptionRate !== undefined)
       .map((e) => e.metrics.adoptionRate);
 
-    const avg = (arr: number[]) => arr.length > 0 ? arr.reduce((s, v) => s + v, 0) / arr.length : null;
+    const avg = (arr: number[]) =>
+      arr.length > 0 ? arr.reduce((s, v) => s + v, 0) / arr.length : null;
 
     return {
       evaluatedRuns: evals.length,
-      adoptionRate: avg(adoptionRates) !== null ? Math.round(avg(adoptionRates)! * 100) / 100 : null,
-      overrunRate: avg(overrunRates) !== null ? Math.round(avg(overrunRates)! * 100) / 100 : null,
-      averageOverrunAmount: avg(overrunAmounts) !== null ? Math.round(avg(overrunAmounts)!) : null,
+      adoptionRate:
+        avg(adoptionRates) !== null
+          ? Math.round(avg(adoptionRates)! * 100) / 100
+          : null,
+      overrunRate:
+        avg(overrunRates) !== null
+          ? Math.round(avg(overrunRates)! * 100) / 100
+          : null,
+      averageOverrunAmount:
+        avg(overrunAmounts) !== null ? Math.round(avg(overrunAmounts)!) : null,
       lastEvaluatedAt: evals[0].evaluatedAt,
     };
   }

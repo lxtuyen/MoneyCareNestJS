@@ -67,7 +67,11 @@ export class SpendingPlanStatisticsService {
     });
   }
 
-  private async findActivePlanEntity(userId: number, month?: number, year?: number) {
+  private async findActivePlanEntity(
+    userId: number,
+    month?: number,
+    year?: number,
+  ) {
     const plan = await this.planRepo.findOne({
       where: { user: { id: userId }, status: SpendingPlanStatus.ACTIVE },
       relations: [

@@ -13,7 +13,10 @@ export function mapAnalyticsResponse(
   transactions?: any[],
 ): AnalyticsMappedResponse {
   const planId = spendingPlanPayload?.id;
-  const categoryMap = new Map<string, { categoryId: number; planItemId?: number }>();
+  const categoryMap = new Map<
+    string,
+    { categoryId: number; planItemId?: number }
+  >();
 
   // Map from transactions first (to get categoryIds)
   if (transactions) {

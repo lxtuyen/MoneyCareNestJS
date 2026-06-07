@@ -8,7 +8,12 @@ import { SpendingPlansService } from 'src/modules/spending-plans/spending-plans.
 import { SavingGoalStatus } from './enums/saving-goal-status.enum';
 import { ApiResponse } from 'src/common/dto/api-response.dto';
 import { ok } from 'src/common/utils/response.util';
-import { setStartOfDay, setEndOfDay, getDaysDiff, msToDays } from 'src/common/utils/date.util';
+import {
+  setStartOfDay,
+  setEndOfDay,
+  getDaysDiff,
+  msToDays,
+} from 'src/common/utils/date.util';
 import {
   SavingGoalReport,
   SavingGoalMilestone,
@@ -62,13 +67,18 @@ export class SavingGoalsStatisticsService {
     });
 
     // Milestone query: include transfers so money deposited into saving wallet is counted
-    const milestoneTransactions = await this.fetchWalletTransactionsForMilestones(
-      goal.user.id,
-      goal.start_date || undefined,
-      goal.end_date || undefined,
-      goal.wallet?.id,
+    const milestoneTransactions =
+      await this.fetchWalletTransactionsForMilestones(
+        goal.user.id,
+        goal.start_date || undefined,
+        goal.end_date || undefined,
+        goal.wallet?.id,
+      );
+    const milestones = this.calculateMilestones(
+      goal,
+      milestoneTransactions,
+      current_automated_balance,
     );
-    const milestones = this.calculateMilestones(goal, milestoneTransactions, current_automated_balance);
 
     const target = Number(goal.target ?? 0);
     const progress_percent =
@@ -120,13 +130,21 @@ export class SavingGoalsStatisticsService {
       );
 
       const now = new Date();
-      const projectedDate = new Date(now.getFullYear(), now.getMonth() + monthsRemaining, 1);
+      const projectedDate = new Date(
+        now.getFullYear(),
+        now.getMonth() + monthsRemaining,
+        1,
+      );
 
       let isOnTrack = true;
       let monthsDiff = 0;
       if (goal.end_date) {
         const endDate = new Date(goal.end_date);
-        const endDateNormalized = new Date(endDate.getFullYear(), endDate.getMonth(), 1);
+        const endDateNormalized = new Date(
+          endDate.getFullYear(),
+          endDate.getMonth(),
+          1,
+        );
         const diffMonths =
           (projectedDate.getFullYear() - endDateNormalized.getFullYear()) * 12 +
           (projectedDate.getMonth() - endDateNormalized.getMonth());
@@ -134,9 +152,10 @@ export class SavingGoalsStatisticsService {
         monthsDiff = Math.abs(diffMonths);
       }
 
-      const requiredMonthlySaving = monthsRemaining > 0
-        ? Math.ceil(remainingTarget / monthsRemaining)
-        : remainingTarget;
+      const requiredMonthlySaving =
+        monthsRemaining > 0
+          ? Math.ceil(remainingTarget / monthsRemaining)
+          : remainingTarget;
 
       projection = {
         monthlySavingCapacity: capacity.monthlySavingCapacity,

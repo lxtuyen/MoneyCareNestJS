@@ -67,7 +67,9 @@ export class GamificationService {
     }
   }
 
-  async findByUser(userId: number): Promise<ApiResponse<GamificationResponseDto>> {
+  async findByUser(
+    userId: number,
+  ): Promise<ApiResponse<GamificationResponseDto>> {
     const record = await this.findOrCreate(userId);
     const dto = plainToInstance(GamificationResponseDto, record, {
       excludeExtraneousValues: true,

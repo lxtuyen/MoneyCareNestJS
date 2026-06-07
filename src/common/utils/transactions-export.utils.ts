@@ -129,9 +129,7 @@ export async function generatePdf(
     );
     doc.moveDown();
 
-    const incomeTransactions = transactions.filter(
-      (t) => t.type === 'income',
-    );
+    const incomeTransactions = transactions.filter((t) => t.type === 'income');
     const expenseTransactions = transactions.filter(
       (t) => t.type === 'expense',
     );
@@ -182,9 +180,7 @@ export async function generatePdf(
         doc
           .font(regularFont)
           .fontSize(10)
-          .text(
-            `${name}: ${amount.toLocaleString('vi-VN')} VND (${percent}%)`,
-          );
+          .text(`${name}: ${amount.toLocaleString('vi-VN')} VND (${percent}%)`);
 
         const barWidth = 200;
         const currentWidth = (amount / totalExpense) * barWidth;
@@ -272,8 +268,8 @@ export async function generatePdf(
         : new Date();
       const dateStr = !isNaN(transDate.getTime())
         ? transDate.toLocaleDateString('vi-VN', {
-          timeZone: 'Asia/Ho_Chi_Minh',
-        })
+            timeZone: 'Asia/Ho_Chi_Minh',
+          })
         : 'N/A';
 
       const isExpense = t.type === 'expense';
@@ -323,9 +319,7 @@ export async function generatePdf(
       const name = t.category?.name || 'Khác';
       catMap.set(name, (catMap.get(name) || 0) + Number(t.amount));
     });
-    const sortedCats = Array.from(catMap.entries()).sort(
-      (a, b) => b[1] - a[1],
-    );
+    const sortedCats = Array.from(catMap.entries()).sort((a, b) => b[1] - a[1]);
 
     if (sortedCats.length > 0 && totalExpense > 0) {
       const [topCat, topAmt] = sortedCats[0];

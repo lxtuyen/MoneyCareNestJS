@@ -63,10 +63,14 @@ export class AnalyticsPredictionService {
   ): Promise<AiPredictionRun | null> {
     const modelName = forecasting.method || 'unknown';
 
-    const targetStart = forecasting.periodStart ? new Date(forecasting.periodStart) : new Date(now);
+    const targetStart = forecasting.periodStart
+      ? new Date(forecasting.periodStart)
+      : new Date(now);
     targetStart.setHours(0, 0, 0, 0);
 
-    const targetEnd = forecasting.periodEnd ? new Date(forecasting.periodEnd) : new Date(targetStart);
+    const targetEnd = forecasting.periodEnd
+      ? new Date(forecasting.periodEnd)
+      : new Date(targetStart);
     targetEnd.setHours(23, 59, 59, 999);
 
     const existing = await this.findExistingRunForToday(

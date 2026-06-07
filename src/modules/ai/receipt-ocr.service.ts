@@ -117,8 +117,7 @@ export class ReceiptOcrService {
           if (name) {
             const price = coerceMoneyAmount(record.price);
             const quantity = Number(record.quantity) || 1;
-            const amount =
-              coerceMoneyAmount(record.amount) || price * quantity;
+            const amount = coerceMoneyAmount(record.amount) || price * quantity;
             const categoryName = coerceString(record.categoryName) || 'Khác';
             items.push({
               name,

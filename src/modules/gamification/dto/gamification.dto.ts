@@ -1,4 +1,9 @@
-import { IsDateString, IsOptional, IsString, ValidateNested } from 'class-validator';
+import {
+  IsDateString,
+  IsOptional,
+  IsString,
+  ValidateNested,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class BadgeDto {

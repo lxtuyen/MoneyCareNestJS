@@ -32,7 +32,10 @@ export class TransactionController {
   }
 
   @Put(':id')
-  async update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateTransactionDto) {
+  async update(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateTransactionDto,
+  ) {
     return this.transactionService.update(id, dto);
   }
 

@@ -73,7 +73,12 @@ export class AiScenarioWhatIfChatService {
     const dto = this.toSimulateDto(parsed, goalId);
     const result = await this.scenarioPlanningService.simulate(userId, dto);
     const fallbackText = this.formatScenarioAnswer(result.data, parsed, goalId);
-    const payload = this.buildSimulationPayload(result.data, parsed, goalId, fallbackText);
+    const payload = this.buildSimulationPayload(
+      result.data,
+      parsed,
+      goalId,
+      fallbackText,
+    );
     return ok('', `__SCENARIO_SIMULATION__${JSON.stringify(payload)}`);
   }
 
@@ -89,7 +94,7 @@ export class AiScenarioWhatIfChatService {
         getWhatIfScenarioTool(),
       );
       const calls = (response as unknown as GeminiResponse).functionCalls;
-      const args = calls?.[0]?.args as Record<string, unknown> | undefined;
+      const args = calls?.[0]?.args;
       if (!args) throw new Error('Khong nhan duoc function call');
 
       const parsed = this.normalizeParsedScenario(args);
@@ -272,12 +277,11 @@ export class AiScenarioWhatIfChatService {
       return 'Mình chưa mô phỏng được kịch bản này. Bạn thử nói rõ số tiền hoặc phần trăm thay đổi nhé.';
     }
 
-    const lines = [
-      this.buildCategoryLine(result, parsed),
-    ];
+    const lines = [this.buildCategoryLine(result, parsed)];
 
     let goalImpact = result.goalImpacts.find(
-      (impact) => goalId !== undefined && goalId > 0 && impact.goalId === goalId,
+      (impact) =>
+        goalId !== undefined && goalId > 0 && impact.goalId === goalId,
     );
     if (!goalImpact) {
       goalImpact = result.goalImpacts[0];
@@ -285,23 +289,45 @@ export class AiScenarioWhatIfChatService {
 
     if (goalImpact) {
       const name = goalImpact.goalName;
-      const statusBefore = this.goalStatusText(goalImpact.currentStatus || 'on_track');
-      const statusAfter = this.goalStatusText(goalImpact.newStatus || 'on_track');
-      
-      const dateBefore = this.formatDateVn(goalImpact.currentPredictedCompletionDate);
-      const dateAfter = this.formatDateVn(goalImpact.newPredictedCompletionDate);
-      
-      const rateBefore = this.formatMoney(goalImpact.currentMonthlySavingRate || 0);
+      const statusBefore = this.goalStatusText(
+        goalImpact.currentStatus || 'on_track',
+      );
+      const statusAfter = this.goalStatusText(
+        goalImpact.newStatus || 'on_track',
+      );
+
+      const dateBefore = this.formatDateVn(
+        goalImpact.currentPredictedCompletionDate,
+      );
+      const dateAfter = this.formatDateVn(
+        goalImpact.newPredictedCompletionDate,
+      );
+
+      const rateBefore = this.formatMoney(
+        goalImpact.currentMonthlySavingRate || 0,
+      );
       const rateAfter = this.formatMoney(goalImpact.newMonthlySavingRate || 0);
-      const reqBefore = this.formatMoney(goalImpact.requiredMonthlySavingRate || 0);
-      const reqAfter = this.formatMoney(goalImpact.newRequiredMonthlySavingRate || 0);
-      
-      const diffBefore = this.goalDifferenceText(goalImpact.currentDaysDifference ?? null);
-      const diffAfter = this.goalDifferenceText(goalImpact.newDaysDifference ?? null);
+      const reqBefore = this.formatMoney(
+        goalImpact.requiredMonthlySavingRate || 0,
+      );
+      const reqAfter = this.formatMoney(
+        goalImpact.newRequiredMonthlySavingRate || 0,
+      );
+
+      const diffBefore = this.goalDifferenceText(
+        goalImpact.currentDaysDifference ?? null,
+      );
+      const diffAfter = this.goalDifferenceText(
+        goalImpact.newDaysDifference ?? null,
+      );
 
       lines.push(`Mục tiêu "${name}": ${statusBefore} -> ${statusAfter}`);
-      lines.push(`- Dự kiến hoàn thành: ${dateBefore} -> ${dateAfter} (${diffBefore} -> ${diffAfter})`);
-      lines.push(`- Tốc độ tích lũy: ${rateBefore} -> ${rateAfter}/tháng (Yêu cầu: ${reqBefore} -> ${reqAfter}/tháng)`);
+      lines.push(
+        `- Dự kiến hoàn thành: ${dateBefore} -> ${dateAfter} (${diffBefore} -> ${diffAfter})`,
+      );
+      lines.push(
+        `- Tốc độ tích lũy: ${rateBefore} -> ${rateAfter}/tháng (Yêu cầu: ${reqBefore} -> ${reqAfter}/tháng)`,
+      );
     }
 
     return lines.filter(Boolean).join('\n');
@@ -343,12 +369,11 @@ export class AiScenarioWhatIfChatService {
       flexibleBefore !== null &&
       flexibleAfter !== null &&
       !this.hasConflictingFlexibleForecast(baselineSaving, flexibleBefore);
-    const balancePart =
-      shouldShowFlexibleBalance
-        ? flexibleAfter >= 0
-          ? `; số dư linh hoạt cuối tháng còn khoảng ${this.formatMoney(flexibleAfter)}`
-          : `; số dư linh hoạt cuối tháng có thể hụt khoảng ${this.formatMoney(Math.abs(flexibleAfter))}`
-        : '';
+    const balancePart = shouldShowFlexibleBalance
+      ? flexibleAfter >= 0
+        ? `; số dư linh hoạt cuối tháng còn khoảng ${this.formatMoney(flexibleAfter)}`
+        : `; số dư linh hoạt cuối tháng có thể hụt khoảng ${this.formatMoney(Math.abs(flexibleAfter))}`
+      : '';
 
     return `${savingPart}${balancePart}.`;
   }
@@ -368,7 +393,10 @@ export class AiScenarioWhatIfChatService {
     if (!category) return '';
 
     const name = String(
-      category.categoryName ?? parsed.categoryName ?? parsed.itemName ?? 'danh mục này',
+      category.categoryName ??
+        parsed.categoryName ??
+        parsed.itemName ??
+        'danh mục này',
     );
     const limit = this.numberFrom(category.monthlyLimit);
     const after = this.numberFrom(category.forecastAfter);
@@ -562,15 +590,24 @@ export class AiScenarioWhatIfChatService {
 
   private goalStatusText(status: string): string {
     switch (status) {
-      case 'completed': return 'Đã hoàn thành';
-      case 'on_track': return 'Đúng tiến độ';
-      case 'slightly_at_risk': return 'Rủi ro nhẹ';
-      case 'at_risk': return 'Rủi ro';
-      case 'off_track': return 'Trễ hạn';
-      case 'overdue': return 'Quá hạn';
-      case 'unlikely': return 'Khó hoàn thành';
-      case 'tracking': return 'Đang theo dõi';
-      default: return status;
+      case 'completed':
+        return 'Đã hoàn thành';
+      case 'on_track':
+        return 'Đúng tiến độ';
+      case 'slightly_at_risk':
+        return 'Rủi ro nhẹ';
+      case 'at_risk':
+        return 'Rủi ro';
+      case 'off_track':
+        return 'Trễ hạn';
+      case 'overdue':
+        return 'Quá hạn';
+      case 'unlikely':
+        return 'Khó hoàn thành';
+      case 'tracking':
+        return 'Đang theo dõi';
+      default:
+        return status;
     }
   }
 
@@ -603,7 +640,10 @@ export class AiScenarioWhatIfChatService {
     let categoryContext: any = null;
     if (category) {
       const name = String(
-        category.categoryName ?? parsed.categoryName ?? parsed.itemName ?? 'danh mục này',
+        category.categoryName ??
+          parsed.categoryName ??
+          parsed.itemName ??
+          'danh mục này',
       );
       categoryContext = {
         categoryName: name,
@@ -616,7 +656,8 @@ export class AiScenarioWhatIfChatService {
     }
 
     let goalImpact = result.goalImpacts.find(
-      (impact) => goalId !== undefined && goalId > 0 && impact.goalId === goalId,
+      (impact) =>
+        goalId !== undefined && goalId > 0 && impact.goalId === goalId,
     );
     if (!goalImpact) {
       goalImpact = result.goalImpacts[0];
@@ -628,7 +669,8 @@ export class AiScenarioWhatIfChatService {
         goalName: goalImpact.goalName,
         currentStatus: goalImpact.currentStatus,
         newStatus: goalImpact.newStatus,
-        currentPredictedCompletionDate: goalImpact.currentPredictedCompletionDate,
+        currentPredictedCompletionDate:
+          goalImpact.currentPredictedCompletionDate,
         newPredictedCompletionDate: goalImpact.newPredictedCompletionDate,
         currentMonthlySavingRate: goalImpact.currentMonthlySavingRate,
         newMonthlySavingRate: goalImpact.newMonthlySavingRate,

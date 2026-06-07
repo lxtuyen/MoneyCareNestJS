@@ -469,7 +469,7 @@ export class PersonalizationService {
       undefined,
       'last_180_days',
     );
-    const budgetFeedback = (feedbackSummary.budget || {}) as any;
+    const budgetFeedback = feedbackSummary.budget || {};
     const categoryPreferences = Array.isArray(
       budgetFeedback.categoryPreferences,
     )

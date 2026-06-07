@@ -172,7 +172,9 @@ describe('AiScenarioWhatIfChatService', () => {
     expect(payload.goalImpact.currentStatus).toBe('on_track');
     expect(payload.goalImpact.newStatus).toBe('slightly_at_risk');
     expect(payload.fallbackText).toContain('Nhóm Ăn uống');
-    expect(payload.fallbackText).toContain('Mua điện thoại": Đúng tiến độ -> Rủi ro nhẹ');
+    expect(payload.fallbackText).toContain(
+      'Mua điện thoại": Đúng tiến độ -> Rủi ro nhẹ',
+    );
   });
 
   it('omits category limit warning when no category limit data is configured', async () => {
@@ -218,6 +220,8 @@ describe('AiScenarioWhatIfChatService', () => {
     const payload = JSON.parse(jsonStr);
     expect(payload.categoryContext.categoryName).toBe('Giải trí');
     expect(payload.categoryContext.monthlyLimit).toBeNull();
-    expect(payload.fallbackText).toBe('Không có hạn mức thiết lập cho danh mục Giải trí.');
+    expect(payload.fallbackText).toBe(
+      'Không có hạn mức thiết lập cho danh mục Giải trí.',
+    );
   });
 });

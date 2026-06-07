@@ -103,8 +103,7 @@ export class AiGoalPlanInsightService {
               1,
               Math.min(
                 Math.ceil(
-                  (now.getTime() - mStart.getTime()) /
-                    (1000 * 60 * 60 * 24),
+                  (now.getTime() - mStart.getTime()) / (1000 * 60 * 60 * 24),
                 ),
                 milestoneTotalDays,
               ),

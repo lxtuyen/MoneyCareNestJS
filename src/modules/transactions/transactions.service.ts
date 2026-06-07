@@ -375,5 +375,4 @@ export class TransactionService {
       data: 'Deleted successfully',
     });
   }
-
 }

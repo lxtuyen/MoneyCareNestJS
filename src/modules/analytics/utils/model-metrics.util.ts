@@ -85,7 +85,8 @@ export function directionalAccuracy(runs: DirectionalRun[]): number {
 
   let correct = 0;
   for (const run of runs) {
-    const predictedDirection = run.predicted >= run.previousActual ? 'up' : 'down';
+    const predictedDirection =
+      run.predicted >= run.previousActual ? 'up' : 'down';
     const actualDirection = run.actual >= run.previousActual ? 'up' : 'down';
     if (predictedDirection === actualDirection) {
       correct++;

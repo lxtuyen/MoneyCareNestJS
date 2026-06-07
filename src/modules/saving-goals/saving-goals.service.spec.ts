@@ -52,9 +52,9 @@ describe('SavingGoalsService', () => {
     }).compile();
 
     service = module.get<SavingGoalsService>(SavingGoalsService);
-    goalRepo = module.get(getRepositoryToken(SavingGoal)) as any;
-    walletRepo = module.get(getRepositoryToken(Wallet)) as any;
-    transactionRepo = module.get(getRepositoryToken(Transaction)) as any;
+    goalRepo = module.get(getRepositoryToken(SavingGoal));
+    walletRepo = module.get(getRepositoryToken(Wallet));
+    transactionRepo = module.get(getRepositoryToken(Transaction));
   });
 
   it('should be defined', () => {
@@ -64,7 +64,12 @@ describe('SavingGoalsService', () => {
   describe('remove', () => {
     it('should delete saving goal, transfer transactions, adjust default wallet balance, and delete goal wallet', async () => {
       const mockGoalWallet = { id: 10, balance: 100 } as Wallet;
-      const mockDefaultWallet = { id: 1, name: 'Ví 1', balance: 500, is_active: true } as Wallet;
+      const mockDefaultWallet = {
+        id: 1,
+        name: 'Ví 1',
+        balance: 500,
+        is_active: true,
+      } as Wallet;
       const mockUser = { id: 5 } as User;
       const mockGoal = {
         id: 100,
@@ -73,8 +78,18 @@ describe('SavingGoalsService', () => {
       } as SavingGoal;
 
       const mockTransactions = [
-        { id: 201, amount: 200, type: 'income', wallet: mockGoalWallet } as any as Transaction,
-        { id: 202, amount: 100, type: 'expense', wallet: mockGoalWallet } as any as Transaction,
+        {
+          id: 201,
+          amount: 200,
+          type: 'income',
+          wallet: mockGoalWallet,
+        } as any as Transaction,
+        {
+          id: 202,
+          amount: 100,
+          type: 'expense',
+          wallet: mockGoalWallet,
+        } as any as Transaction,
       ];
 
       goalRepo.findOne.mockResolvedValue(mockGoal);

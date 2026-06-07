@@ -102,7 +102,9 @@ describe('Preservation 5 — Sum by category aggregation (MUST PASS on unfixed c
       ],
     }).compile();
 
-    service = module.get<TransactionStatisticsService>(TransactionStatisticsService);
+    service = module.get<TransactionStatisticsService>(
+      TransactionStatisticsService,
+    );
     transactionRepo = module.get(getRepositoryToken(Transaction));
     categoryRepo = module.get(getRepositoryToken(Category));
   });
@@ -348,7 +350,9 @@ describe('PBT Preservation — Sum by category with random data', () => {
             ],
           }).compile();
 
-          const service = module.get<TransactionStatisticsService>(TransactionStatisticsService);
+          const service = module.get<TransactionStatisticsService>(
+            TransactionStatisticsService,
+          );
           const transactionRepo = module.get<
             jest.Mocked<Repository<Transaction>>
           >(getRepositoryToken(Transaction));
@@ -469,7 +473,9 @@ describe('PBT Preservation — Existing data preservation', () => {
             ],
           }).compile();
 
-          const service = module.get<TransactionStatisticsService>(TransactionStatisticsService);
+          const service = module.get<TransactionStatisticsService>(
+            TransactionStatisticsService,
+          );
           const transactionRepo = module.get<
             jest.Mocked<Repository<Transaction>>
           >(getRepositoryToken(Transaction));

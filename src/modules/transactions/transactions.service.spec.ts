@@ -68,24 +68,26 @@ describe('TransactionsService', () => {
       save: jest.fn(),
     };
     financialCacheInvalidationService = {
-      invalidate: jest.fn().mockImplementation(async (userId: number, goalIds: number[]) => {
-        const uniqueGoalIds = Array.from(new Set([0, ...goalIds]));
-        const keys = getFinancialCacheKeys(userId, uniqueGoalIds);
-        await cacheService.delMany(keys);
+      invalidate: jest
+        .fn()
+        .mockImplementation(async (userId: number, goalIds: number[]) => {
+          const uniqueGoalIds = Array.from(new Set([0, ...goalIds]));
+          const keys = getFinancialCacheKeys(userId, uniqueGoalIds);
+          await cacheService.delMany(keys);
 
-        const registryKeys = uniqueGoalIds.map(id => buildAiAnalysisRegistryKey(userId, id));
-        const registryEntries = await Promise.all(
-          registryKeys.map((registryKey) =>
-            cacheService.get(registryKey),
-          ),
-        );
+          const registryKeys = uniqueGoalIds.map((id) =>
+            buildAiAnalysisRegistryKey(userId, id),
+          );
+          const registryEntries = await Promise.all(
+            registryKeys.map((registryKey) => cacheService.get(registryKey)),
+          );
 
-        const analysisKeys = Array.from(
-          new Set(registryEntries.flatMap((entry: any) => entry ?? [])),
-        );
+          const analysisKeys = Array.from(
+            new Set(registryEntries.flatMap((entry: any) => entry ?? [])),
+          );
 
-        await cacheService.delMany([...analysisKeys, ...registryKeys]);
-      }),
+          await cacheService.delMany([...analysisKeys, ...registryKeys]);
+        }),
     };
 
     module = await Test.createTestingModule({
@@ -185,7 +187,7 @@ describe('TransactionsService', () => {
       buildAiAnalysisRegistryKey(5, 2),
     ];
 
-    const mockGoalRepo = module.get(getRepositoryToken(SavingGoal)) as any;
+    const mockGoalRepo = module.get(getRepositoryToken(SavingGoal));
     mockGoalRepo.find.mockResolvedValue([
       { id: 1 } as SavingGoal,
       { id: 2 } as SavingGoal,
@@ -232,10 +234,8 @@ describe('TransactionsService', () => {
       buildAiAnalysisRegistryKey(11, 6),
     ];
 
-    const mockGoalRepo = module.get(getRepositoryToken(SavingGoal)) as any;
-    mockGoalRepo.find.mockResolvedValue([
-      { id: 6 } as SavingGoal,
-    ]);
+    const mockGoalRepo = module.get(getRepositoryToken(SavingGoal));
+    mockGoalRepo.find.mockResolvedValue([{ id: 6 } as SavingGoal]);
 
     transactionRepo.findOne.mockResolvedValueOnce(transaction);
     transactionRepo.remove.mockResolvedValueOnce(transaction);

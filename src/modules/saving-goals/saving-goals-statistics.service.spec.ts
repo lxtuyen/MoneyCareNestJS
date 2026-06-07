@@ -46,7 +46,9 @@ describe('SavingGoalsStatisticsService', () => {
       ],
     }).compile();
 
-    service = module.get<SavingGoalsStatisticsService>(SavingGoalsStatisticsService);
+    service = module.get<SavingGoalsStatisticsService>(
+      SavingGoalsStatisticsService,
+    );
     goalRepo = module.get(getRepositoryToken(SavingGoal));
     txRepo = module.get(getRepositoryToken(Transaction));
     walletRepo = module.get(getRepositoryToken(Wallet));
@@ -60,7 +62,9 @@ describe('SavingGoalsStatisticsService', () => {
   describe('getGoalReport', () => {
     it('should throw NotFoundException if goal not found', async () => {
       goalRepo.findOne.mockResolvedValue(null);
-      await expect(service.getGoalReport(999, 1)).rejects.toThrow(NotFoundException);
+      await expect(service.getGoalReport(999, 1)).rejects.toThrow(
+        NotFoundException,
+      );
     });
 
     it('should return report data successfully when goal exists', async () => {
@@ -83,8 +87,21 @@ describe('SavingGoalsStatisticsService', () => {
         where: jest.fn().mockReturnThis(),
         andWhere: jest.fn().mockReturnThis(),
         getMany: jest.fn().mockResolvedValue([
-          { id: 101, amount: 3000000, type: 'income', transaction_date: new Date('2026-02-15'), wallet: { id: 12 } },
-          { id: 102, amount: 1000000, type: 'expense', transaction_date: new Date('2026-03-10'), wallet: { id: 12 }, category: { name: 'Ăn uống' } },
+          {
+            id: 101,
+            amount: 3000000,
+            type: 'income',
+            transaction_date: new Date('2026-02-15'),
+            wallet: { id: 12 },
+          },
+          {
+            id: 102,
+            amount: 1000000,
+            type: 'expense',
+            transaction_date: new Date('2026-03-10'),
+            wallet: { id: 12 },
+            category: { name: 'Ăn uống' },
+          },
         ]),
       };
       txRepo.createQueryBuilder.mockReturnValue(mockQueryBuilder);

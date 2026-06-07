@@ -56,7 +56,7 @@ export class SavingGoalsService {
       saved_amount: dto.saved_amount ?? 0,
       start_date: dto.start_date ? new Date(dto.start_date) : new Date(),
       end_date: dto.end_date ? new Date(dto.end_date) : null,
-      wallet: savedWallet as Wallet,
+      wallet: savedWallet,
     } as Partial<SavingGoal>);
 
     const savedGoal = await this.goalRepo.save(goal);
@@ -159,8 +159,10 @@ export class SavingGoalsService {
           order: { id: 'ASC' },
           relations: ['savingGoals'],
         });
-        defaultWallet = allActiveWallets.find(w => !w.savingGoals || w.savingGoals.length === 0) 
-                        || allActiveWallets[0];
+        defaultWallet =
+          allActiveWallets.find(
+            (w) => !w.savingGoals || w.savingGoals.length === 0,
+          ) || allActiveWallets[0];
       }
 
       if (defaultWallet && goalWallet.id !== defaultWallet.id) {
@@ -185,7 +187,8 @@ export class SavingGoalsService {
         }
 
         // Adjust default wallet balance
-        defaultWallet.balance = Number(defaultWallet.balance) + balanceAdjustment;
+        defaultWallet.balance =
+          Number(defaultWallet.balance) + balanceAdjustment;
         await this.walletRepo.save(defaultWallet);
       }
     }

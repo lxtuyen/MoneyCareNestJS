@@ -14,11 +14,14 @@ import {
 import { FinancialInsightsService } from './financial-insights.service';
 import { AiGeminiClientService } from './ai-gemini-client.service';
 import { PersonalizationService } from 'src/modules/personalization/personalization.service';
+import { AnalyticsService } from 'src/modules/analytics/analytics.service';
+import { getVietnamNow } from 'src/common/utils/date.util';
 import {
   AiMessagePrefix,
   FinancialAnalysisResult,
   FinancialInsightSnapshot,
 } from './types/ai.types';
+import { mapChatbotExpenseAnalysisPayload } from './mappers/chatbot-expense-analysis.mapper';
 import {
   getChatAnswerPrompt,
   getFinancialHealthAnalysisPrompt,
@@ -39,6 +42,7 @@ export class AiAnalysisChatService {
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
     private readonly personalizationService: PersonalizationService,
+    private readonly analyticsService: AnalyticsService,
   ) {}
 
   isAnalysisRequest(message: string): boolean {
@@ -94,29 +98,40 @@ export class AiAnalysisChatService {
       return ok('', cachedResult);
     }
 
-    const [user, insights, personalizationProfile] = await Promise.all([
-      this.userRepo.findOne({
-        where: { id: userId },
-        relations: ['profile'],
-      }),
-      this.financialInsightsService.getInsights(
-        userId,
-        resolvedGoalId || undefined,
-        'last_30_days',
-      ),
-      this.personalizationService.getProfileSummary(userId),
-    ]);
+    const targetPeriod = this.resolveAnalysisTargetPeriod(message);
+
+    const [user, insights, personalizationProfile, analyticsSummary] =
+      await Promise.all([
+        this.userRepo.findOne({
+          where: { id: userId },
+          relations: ['profile'],
+        }),
+        this.financialInsightsService.getMonthlyInsights(
+          userId,
+          resolvedGoalId || undefined,
+          targetPeriod.month,
+          targetPeriod.year,
+        ),
+        this.personalizationService.getProfileSummary(userId),
+        this.analyticsService.getFinancialSummary(userId, {
+          targetMonth: targetPeriod.month,
+          targetYear: targetPeriod.year,
+        }),
+      ]);
 
     const userName = user?.profile
       ? `${user.profile.first_name || ''} ${user.profile.last_name || ''}`.trim()
       : 'Nguoi dung';
 
-    const analysis = await this.analyzeFinancialHealth(
-      message,
-      insights,
-      userName || 'Nguoi dung',
-      personalizationProfile,
-    );
+    const analysis =
+      analyticsSummary.success && analyticsSummary.data
+        ? mapChatbotExpenseAnalysisPayload(analyticsSummary.data, insights)
+        : await this.analyzeFinancialHealth(
+            message,
+            insights,
+            userName || 'Nguoi dung',
+            personalizationProfile,
+          );
 
     const resultString =
       typeof analysis === 'object'
@@ -147,7 +162,9 @@ export class AiAnalysisChatService {
       userName,
       JSON.stringify(insightData),
       text,
-      personalizationProfile ? JSON.stringify(personalizationProfile) : undefined,
+      personalizationProfile
+        ? JSON.stringify(personalizationProfile)
+        : undefined,
     );
 
     try {
@@ -188,5 +205,28 @@ export class AiAnalysisChatService {
     const answer = (result.text || '').trim();
     await this.cacheService.set(cacheKey, answer, CHAT_TTL_SECONDS);
     return answer;
+  }
+
+  private resolveAnalysisTargetPeriod(message: string): {
+    month: number;
+    year: number;
+  } {
+    const now = getVietnamNow();
+    const normalized = norm(message || '');
+    const monthMatch = /(?:thang|tháng)\s*(1[0-2]|[1-9])(?:\D+(20\d{2}))?/.exec(
+      normalized,
+    );
+
+    if (!monthMatch) {
+      return {
+        month: now.getMonth() + 1,
+        year: now.getFullYear(),
+      };
+    }
+
+    return {
+      month: Number(monthMatch[1]),
+      year: monthMatch[2] ? Number(monthMatch[2]) : now.getFullYear(),
+    };
   }
 }

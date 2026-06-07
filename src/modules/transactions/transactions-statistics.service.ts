@@ -13,7 +13,10 @@ import { TotalByCategory } from 'src/common/interfaces/total-by-category.interfa
 import { StatisticsSummaryResponseDto } from './dto/statistics-summary-response.dto';
 import { CacheService } from 'src/common/cache/cache.service';
 import { buildStatisticsSummaryCacheKey } from 'src/common/cache/financial-cache.util';
-import { getVietnamNow, getVietnamMonthRange } from 'src/common/utils/date.util';
+import {
+  getVietnamNow,
+  getVietnamMonthRange,
+} from 'src/common/utils/date.util';
 import { buildTransactionBaseQuery } from './transaction-query.util';
 
 @Injectable()
@@ -43,12 +46,9 @@ export class TransactionStatisticsService {
       });
 
     if (dto.type) {
-      categoryQuery.andWhere(
-        'category.type = :type',
-        {
-          type: dto.type,
-        },
-      );
+      categoryQuery.andWhere('category.type = :type', {
+        type: dto.type,
+      });
     }
 
     const transactionQuery =
@@ -341,5 +341,4 @@ export class TransactionStatisticsService {
       },
     });
   }
-
 }

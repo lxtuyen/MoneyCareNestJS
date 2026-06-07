@@ -49,7 +49,10 @@ export class AiPredictionEvaluation {
   @Column({ type: 'float', nullable: true })
   directionalAccuracy!: number | null;
 
-  @Column({ type: 'timestamp with time zone', default: () => 'CURRENT_TIMESTAMP' })
+  @Column({
+    type: 'timestamp with time zone',
+    default: () => 'CURRENT_TIMESTAMP',
+  })
   evaluatedAt!: Date;
 
   @CreateDateColumn()

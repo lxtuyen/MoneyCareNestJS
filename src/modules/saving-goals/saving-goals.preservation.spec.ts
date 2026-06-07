@@ -335,7 +335,9 @@ describe('PBT Preservation — Create fund with random valid data', () => {
           } as any as SavingGoal;
 
           userRepo.findOne.mockResolvedValue(mockUser);
-          walletRepo.save.mockResolvedValue({ id: fundData.walletId } as Wallet);
+          walletRepo.save.mockResolvedValue({
+            id: fundData.walletId,
+          } as Wallet);
           fundRepo.create.mockReturnValue(mockSavingGoal);
           fundRepo.save.mockResolvedValue(mockSavingGoal);
           fundRepo.findOne.mockResolvedValue(mockSavingGoal);

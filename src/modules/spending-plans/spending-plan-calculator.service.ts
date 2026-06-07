@@ -40,8 +40,7 @@ export class SpendingPlanCalculatorService {
       }
     }
 
-    const availableSpendingAmount =
-      totalAmount - estimatedExpenseTotal;
+    const availableSpendingAmount = totalAmount - estimatedExpenseTotal;
 
     return {
       estimatedExpenseTotal: roundMoney(estimatedExpenseTotal),

@@ -8,9 +8,7 @@ import { AnalyticsService } from '../analytics/analytics.service';
 export class AiBudgetRecommendationChatService {
   private readonly logger = new Logger(AiBudgetRecommendationChatService.name);
 
-  constructor(
-    private readonly analyticsService: AnalyticsService,
-  ) {}
+  constructor(private readonly analyticsService: AnalyticsService) {}
 
   isBudgetRecommendationRequest(message: string): boolean {
     const lowerMessage = norm(message || '');
@@ -18,8 +16,10 @@ export class AiBudgetRecommendationChatService {
       lowerMessage.includes('de xuat ngan sach') ||
       lowerMessage.includes('goi y ngan sach') ||
       (lowerMessage.includes('goi y') && lowerMessage.includes('ngan sach')) ||
-      (lowerMessage.includes('de xuat') && lowerMessage.includes('ngan sach')) ||
-      (lowerMessage.includes('ke hoach') && lowerMessage.includes('ngan sach')) ||
+      (lowerMessage.includes('de xuat') &&
+        lowerMessage.includes('ngan sach')) ||
+      (lowerMessage.includes('ke hoach') &&
+        lowerMessage.includes('ngan sach')) ||
       lowerMessage.includes('cap nhat ngan sach') ||
       lowerMessage.includes('toi nen dat ngan sach') ||
       lowerMessage.includes('giam ngan sach') ||

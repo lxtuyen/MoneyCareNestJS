@@ -132,17 +132,23 @@ describe('AiChatRouterService', () => {
 
   it('routes budget recommendation requests before what-if or other intents', async () => {
     financialInsightsService.getSelectedGoalId.mockResolvedValueOnce(7);
-    budgetRecommendationChatService.isBudgetRecommendationRequest.mockReturnValueOnce(true);
-    budgetRecommendationChatService.handleBudgetRecommendation.mockResolvedValueOnce({
-      success: true,
-      statusCode: 200,
-      message: 'budget recommendation response',
-    });
+    budgetRecommendationChatService.isBudgetRecommendationRequest.mockReturnValueOnce(
+      true,
+    );
+    budgetRecommendationChatService.handleBudgetRecommendation.mockResolvedValueOnce(
+      {
+        success: true,
+        statusCode: 200,
+        message: 'budget recommendation response',
+      },
+    );
 
     const result = await router.handle('đề xuất ngân sách', 5);
 
     expect(result.message).toBe('budget recommendation response');
-    expect(budgetRecommendationChatService.handleBudgetRecommendation).toHaveBeenCalledWith(5);
+    expect(
+      budgetRecommendationChatService.handleBudgetRecommendation,
+    ).toHaveBeenCalledWith(5);
     expect(scenarioWhatIfChatService.isWhatIfRequest).not.toHaveBeenCalled();
     expect(transactionChatService.handleRecordOrChat).not.toHaveBeenCalled();
   });

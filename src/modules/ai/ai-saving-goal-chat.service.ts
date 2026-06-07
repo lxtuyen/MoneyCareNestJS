@@ -1,4 +1,3 @@
-/* eslint-disable no-irregular-whitespace */
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
@@ -248,7 +247,10 @@ export class AiSavingGoalChatService {
 
       if (hasRequestedDays) {
         daysEstimate = Math.max(1, Math.round(requestedDays));
-        monthsEstimate = Math.max(1, Math.ceil(daysEstimate / (capacity?.daysInMonth ?? 30)));
+        monthsEstimate = Math.max(
+          1,
+          Math.ceil(daysEstimate / (capacity?.daysInMonth ?? 30)),
+        );
         const durationMessage = buildSavingGoalDurationMessage({
           name: String(name),
           target,
@@ -544,8 +546,14 @@ export class AiSavingGoalChatService {
         '/saving_goal_init_fund',
       );
 
-      const { name, target, initFund, sourceWalletId, requestedMonths, requestedDays } =
-        payload;
+      const {
+        name,
+        target,
+        initFund,
+        sourceWalletId,
+        requestedMonths,
+        requestedDays,
+      } = payload;
       const activeInitFund = Number(initFund) || 0;
       const activeSourceWalletId = Number(sourceWalletId) || 0;
       const remainingTarget = Math.max(0, Number(target) - activeInitFund);

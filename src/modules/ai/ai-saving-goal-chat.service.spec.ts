@@ -635,7 +635,10 @@ describe('AiSavingGoalChatService', () => {
     });
     walletRepo.find.mockResolvedValueOnce([]);
 
-    const result = await service.handleSavingGoalRequest('save 500k in 14 days', 1);
+    const result = await service.handleSavingGoalRequest(
+      'save 500k in 14 days',
+      1,
+    );
     const payload = parsePrefixedPayload(
       result.message,
       AiMessagePrefix.SAVING_GOAL_PROPOSAL,

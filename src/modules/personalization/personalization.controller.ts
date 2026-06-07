@@ -10,10 +10,14 @@ import { PersonalFinanceProfileResponseDto } from './dto/personal-finance-profil
 @Controller('personalization')
 @UseGuards(JwtAuthGuard)
 export class PersonalizationController {
-  constructor(private readonly personalizationService: PersonalizationService) {}
+  constructor(
+    private readonly personalizationService: PersonalizationService,
+  ) {}
 
   @Get('profile')
-  async getProfile(@User('sub') userId: number): Promise<ApiResponse<PersonalFinanceProfileResponseDto>> {
+  async getProfile(
+    @User('sub') userId: number,
+  ): Promise<ApiResponse<PersonalFinanceProfileResponseDto>> {
     const profile = await this.personalizationService.getOrBuildProfile(userId);
     const data = plainToInstance(PersonalFinanceProfileResponseDto, profile, {
       excludeExtraneousValues: true,
@@ -22,7 +26,9 @@ export class PersonalizationController {
   }
 
   @Post('profile/rebuild')
-  async rebuildProfile(@User('sub') userId: number): Promise<ApiResponse<PersonalFinanceProfileResponseDto>> {
+  async rebuildProfile(
+    @User('sub') userId: number,
+  ): Promise<ApiResponse<PersonalFinanceProfileResponseDto>> {
     const profile = await this.personalizationService.rebuildProfile(userId);
     const data = plainToInstance(PersonalFinanceProfileResponseDto, profile, {
       excludeExtraneousValues: true,
@@ -31,7 +37,9 @@ export class PersonalizationController {
   }
 
   @Get('profile/summary')
-  async getProfileSummary(@User('sub') userId: number): Promise<ApiResponse<any>> {
+  async getProfileSummary(
+    @User('sub') userId: number,
+  ): Promise<ApiResponse<any>> {
     const summary = await this.personalizationService.getProfileSummary(userId);
     return ok(summary, 'Lấy tóm tắt hồ sơ tài chính thành công');
   }
