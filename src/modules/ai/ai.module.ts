@@ -24,6 +24,8 @@ import { WalletsModule } from 'src/modules/wallets/wallets.module';
 import { UserCategoryPreference } from 'src/modules/categories/entities/user-category-preference.entity';
 import { PersonalizationModule } from 'src/modules/personalization/personalization.module';
 import { ScenarioPlanningModule } from 'src/modules/scenario-planning/scenario-planning.module';
+import { AnalyticsModule } from '../analytics/analytics.module';
+import { AiBudgetRecommendationChatService } from './ai-budget-recommendation-chat.service';
 
 @Global()
 @Module({
@@ -43,6 +45,7 @@ import { ScenarioPlanningModule } from 'src/modules/scenario-planning/scenario-p
     WalletsModule,
     PersonalizationModule,
     ScenarioPlanningModule,
+    AnalyticsModule,
   ],
   controllers: [AiController],
   providers: [
@@ -56,6 +59,7 @@ import { ScenarioPlanningModule } from 'src/modules/scenario-planning/scenario-p
     AiGoalPlanInsightService,
     FinancialInsightsService,
     ReceiptOcrService,
+    AiBudgetRecommendationChatService,
   ],
   exports: [AiService, FinancialInsightsService, ReceiptOcrService],
 })

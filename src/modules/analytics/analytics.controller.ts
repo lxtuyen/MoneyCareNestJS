@@ -1,16 +1,20 @@
-import { Controller, Get, Post, Body, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Logger, Post, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from 'src/modules/auth/jwt-auth.guard';
 import { User } from 'src/common/decorators/user.decorator';
 import { AnalyticsService } from './analytics.service';
 import { AnalyticsEvaluationService } from './analytics-evaluation.service';
+import { AnalyticsModelTrainingService } from './analytics-model-training.service';
 import { ok } from 'src/common/utils/response.util';
 
 @Controller('analytics')
 @UseGuards(JwtAuthGuard)
 export class AnalyticsController {
+  private readonly logger = new Logger(AnalyticsController.name);
+
   constructor(
     private readonly analyticsService: AnalyticsService,
     private readonly evaluationService: AnalyticsEvaluationService,
+    private readonly modelTrainingService: AnalyticsModelTrainingService,
   ) {}
 
   @Get('financial-summary')
@@ -41,7 +45,22 @@ export class AnalyticsController {
     @User('sub') userId: number,
     @Body() body: { modelType?: string },
   ) {
-    const count = await this.evaluationService.evaluateDuePredictions(userId, body.modelType);
+    const count = await this.evaluationService.evaluateDuePredictions(
+      userId,
+      body.modelType,
+    );
     return ok({ evaluatedCount: count }, `Đã đánh giá ${count} dự đoán`);
+  }
+
+  @Post('model-training/forecasting')
+  async trainForecastingModel(@User('sub') userId: number) {
+    this.logger.log(
+      `Received forecasting training request for userId=${userId}`,
+    );
+    const data = await this.modelTrainingService.trainForecastingModel(userId);
+    this.logger.log(
+      `Forecasting training finished for userId=${userId}, status=${data.status}, artifactSaved=${data.artifactSaved}`,
+    );
+    return ok(data, 'Yêu cầu huấn luyện mô hình dự báo thành công');
   }
 }

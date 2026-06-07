@@ -7,6 +7,7 @@ import {
   MaxLength,
 } from 'class-validator';
 import type {
+  AiFeedbackDataSource,
   AiFeedbackAction,
   AiRecommendationType,
 } from '../entities/ai-recommendation-feedback.entity';
@@ -27,6 +28,11 @@ export const AI_FEEDBACK_ACTIONS: AiFeedbackAction[] = [
   'corrected',
   'helpful',
   'not_helpful',
+];
+
+export const AI_FEEDBACK_DATA_SOURCES: AiFeedbackDataSource[] = [
+  'real',
+  'synthetic',
 ];
 
 export class CreateAiFeedbackDto {
@@ -61,6 +67,14 @@ export class CreateAiFeedbackDto {
   @IsOptional()
   @IsObject()
   contextPayload?: Record<string, unknown>;
+
+  @IsOptional()
+  @IsIn(AI_FEEDBACK_DATA_SOURCES)
+  dataSource?: AiFeedbackDataSource;
+
+  @IsOptional()
+  @IsObject()
+  outcomePayload?: Record<string, unknown>;
 
   @IsOptional()
   @IsString()

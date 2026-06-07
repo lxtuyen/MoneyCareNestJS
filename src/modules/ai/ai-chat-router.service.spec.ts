@@ -4,6 +4,7 @@ import { AiAnalysisChatService } from './ai-analysis-chat.service';
 import { AiSavingGoalChatService } from './ai-saving-goal-chat.service';
 import { AiTransactionChatService } from './ai-transaction-chat.service';
 import { AiScenarioWhatIfChatService } from './ai-scenario-what-if-chat.service';
+import { AiBudgetRecommendationChatService } from './ai-budget-recommendation-chat.service';
 
 describe('AiChatRouterService', () => {
   const financialInsightsService = { getSelectedGoalId: jest.fn() };
@@ -28,6 +29,10 @@ describe('AiChatRouterService', () => {
     isWhatIfRequest: jest.fn(),
     handleWhatIf: jest.fn(),
   };
+  const budgetRecommendationChatService = {
+    isBudgetRecommendationRequest: jest.fn(),
+    handleBudgetRecommendation: jest.fn(),
+  };
 
   let router: AiChatRouterService;
 
@@ -39,6 +44,7 @@ describe('AiChatRouterService', () => {
       savingGoalChatService as unknown as AiSavingGoalChatService,
       transactionChatService as unknown as AiTransactionChatService,
       scenarioWhatIfChatService as unknown as AiScenarioWhatIfChatService,
+      budgetRecommendationChatService as unknown as AiBudgetRecommendationChatService,
     );
   });
 
@@ -121,6 +127,23 @@ describe('AiChatRouterService', () => {
       4,
       7,
     );
+    expect(transactionChatService.handleRecordOrChat).not.toHaveBeenCalled();
+  });
+
+  it('routes budget recommendation requests before what-if or other intents', async () => {
+    financialInsightsService.getSelectedGoalId.mockResolvedValueOnce(7);
+    budgetRecommendationChatService.isBudgetRecommendationRequest.mockReturnValueOnce(true);
+    budgetRecommendationChatService.handleBudgetRecommendation.mockResolvedValueOnce({
+      success: true,
+      statusCode: 200,
+      message: 'budget recommendation response',
+    });
+
+    const result = await router.handle('đề xuất ngân sách', 5);
+
+    expect(result.message).toBe('budget recommendation response');
+    expect(budgetRecommendationChatService.handleBudgetRecommendation).toHaveBeenCalledWith(5);
+    expect(scenarioWhatIfChatService.isWhatIfRequest).not.toHaveBeenCalled();
     expect(transactionChatService.handleRecordOrChat).not.toHaveBeenCalled();
   });
 });

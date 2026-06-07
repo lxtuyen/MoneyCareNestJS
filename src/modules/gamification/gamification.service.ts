@@ -1,8 +1,10 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { plainToInstance } from 'class-transformer';
 import { GamificationEntity } from './entities/gamification.entity';
 import { RecordDayDto } from './dto/gamification.dto';
+import { GamificationResponseDto } from './dto/gamification-response.dto';
 import { ApiResponse } from 'src/common/dto/api-response.dto';
 import { getTodayStringInTimeZone } from 'src/common/utils/date.util';
 
@@ -15,13 +17,19 @@ export class GamificationService {
 
   private async findOrCreate(userId: number): Promise<GamificationEntity> {
     const record = await this.gamificationRepo.findOne({ where: { userId } });
-    if (record) return record;
+    if (record) {
+      if (!record.badges) {
+        record.badges = [];
+      }
+      return record;
+    }
 
     try {
       const newRecord = this.gamificationRepo.create({
         userId,
         currentStreak: 0,
         lastTransactionDate: null,
+        badges: [],
       });
       return await this.gamificationRepo.save(newRecord);
     } catch (error) {
@@ -59,19 +67,22 @@ export class GamificationService {
     }
   }
 
-  async findByUser(userId: number): Promise<ApiResponse<GamificationEntity>> {
+  async findByUser(userId: number): Promise<ApiResponse<GamificationResponseDto>> {
     const record = await this.findOrCreate(userId);
+    const dto = plainToInstance(GamificationResponseDto, record, {
+      excludeExtraneousValues: true,
+    });
     return new ApiResponse({
       success: true,
       statusCode: HttpStatus.OK,
-      data: record,
+      data: dto,
     });
   }
 
   async recordDay(
     userId: number,
     dto: RecordDayDto,
-  ): Promise<ApiResponse<GamificationEntity>> {
+  ): Promise<ApiResponse<GamificationResponseDto>> {
     const transactionDate = dto.date ?? getTodayStringInTimeZone();
     const record = await this.findOrCreate(userId);
 
@@ -85,12 +96,36 @@ export class GamificationService {
       !record.lastTransactionDate ||
       transactionDate > record.lastTransactionDate;
 
+    let isModified = false;
+
     if (isNewDay) {
       record.currentStreak = newStreak;
       record.lastTransactionDate = transactionDate;
+      isModified = true;
+    }
 
+    if (!record.badges) {
+      record.badges = [];
+    }
+
+    if (dto.badge) {
+      if (!record.badges.some((b) => b.key === dto.badge!.key)) {
+        record.badges.push({
+          key: dto.badge.key,
+          name: dto.badge.name,
+          awardedAt: dto.badge.awardedAt,
+        });
+        isModified = true;
+      }
+    }
+
+    if (isModified) {
       await this.gamificationRepo.save(record);
     }
+
+    const responseDto = plainToInstance(GamificationResponseDto, record, {
+      excludeExtraneousValues: true,
+    });
 
     return new ApiResponse({
       success: true,
@@ -98,7 +133,7 @@ export class GamificationService {
       message: isNewDay
         ? `Streak cập nhật: ${record.currentStreak} ngày`
         : 'Đã ghi nhận hôm nay rồi',
-      data: record,
+      data: responseDto,
     });
   }
 }

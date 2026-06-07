@@ -15,6 +15,7 @@ import {
 import {
   AiFeedbackCountSummary,
   AiFeedbackSummaryResponse,
+  BudgetingFeedbackReadinessResponse,
   BudgetCategoryFeedbackSummary,
   BudgetFeedbackSummary,
   CategoryCorrectionSummary,
@@ -60,6 +61,9 @@ export class AiFeedbackService {
       sourcePayload: dto.sourcePayload,
       modifiedPayload: dto.modifiedPayload || null,
       contextPayload: dto.contextPayload || null,
+      dataSource: dto.dataSource || 'real',
+      outcomePayload: dto.outcomePayload || null,
+      outcomeMeasuredAt: dto.outcomePayload ? new Date() : null,
       reasonText: dto.reasonText || null,
     });
 
@@ -101,8 +105,119 @@ export class AiFeedbackService {
       recommendationId: item.recommendationId,
       userAction: item.userAction,
       sourceModel: item.sourceModel,
+      dataSource: item.dataSource,
+      hasOutcome: !!item.outcomePayload,
       createdAt: item.createdAt,
     }));
+  }
+
+  async recordOutcome(
+    userId: number,
+    feedbackId: number,
+    outcomePayload: Record<string, unknown>,
+  ) {
+    const feedback = await this.feedbackRepo.findOne({
+      where: { id: feedbackId, userId },
+    });
+    if (!feedback) {
+      throw new NotFoundException('AI feedback not found');
+    }
+
+    feedback.outcomePayload = outcomePayload;
+    feedback.outcomeMeasuredAt = new Date();
+    return this.feedbackRepo.save(feedback);
+  }
+
+  async getBudgetingReadiness(
+    userId: number,
+    scope: 'user' | 'global' = 'user',
+    includeSynthetic = false,
+  ): Promise<BudgetingFeedbackReadinessResponse> {
+    const feedbacks = await this.feedbackRepo.find({
+      where: {
+        ...(scope === 'user' ? { userId } : {}),
+        recommendationType: 'budget',
+      },
+      order: { createdAt: 'ASC' },
+    });
+
+    const realFeedbacks = feedbacks.filter(
+      (feedback) => feedback.dataSource !== 'synthetic',
+    );
+    const syntheticFeedbacks = feedbacks.filter(
+      (feedback) => feedback.dataSource === 'synthetic',
+    );
+    const scoringFeedbacks = includeSynthetic ? feedbacks : realFeedbacks;
+
+    const accepted = scoringFeedbacks.filter(
+      (feedback) => feedback.userAction === 'accepted',
+    ).length;
+    const rejected = scoringFeedbacks.filter(
+      (feedback) => feedback.userAction === 'rejected',
+    ).length;
+    const modified = scoringFeedbacks.filter(
+      (feedback) => feedback.userAction === 'modified',
+    ).length;
+
+    const categoryCounts = new Map<string, number>();
+    const months = new Set<string>();
+    let outcomeCount = 0;
+
+    for (const feedback of scoringFeedbacks) {
+      const categoryName =
+        this.readString(feedback.sourcePayload, 'categoryName') || 'Unknown';
+      categoryCounts.set(
+        categoryName,
+        (categoryCounts.get(categoryName) || 0) + 1,
+      );
+
+      const createdMonth = feedback.createdAt.toISOString().slice(0, 7);
+      months.add(createdMonth);
+
+      if (feedback.outcomePayload) {
+        outcomeCount += 1;
+      }
+    }
+
+    const categoryCoverage = Array.from(categoryCounts.entries())
+      .map(([categoryName, count]) => ({ categoryName, count }))
+      .sort((a, b) => b.count - a.count);
+    const categoriesWithEnoughSamples = categoryCoverage.filter(
+      (item) => item.count >= 30,
+    ).length;
+
+    const criteria = {
+      totalFeedbackAtLeast500: scoringFeedbacks.length >= 500,
+      balancedActions: accepted >= 100 && rejected >= 50 && modified >= 50,
+      categoryCoverageAtLeast5: categoriesWithEnoughSamples >= 5,
+      outcomeAtLeast200: outcomeCount >= 200,
+      monthCoverageAtLeast3: months.size >= 3,
+    };
+
+    const score =
+      (criteria.totalFeedbackAtLeast500 ? 25 : 0) +
+      (criteria.balancedActions ? 25 : 0) +
+      (criteria.categoryCoverageAtLeast5 ? 20 : 0) +
+      (criteria.outcomeAtLeast200 ? 20 : 0) +
+      (criteria.monthCoverageAtLeast3 ? 10 : 0);
+
+    return {
+      score,
+      scope,
+      recommendation: this.resolveBudgetingReadinessRecommendation(score),
+      totalFeedback: scoringFeedbacks.length,
+      realFeedbackCount: realFeedbacks.length,
+      syntheticFeedbackCount: syntheticFeedbacks.length,
+      actionDistribution: {
+        accepted,
+        rejected,
+        modified,
+      },
+      categoryCoverage,
+      outcomeCount,
+      monthCoverage: months.size,
+      criteria,
+    };
   }
 
   buildBudgetFeedbackSummary(
@@ -359,6 +474,15 @@ export class AiFeedbackService {
         `Action "${action}" is not valid for recommendation type "${type}"`,
       );
     }
+  }
+
+  private resolveBudgetingReadinessRecommendation(
+    score: number,
+  ): BudgetingFeedbackReadinessResponse['recommendation'] {
+    if (score > 85) return 'ready_for_ml_budgeting';
+    if (score >= 70) return 'enable_category_reranker';
+    if (score >= 50) return 'train_offline_only';
+    return 'rule_based_only';
   }
 
   private buildPeriodWhere(period: string) {

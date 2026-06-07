@@ -18,6 +18,11 @@ import {
   formatDateInTimeZone,
   getVietnamNow,
 } from 'src/common/utils/date.util';
+import { mapAnalyticsResponse } from './mappers/analytics-response.mapper';
+import {
+  AnalyticsMappedResponse,
+  AnalyticsServiceResponse,
+} from './types/analytics-service-response.type';
 
 @Injectable()
 export class AnalyticsService {
@@ -42,7 +47,9 @@ export class AnalyticsService {
     private readonly goalAchievementPredictionService: GoalAchievementPredictionService,
   ) {}
 
-  async getFinancialSummary(userId: number): Promise<ApiResponse<any>> {
+  async getFinancialSummary(
+    userId: number,
+  ): Promise<ApiResponse<AnalyticsMappedResponse>> {
     const period = 'last_12_months';
     const startDate = new Date();
     startDate.setFullYear(startDate.getFullYear() - 1);
@@ -109,6 +116,7 @@ export class AnalyticsService {
       : [];
 
     const requestData = {
+      user_id: userId,
       transactions: transactions.map((t) => ({
         id: t.id,
         amount: Number(t.amount),
@@ -185,8 +193,13 @@ export class AnalyticsService {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
-      const data = await response.json();
-      const mapped = this.mapAnalyticsResponse(data, goalAchievement);
+      const data = (await response.json()) as AnalyticsServiceResponse;
+      const mapped = mapAnalyticsResponse(
+        data,
+        goalAchievement,
+        spendingPlanPayload,
+        transactions,
+      );
 
       // Log prediction run (không ảnh hưởng response nếu lỗi)
       try {
@@ -239,181 +252,12 @@ export class AnalyticsService {
     }
   }
 
-  private mapAnalyticsResponse(
-    data: any,
-    goalAchievement: GoalAchievementPredictionSummaryDto | null,
-  ) {
-    return {
-      financialHealthScore: data.financial_health_score,
-      cashFlowTrend: data.cash_flow_trend,
-      monthlyForecast: data.monthly_forecast,
-      anomalies: (data.anomalies || []).map((a: any) => ({
-        transactionId: a.transaction_id,
-        amount: a.amount,
-        date: a.date,
-        categoryName: a.category_name,
-        reason: a.reason,
-      })),
-      budgetRisk: {
-        riskLevel: data.budget_risk.risk_level,
-        message: data.budget_risk.message,
-        items: (data.budget_risk.items || []).map((i: any) => ({
-          categoryName: i.category_name,
-          limitAmount: i.limit_amount,
-          spentAmount: i.spent_amount,
-          riskScore: i.risk_score,
-          status: i.status,
-        })),
-      },
-      savingGoalProjections: (data.saving_goal_projections || []).map(
-        (sp: any) => ({
-          goalId: sp.goal_id,
-          name: sp.name,
-          monthsRemaining: sp.months_remaining,
-          monthsDiff: sp.months_diff,
-          isOnTrack: sp.is_on_track,
-          statusText: sp.status_text,
-        }),
-      ),
-      insights: (data.insights || []).map((ins: any) => ({
-        title: ins.title,
-        message: ins.message,
-        severity: ins.severity,
-        evidence: ins.evidence,
-      })),
-      forecasting: data.forecasting
-        ? {
-            currentMonthProjection: this.mapMonthlyForecast(
-              data.forecasting.current_month_projection ||
-                data.forecasting.currentMonthProjection,
-            ),
-            nextMonthForecast: this.mapMonthlyForecast(
-              data.forecasting.next_month_forecast ||
-                data.forecasting.nextMonthForecast,
-            ),
-          }
-        : null,
-      aiBudgeting: data.ai_budgeting
-        ? {
-            method: data.ai_budgeting.method,
-            modelVersion: data.ai_budgeting.model_version,
-            targetSavingsAmount: data.ai_budgeting.target_savings_amount,
-            recommendedTotalBudget: data.ai_budgeting.recommended_total_budget,
-            expectedSavingsAmount: data.ai_budgeting.expected_savings_amount,
-            confidence: data.ai_budgeting.confidence,
-            strategy: data.ai_budgeting.strategy,
-            items: (data.ai_budgeting.items || []).map((item: any) => ({
-              recommendationId: item.recommendation_id,
-              categoryName: item.category_name,
-              currentLimitAmount: item.current_limit_amount,
-              spentAmount: item.spent_amount,
-              recommendedLimitAmount: item.recommended_limit_amount,
-              predictedSpendAmount: item.predicted_spend_amount,
-              adjustmentAmount: item.adjustment_amount,
-              actionType: item.action_type,
-              riskBefore: item.risk_before,
-              riskAfter: item.risk_after,
-              riskLevel: item.risk_level,
-              confidence: item.confidence,
-              elasticity: item.elasticity,
-              reasonCodes: item.reason_codes || [],
-              explanation: item.explanation,
-              personalizationFactors: item.personalization_factors || {},
-              expectedImpact: item.expected_impact || {},
-              reason: item.reason,
-            })),
-            summary: data.ai_budgeting.summary,
-          }
-        : null,
-      goalAchievement,
-    };
-  }
-
-  private mapMonthlyForecast(m: any) {
-    if (!m) return null;
-    return {
-      method: m.method,
-      modelVersion: m.model_version || m.modelVersion || 'v2',
-      periodType: m.period_type || m.periodType || 'month',
-      forecastMode: m.forecast_mode || m.forecastMode,
-      targetMonth: m.target_month || m.targetMonth,
-      targetYear: m.target_year || m.targetYear,
-      periodStart: m.period_start || m.periodStart,
-      periodEnd: m.period_end || m.periodEnd,
-      actualAmount:
-        m.actual_amount !== undefined ? m.actual_amount : m.actualAmount,
-      predictedRemainingAmount:
-        m.predicted_remaining_amount !== undefined
-          ? m.predicted_remaining_amount
-          : m.predictedRemainingAmount,
-      totalForecast:
-        m.total_forecast !== undefined ? m.total_forecast : m.totalForecast,
-      confidence: m.confidence,
-      riskLevel: m.risk_level || m.riskLevel || 'low',
-      modelNotes: m.model_notes || m.modelNotes || '',
-      weeklyForecasts: (m.weekly_forecasts || m.weeklyForecasts || []).map(
-        (w: any) => ({
-          weekIndex: w.week_index || w.weekIndex,
-          periodStart: w.period_start || w.periodStart,
-          periodEnd: w.period_end || w.periodEnd,
-          predictedAmount:
-            w.predicted_amount !== undefined
-              ? w.predicted_amount
-              : w.predictedAmount,
-          actualAmount:
-            w.actual_amount !== undefined ? w.actual_amount : w.actualAmount,
-          riskLevel: w.risk_level || w.riskLevel || 'low',
-        }),
-      ),
-      categoryForecasts: (
-        m.category_forecasts ||
-        m.categoryForecasts ||
-        []
-      ).map((c: any) => ({
-        categoryName: c.category_name || c.categoryName,
-        predictedAmount:
-          c.predicted_amount !== undefined
-            ? c.predicted_amount
-            : c.predictedAmount,
-        actualAmount:
-          c.actual_amount !== undefined ? c.actual_amount : c.actualAmount,
-        remainingForecastAmount:
-          c.remaining_forecast_amount !== undefined
-            ? c.remaining_forecast_amount
-            : c.remainingForecastAmount,
-        trend: c.trend || 'stable',
-        confidence: c.confidence,
-        dataPoints: c.data_points !== undefined ? c.data_points : c.dataPoints,
-        riskLevel: c.risk_level || c.riskLevel || 'low',
-        reasonCodes: c.reason_codes || c.reasonCodes || [],
-      })),
-      riskWindows: (m.risk_windows || m.riskWindows || []).map((r: any) => ({
-        periodStart: r.period_start || r.periodStart,
-        periodEnd: r.period_end || r.periodEnd,
-        riskLevel: r.risk_level || r.riskLevel || 'low',
-        predictedAmount:
-          r.predicted_amount !== undefined
-            ? r.predicted_amount
-            : r.predictedAmount,
-        reason: r.reason || '',
-        reasonCodes: r.reason_codes || r.reasonCodes || [],
-      })),
-      dailyPoints: (m.daily_points || m.dailyPoints || []).map((p: any) => ({
-        date: p.date,
-        predictedAmount:
-          p.predicted_amount !== undefined
-            ? p.predicted_amount
-            : p.predictedAmount,
-      })),
-    };
-  }
-
   private generateFallbackData(
     transactions: Transaction[],
     spendingPlan: any,
     savingGoals: SavingGoal[],
     goalAchievement: GoalAchievementPredictionSummaryDto | null,
-  ) {
+  ): AnalyticsMappedResponse {
     const now = getVietnamNow();
     const currentMonth = now.getMonth() + 1;
     const currentYear = now.getFullYear();

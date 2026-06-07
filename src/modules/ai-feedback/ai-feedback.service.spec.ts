@@ -12,6 +12,7 @@ describe('AiFeedbackService', () => {
     create: jest.fn((payload) => payload),
     save: jest.fn(async (payload) => ({ id: 1, ...payload })),
     find: jest.fn(),
+    findOne: jest.fn(),
   };
   const userRepo = {
     findOne: jest.fn(),
@@ -144,6 +145,64 @@ describe('AiFeedbackService', () => {
     expect(categorySummary.personalCorrections).toEqual([]);
   });
 
+  it('calculates budgeting readiness from real feedback by default', async () => {
+    const rows = [
+      feedback({
+        userAction: 'accepted',
+        sourcePayload: { categoryName: 'Food' },
+        outcomePayload: { actualSpentAmount: 1000000 },
+      }),
+      feedback({
+        userAction: 'modified',
+        sourcePayload: { categoryName: 'Food' },
+        modifiedPayload: { finalLimitAmount: 1200000 },
+      }),
+      feedback({
+        userAction: 'rejected',
+        sourcePayload: { categoryName: 'Transport' },
+        dataSource: 'synthetic',
+      }),
+    ];
+    feedbackRepo.find.mockResolvedValue(rows);
+
+    const readiness = await service.getBudgetingReadiness(1);
+
+    expect(readiness.totalFeedback).toBe(2);
+    expect(readiness.realFeedbackCount).toBe(2);
+    expect(readiness.syntheticFeedbackCount).toBe(1);
+    expect(readiness.actionDistribution).toEqual({
+      accepted: 1,
+      modified: 1,
+      rejected: 0,
+    });
+    expect(readiness.outcomeCount).toBe(1);
+    expect(readiness.recommendation).toBe('rule_based_only');
+  });
+
+  it('records feedback outcome for the owning user', async () => {
+    const existing = feedback({ id: 7, userId: 1 });
+    feedbackRepo.findOne.mockResolvedValue(existing);
+
+    const result = await service.recordOutcome(1, 7, {
+      actualSpentAmount: 900000,
+      wasOverBudget: false,
+    });
+
+    expect(feedbackRepo.findOne).toHaveBeenCalledWith({
+      where: { id: 7, userId: 1 },
+    });
+    expect(feedbackRepo.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        outcomePayload: {
+          actualSpentAmount: 900000,
+          wasOverBudget: false,
+        },
+        outcomeMeasuredAt: expect.any(Date),
+      }),
+    );
+    expect(result.id).toBe(7);
+  });
+
   function feedback(
     partial: Partial<AiRecommendationFeedback>,
   ): AiRecommendationFeedback {
@@ -159,6 +218,9 @@ describe('AiFeedbackService', () => {
       sourcePayload: {},
       modifiedPayload: null,
       contextPayload: null,
+      dataSource: 'real',
+      outcomePayload: null,
+      outcomeMeasuredAt: null,
       reasonText: null,
       createdAt: new Date(),
       updatedAt: new Date(),

@@ -167,7 +167,7 @@ export class AiAnalysisChatService {
       return JSON5.parse(raw);
     } catch (error) {
       this.logger.error('Parse analysis JSON failed', error);
-      return 'Toi gap loi khi chuan bi ke hoach tai chinh cho ban. Hay thu lai.';
+      return 'Tôi gặp lỗi khi chuẩn bị kế hoạch tài chính cho bạn. Hãy thử lại.';
     }
   }
 

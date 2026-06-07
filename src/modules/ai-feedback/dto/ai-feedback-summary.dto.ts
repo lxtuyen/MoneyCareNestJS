@@ -26,6 +26,37 @@ export interface BudgetFeedbackSummary extends AiFeedbackCountSummary {
   categoryPreferences: BudgetCategoryFeedbackSummary[];
 }
 
+export interface BudgetingFeedbackReadinessResponse {
+  score: number;
+  scope: 'user' | 'global';
+  recommendation:
+    | 'rule_based_only'
+    | 'train_offline_only'
+    | 'enable_category_reranker'
+    | 'ready_for_ml_budgeting';
+  totalFeedback: number;
+  realFeedbackCount: number;
+  syntheticFeedbackCount: number;
+  actionDistribution: {
+    accepted: number;
+    rejected: number;
+    modified: number;
+  };
+  categoryCoverage: Array<{
+    categoryName: string;
+    count: number;
+  }>;
+  outcomeCount: number;
+  monthCoverage: number;
+  criteria: {
+    totalFeedbackAtLeast500: boolean;
+    balancedActions: boolean;
+    categoryCoverageAtLeast5: boolean;
+    outcomeAtLeast200: boolean;
+    monthCoverageAtLeast3: boolean;
+  };
+}
+
 export interface CategoryCorrectionSummary {
   keyword?: string;
   merchant?: string;

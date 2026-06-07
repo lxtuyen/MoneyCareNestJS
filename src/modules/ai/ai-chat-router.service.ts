@@ -5,6 +5,7 @@ import { AiAnalysisChatService } from './ai-analysis-chat.service';
 import { AiSavingGoalChatService } from './ai-saving-goal-chat.service';
 import { AiTransactionChatService } from './ai-transaction-chat.service';
 import { AiScenarioWhatIfChatService } from './ai-scenario-what-if-chat.service';
+import { AiBudgetRecommendationChatService } from './ai-budget-recommendation-chat.service';
 
 @Injectable()
 export class AiChatRouterService {
@@ -14,6 +15,7 @@ export class AiChatRouterService {
     private readonly savingGoalChatService: AiSavingGoalChatService,
     private readonly transactionChatService: AiTransactionChatService,
     private readonly scenarioWhatIfChatService: AiScenarioWhatIfChatService,
+    private readonly budgetRecommendationChatService: AiBudgetRecommendationChatService,
   ) {}
 
   async handle(
@@ -51,6 +53,16 @@ export class AiChatRouterService {
 
     const goalId =
       (await this.financialInsightsService.getSelectedGoalId(userId)) ?? 0;
+
+    if (
+      this.budgetRecommendationChatService.isBudgetRecommendationRequest(
+        message ?? '',
+      )
+    ) {
+      return this.budgetRecommendationChatService.handleBudgetRecommendation(
+        userId,
+      );
+    }
 
     if (this.scenarioWhatIfChatService.isWhatIfRequest(message ?? '')) {
       return this.scenarioWhatIfChatService.handleWhatIf(

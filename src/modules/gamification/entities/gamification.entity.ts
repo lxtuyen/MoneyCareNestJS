@@ -27,6 +27,9 @@ export class GamificationEntity {
   @Column({ type: 'date', nullable: true })
   lastTransactionDate!: string | null;
 
+  @Column({ type: 'jsonb', default: () => "'[]'" })
+  badges!: { key: string; name: string; awardedAt: string }[];
+
   @CreateDateColumn()
   createdAt!: Date;
 

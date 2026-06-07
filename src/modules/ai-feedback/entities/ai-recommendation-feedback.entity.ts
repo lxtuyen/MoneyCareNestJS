@@ -26,6 +26,8 @@ export type AiFeedbackAction =
   | 'helpful'
   | 'not_helpful';
 
+export type AiFeedbackDataSource = 'real' | 'synthetic';
+
 @Entity('ai_recommendation_feedback')
 @Index(['userId'])
 @Index(['recommendationType'])
@@ -82,6 +84,19 @@ export class AiRecommendationFeedback {
 
   @Column({ type: 'jsonb', nullable: true })
   contextPayload!: Record<string, any> | null;
+
+  @Column({
+    type: 'enum',
+    enum: ['real', 'synthetic'],
+    default: 'real',
+  })
+  dataSource!: AiFeedbackDataSource;
+
+  @Column({ type: 'jsonb', nullable: true })
+  outcomePayload!: Record<string, any> | null;
+
+  @Column({ type: 'timestamp', nullable: true })
+  outcomeMeasuredAt!: Date | null;
 
   @Column({ type: 'varchar', length: 500, nullable: true })
   reasonText!: string | null;
