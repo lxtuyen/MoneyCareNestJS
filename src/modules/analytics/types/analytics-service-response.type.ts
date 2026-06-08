@@ -187,17 +187,25 @@ export interface AnalyticsServiceResponse {
   ai_budgeting?: AnalyticsServiceAiBudgetingResponse | null;
 }
 
+export interface AnalyticsMappedAnomaly {
+  transactionId: number;
+  amount: number;
+  date: string;
+  categoryName: string;
+  categoryId: number | null;
+  categoryIcon: string | null;
+  type: string;
+  note: string | null;
+  walletId: number | null;
+  walletName: string | null;
+  reason: string;
+}
+
 export interface AnalyticsMappedResponse {
   financialHealthScore: number;
   cashFlowTrend: string;
   monthlyForecast: number;
-  anomalies: Array<{
-    transactionId: number;
-    amount: number;
-    date: string;
-    categoryName: string;
-    reason: string;
-  }>;
+  anomalies: AnalyticsMappedAnomaly[];
   budgetRisk: {
     riskLevel: string;
     message: string;

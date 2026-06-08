@@ -1,5 +1,6 @@
 import { GoalAchievementPredictionSummaryDto } from 'src/modules/saving-goals/dto/goal-achievement-prediction.dto';
 import {
+  AnalyticsMappedAnomaly,
   AnalyticsMappedMonthlyForecast,
   AnalyticsMappedResponse,
   AnalyticsServiceMonthlyForecastResponse,
@@ -41,17 +42,34 @@ export function mapAnalyticsResponse(
     }
   }
 
+  // Build a lookup map from transactionId → transaction for O(1) anomaly enrichment
+  const transactionLookup = new Map<number, any>();
+  if (transactions) {
+    for (const t of transactions) {
+      transactionLookup.set(t.id, t);
+    }
+  }
+
   return {
     financialHealthScore: data.financial_health_score,
     cashFlowTrend: data.cash_flow_trend,
     monthlyForecast: data.monthly_forecast,
-    anomalies: (data.anomalies || []).map((anomaly) => ({
-      transactionId: anomaly.transaction_id,
-      amount: anomaly.amount,
-      date: anomaly.date,
-      categoryName: anomaly.category_name,
-      reason: anomaly.reason,
-    })),
+    anomalies: (data.anomalies || []).map((anomaly): AnalyticsMappedAnomaly => {
+      const tx = transactionLookup.get(anomaly.transaction_id);
+      return {
+        transactionId: anomaly.transaction_id,
+        amount: anomaly.amount,
+        date: anomaly.date,
+        categoryName: tx?.category?.name ?? anomaly.category_name,
+        categoryId: tx?.category?.id ?? null,
+        categoryIcon: tx?.category?.icon ?? null,
+        type: tx?.type ?? 'expense',
+        note: tx?.note ?? null,
+        walletId: (tx as any)?.wallet?.id ?? null,
+        walletName: (tx as any)?.wallet?.name ?? null,
+        reason: anomaly.reason,
+      };
+    }),
     budgetRisk: {
       riskLevel: data.budget_risk.risk_level,
       message: data.budget_risk.message,
