@@ -476,6 +476,7 @@ export class AnalyticsService {
         confidence: 0.35,
         strategy: 'stability_first',
         items: [],
+        budgetExceedPredictions: [],
         summary:
           'Chưa có kết quả AI Budgeting nâng cao, hệ thống tạm dùng dữ liệu dự phòng.',
       },

@@ -172,7 +172,42 @@ export interface AnalyticsServiceAiBudgetingResponse {
   confidence: number;
   strategy: string;
   items: AnalyticsServiceBudgetRecommendationResponse[];
+  budget_exceed_predictions?: AnalyticsServiceBudgetExceedPredictionResponse[];
+  budgetExceedPredictions?: AnalyticsServiceBudgetExceedPredictionResponse[];
   summary: string;
+}
+
+export interface AnalyticsServiceBudgetExceedPredictionResponse {
+  category_name?: string;
+  categoryName?: string;
+  limit_amount?: number;
+  limitAmount?: number;
+  actual_amount?: number;
+  actualAmount?: number;
+  total_forecast?: number;
+  totalForecast?: number;
+  exceed_amount?: number;
+  exceedAmount?: number;
+  will_exceed?: boolean;
+  willExceed?: boolean;
+  exceed_probability?: number;
+  exceedProbability?: number;
+  confidence: number;
+  trend: string;
+  risk_level?: string;
+  riskLevel?: string;
+  actual_ratio?: number;
+  actualRatio?: number;
+  forecast_ratio?: number;
+  forecastRatio?: number;
+  expected_today_ratio?: number | null;
+  expectedTodayRatio?: number | null;
+  expected_today_amount?: number | null;
+  expectedTodayAmount?: number | null;
+  daily_forecast_amount?: number | null;
+  dailyForecastAmount?: number | null;
+  is_frequent?: boolean;
+  isFrequent?: boolean;
 }
 
 export interface AnalyticsServiceResponse {
@@ -290,6 +325,25 @@ export interface AnalyticsMappedMonthlyForecast {
   }>;
 }
 
+export interface AnalyticsMappedBudgetExceedPrediction {
+  categoryName: string;
+  limitAmount: number;
+  actualAmount: number;
+  totalForecast: number;
+  exceedAmount: number;
+  willExceed: boolean;
+  exceedProbability: number;
+  confidence: number;
+  trend: string;
+  riskLevel: string;
+  actualRatio: number;
+  forecastRatio: number;
+  expectedTodayRatio: number | null;
+  expectedTodayAmount: number | null;
+  dailyForecastAmount: number | null;
+  isFrequent: boolean;
+}
+
 export interface AnalyticsMappedAiBudgeting {
   method: string;
   modelVersion: string;
@@ -322,5 +376,6 @@ export interface AnalyticsMappedAiBudgeting {
     expectedImpact: Record<string, unknown>;
     reason: string;
   }>;
+  budgetExceedPredictions: AnalyticsMappedBudgetExceedPrediction[];
   summary: string;
 }
