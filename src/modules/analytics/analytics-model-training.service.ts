@@ -4,6 +4,12 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Between, Repository } from 'typeorm';
 import { Transaction } from '../transactions/entities/transaction.entity';
 
+/** MAPE threshold (%) vượt ngưỡng này sẽ trigger auto-retrain */
+export const MAPE_RETRAIN_THRESHOLD = 30;
+
+/** Số giao dịch expense tối thiểu để user đủ điều kiện train */
+const MIN_EXPENSE_TRANSACTIONS = 50;
+
 export interface ForecastingTrainingResult {
   status: string;
   reason?: string | null;
@@ -16,6 +22,12 @@ export interface ForecastingTrainingResult {
   trainingRows: number;
   minimumRequiredDays?: number | null;
   minimumRequiredTransactions?: number | null;
+}
+
+export interface BatchRetrainingResult {
+  trained: number;
+  skipped: number;
+  failed: number;
 }
 
 @Injectable()
@@ -135,5 +147,58 @@ export class AnalyticsModelTrainingService {
       this.logger.error(`Cannot train forecasting model: ${error.message}`);
       throw error;
     }
+  }
+
+  /**
+   * Lấy danh sách tất cả userId có đủ điều kiện train (>= MIN_EXPENSE_TRANSACTIONS).
+   * Dùng cho weekly cron batch retraining.
+   */
+  async findEligibleUserIds(): Promise<number[]> {
+    const startDate = new Date();
+    startDate.setFullYear(startDate.getFullYear() - 1);
+
+    const rows: { userId: number; cnt: string }[] = await this.transactionRepo
+      .createQueryBuilder('t')
+      .select('t.userId', 'userId')
+      .addSelect('COUNT(*)', 'cnt')
+      .where('t.type = :type', { type: 'expense' })
+      .andWhere('t.isTransfer = :isTransfer', { isTransfer: false })
+      .andWhere('t.transaction_date >= :startDate', { startDate })
+      .groupBy('t.userId')
+      .having('COUNT(*) >= :min', { min: MIN_EXPENSE_TRANSACTIONS })
+      .getRawMany();
+
+    return rows.map((r) => r.userId);
+  }
+
+  /**
+   * Re-train model cho tất cả user đủ điều kiện.
+   * Chạy tuần tự để tránh quá tải analytics service.
+   */
+  async retrainAllEligibleUsers(): Promise<BatchRetrainingResult> {
+    const userIds = await this.findEligibleUserIds();
+    this.logger.log(
+      `Weekly retraining: found ${userIds.length} eligible users`,
+    );
+
+    const result: BatchRetrainingResult = { trained: 0, skipped: 0, failed: 0 };
+
+    for (const userId of userIds) {
+      try {
+        const trainingResult = await this.trainForecastingModel(userId);
+        if (trainingResult.status === 'trained') {
+          result.trained++;
+        } else {
+          result.skipped++;
+        }
+      } catch (error) {
+        result.failed++;
+        this.logger.warn(
+          `Retraining failed for userId=${userId}: ${error.message}`,
+        );
+      }
+    }
+
+    return result;
   }
 }

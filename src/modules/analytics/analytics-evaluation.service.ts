@@ -5,12 +5,12 @@ import { AiPredictionRun } from './entities/ai-prediction-run.entity';
 import { AiPredictionEvaluation } from './entities/ai-prediction-evaluation.entity';
 import { Transaction } from 'src/modules/transactions/entities/transaction.entity';
 import { AnalyticsPredictionService } from './analytics-prediction.service';
+import { AnalyticsModelTrainingService, MAPE_RETRAIN_THRESHOLD } from './analytics-model-training.service';
 import {
   meanAbsoluteError,
   rootMeanSquaredError,
   meanAbsolutePercentageError,
   absolutePercentageError,
-  directionalAccuracy,
   PredictedActualPair,
 } from './utils/model-metrics.util';
 import {
@@ -36,6 +36,7 @@ export class AnalyticsEvaluationService {
     private readonly transactionRepo: Repository<Transaction>,
 
     private readonly predictionService: AnalyticsPredictionService,
+    private readonly modelTrainingService: AnalyticsModelTrainingService,
   ) {}
 
   /**
@@ -131,12 +132,10 @@ export class AnalyticsEvaluationService {
     }
 
     // Category pairs
-    const categoryPairs: PredictedActualPair[] = [];
     const categoryMetricsDetail: any[] = [];
     if (payload.categoryForecasts && Array.isArray(payload.categoryForecasts)) {
       for (const cf of payload.categoryForecasts) {
         const actual = categoryActual[cf.categoryName] || 0;
-        categoryPairs.push({ predicted: cf.predictedAmount || 0, actual });
         const ape = absolutePercentageError(cf.predictedAmount || 0, actual);
         categoryMetricsDetail.push({
           categoryName: cf.categoryName,
@@ -193,6 +192,25 @@ export class AnalyticsEvaluationService {
     this.logger.log(
       `Evaluated forecasting run #${run.id}: MAE=${Math.round(mae)}, MAPE=${Math.round(mape * 100) / 100}%`,
     );
+
+    // Auto-retrain nếu MAPE vượt ngưỡng
+    if (mape > MAPE_RETRAIN_THRESHOLD) {
+      this.logger.warn(
+        `MAPE=${Math.round(mape * 100) / 100}% > ${MAPE_RETRAIN_THRESHOLD}% threshold for userId=${run.userId}. Triggering auto-retrain...`,
+      );
+      this.modelTrainingService
+        .trainForecastingModel(run.userId)
+        .then((result) => {
+          this.logger.log(
+            `Auto-retrain completed for userId=${run.userId}: status=${result.status}, artifactSaved=${result.artifactSaved}`,
+          );
+        })
+        .catch((error) => {
+          this.logger.error(
+            `Auto-retrain failed for userId=${run.userId}: ${error.message}`,
+          );
+        });
+    }
   }
 
   /**
