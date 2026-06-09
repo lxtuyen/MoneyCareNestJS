@@ -5,6 +5,7 @@ import { AiSavingGoalChatService } from './ai-saving-goal-chat.service';
 import { AiTransactionChatService } from './ai-transaction-chat.service';
 import { AiScenarioWhatIfChatService } from './ai-scenario-what-if-chat.service';
 import { AiBudgetRecommendationChatService } from './ai-budget-recommendation-chat.service';
+import { AiGoalAchievementChatService } from './ai-goal-achievement-chat.service';
 
 describe('AiChatRouterService', () => {
   const financialInsightsService = { getSelectedGoalId: jest.fn() };
@@ -33,6 +34,10 @@ describe('AiChatRouterService', () => {
     isBudgetRecommendationRequest: jest.fn(),
     handleBudgetRecommendation: jest.fn(),
   };
+  const goalAchievementChatService = {
+    isGoalAchievementRequest: jest.fn(),
+    handleGoalAchievementInsight: jest.fn(),
+  };
 
   let router: AiChatRouterService;
 
@@ -45,6 +50,7 @@ describe('AiChatRouterService', () => {
       transactionChatService as unknown as AiTransactionChatService,
       scenarioWhatIfChatService as unknown as AiScenarioWhatIfChatService,
       budgetRecommendationChatService as unknown as AiBudgetRecommendationChatService,
+      goalAchievementChatService as unknown as AiGoalAchievementChatService,
     );
   });
 
@@ -128,6 +134,53 @@ describe('AiChatRouterService', () => {
       7,
     );
     expect(transactionChatService.handleRecordOrChat).not.toHaveBeenCalled();
+  });
+
+  it('routes goal budget adjust request to goal achievement insight', async () => {
+    financialInsightsService.getSelectedGoalId.mockResolvedValueOnce(7);
+    goalAchievementChatService.isGoalAchievementRequest.mockReturnValueOnce(
+      true,
+    );
+    goalAchievementChatService.handleGoalAchievementInsight.mockResolvedValueOnce(
+      {
+        success: true,
+        statusCode: 200,
+        message: 'goal budget adjust response',
+      },
+    );
+
+    const result = await router.handle(
+      'giup toi dieu chinh ngan sach de dat muc tieu',
+      8,
+    );
+
+    expect(result.message).toBe('goal budget adjust response');
+    expect(
+      goalAchievementChatService.handleGoalAchievementInsight,
+    ).toHaveBeenCalledWith(8);
+  });
+
+  it('routes goal achievement insight before saving goal creation', async () => {
+    financialInsightsService.getSelectedGoalId.mockResolvedValueOnce(7);
+    analysisChatService.isAnalysisRequest.mockReturnValueOnce(false);
+    goalAchievementChatService.isGoalAchievementRequest.mockReturnValueOnce(
+      true,
+    );
+    goalAchievementChatService.handleGoalAchievementInsight.mockResolvedValueOnce(
+      {
+        success: true,
+        statusCode: 200,
+        message: 'goal insight response',
+      },
+    );
+
+    const result = await router.handle('muc tieu cua toi co kip han khong', 6);
+
+    expect(result.message).toBe('goal insight response');
+    expect(
+      goalAchievementChatService.handleGoalAchievementInsight,
+    ).toHaveBeenCalledWith(6);
+    expect(savingGoalChatService.isSavingGoalRequest).not.toHaveBeenCalled();
   });
 
   it('routes budget recommendation requests before what-if or other intents', async () => {

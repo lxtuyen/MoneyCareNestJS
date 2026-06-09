@@ -1,10 +1,21 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  forwardRef,
+  Inject,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Transaction } from 'src/modules/transactions/entities/transaction.entity';
 import { PersonalFinanceProfile } from 'src/modules/personalization/entities/personal-finance-profile.entity';
 import { PersonalizationService } from 'src/modules/personalization/personalization.service';
 import { SpendingPlansService } from 'src/modules/spending-plans/spending-plans.service';
+import { AnalyticsService } from '../analytics/analytics.service';
+import {
+  BudgetExceedPredictionLite,
+  computeForecastedMonthlySavings,
+} from './helpers/forecasted-monthly-savings.helper';
 import {
   formatDateInTimeZone,
   getVietnamNow,
@@ -19,7 +30,7 @@ import {
 } from './dto/goal-achievement-prediction.dto';
 
 type SavingVelocitySource =
-  | 'goal_contribution_history'
+  | 'forecasted_monthly_savings'
   | 'profile_average_savings'
   | 'spending_plan_capacity'
   | 'net_balance_fallback'
@@ -29,11 +40,21 @@ type SavingCapacity = Awaited<
   ReturnType<SpendingPlansService['getMonthlySavingCapacity']>
 >;
 
+interface ActivePlanStats {
+  totalAmount: number;
+  spentAmount: number;
+  projectedEndBalance: number;
+  planCategoryNames: string[];
+}
+
 interface UserPredictionContext {
   activeGoals: SavingGoal[];
   transactions: Transaction[];
   profile: PersonalFinanceProfile | null;
   capacity: SavingCapacity;
+  planStats: ActivePlanStats | null;
+  budgetExceedPredictions: BudgetExceedPredictionLite[];
+  forecastedMonthlySavings: number;
   averageMonthlyIncome: number;
   averageMonthlyExpense: number;
   fallbackMonthlySavings: number;
@@ -45,7 +66,6 @@ interface VelocityResult {
   currentMonthlySavingRate: number;
   projectedMonthlySavingRate: number;
   source: SavingVelocitySource;
-  hasGoalContributionHistory: boolean;
 }
 
 export interface GoalPredictionOverrides {
@@ -57,6 +77,8 @@ export interface GoalPredictionOverrides {
 
 @Injectable()
 export class GoalAchievementPredictionService {
+  private readonly logger = new Logger(GoalAchievementPredictionService.name);
+
   constructor(
     @InjectRepository(SavingGoal)
     private readonly goalRepo: Repository<SavingGoal>,
@@ -66,6 +88,8 @@ export class GoalAchievementPredictionService {
 
     private readonly personalizationService: PersonalizationService,
     private readonly spendingPlansService: SpendingPlansService,
+    @Inject(forwardRef(() => AnalyticsService))
+    private readonly analyticsService: AnalyticsService,
   ) {}
 
   async predictGoal(
@@ -137,7 +161,14 @@ export class GoalAchievementPredictionService {
     const periodStart = getVietnamNow();
     periodStart.setDate(periodStart.getDate() - 180);
 
-    const [transactions, profile, capacity, activeGoals] = await Promise.all([
+    const [
+      transactions,
+      profile,
+      capacity,
+      activeGoals,
+      planStatsRes,
+      budgetingSnapshot,
+    ] = await Promise.all([
       this.transactionRepo
         .createQueryBuilder('t')
         .leftJoinAndSelect('t.category', 'category')
@@ -154,23 +185,86 @@ export class GoalAchievementPredictionService {
             where: { user: { id: userId }, is_completed: false },
             relations: ['wallet', 'user'],
           }),
+      this.spendingPlansService.getActiveStatistics(userId),
+      this.analyticsService.fetchAiBudgetingSnapshot(userId).catch((error) => {
+        this.logger.warn(
+          `Cannot load budgeting snapshot for goal prediction: ${error.message}`,
+        );
+        return null;
+      }),
     ]);
 
     const simpleAverages = this.calculateSimpleAverages(transactions);
     const totalRemainingAmount = activeGoals.reduce((sum, goal) => {
       return sum + this.getRemainingAmount(goal);
     }, 0);
+    const planStats = this.mapActivePlanStats(
+      planStatsRes.success ? planStatsRes.data : null,
+      capacity,
+    );
+    const budgetExceedPredictions =
+      budgetingSnapshot?.budgetExceedPredictions ?? [];
+
+    // Tính "Tiết kiệm dự kiến tháng này" theo đúng công thức giống BudgetTrackingSection:
+    //   plannedIncome - tổng(budgetExceedPredictions.totalForecast)
+    // Nếu không có spending plan, fallback về average_monthly_income từ profile.
+    // Kết quả có thể âm khi chi > thu.
+    const plannedIncome =
+      planStats?.totalAmount ??
+      capacity?.totalAmount ??
+      Number(profile?.averageMonthlyIncome ?? 0);
+
+    const forecastedMonthlySavings = computeForecastedMonthlySavings({
+      plannedIncome,
+      totalSpent: planStats?.spentAmount ?? 0,
+      projectedEndBalance:
+        planStats?.projectedEndBalance ?? capacity?.projectedEndBalance ?? null,
+      planCategoryNames: planStats?.planCategoryNames ?? [],
+      budgetExceedPredictions,
+    });
 
     return {
       activeGoals,
       transactions,
       profile,
       capacity,
+      planStats,
+      budgetExceedPredictions,
+      forecastedMonthlySavings,
       averageMonthlyIncome: simpleAverages.averageMonthlyIncome,
       averageMonthlyExpense: simpleAverages.averageMonthlyExpense,
       fallbackMonthlySavings: simpleAverages.averageMonthlySavings,
       activeMonths: simpleAverages.activeMonths,
       totalRemainingAmount,
+    };
+  }
+
+  private mapActivePlanStats(
+    planStats: any,
+    capacity: SavingCapacity,
+  ): ActivePlanStats | null {
+    if (!planStats && !capacity) {
+      return null;
+    }
+
+    const fixedExpenses = planStats?.fixedExpenses ?? capacity?.estimatedExpenses ?? [];
+    const planCategoryNames: string[] = Array.from(
+      new Set(
+        fixedExpenses
+          .map((item: any) =>
+            String(item.category?.name || item.categoryName || '').trim(),
+          )
+          .filter(Boolean),
+      ),
+    );
+
+    return {
+      totalAmount: Number(planStats?.totalAmount ?? capacity?.totalAmount ?? 0),
+      spentAmount: Number(planStats?.spentAmount ?? 0),
+      projectedEndBalance: Number(
+        planStats?.projectedEndBalance ?? capacity?.projectedEndBalance ?? 0,
+      ),
+      planCategoryNames,
     };
   }
 
@@ -326,7 +420,14 @@ export class GoalAchievementPredictionService {
             context.fallbackMonthlySavings,
         ),
         forecastedMonthlyExpense: this.roundMoney(
-          context.capacity?.fixedExpenseTotal ?? 0,
+          Math.max(
+            0,
+            (context.planStats?.totalAmount ?? context.capacity?.totalAmount ?? 0) -
+              context.forecastedMonthlySavings,
+          ),
+        ),
+        forecastedMonthlySavings: this.roundMoney(
+          context.forecastedMonthlySavings,
         ),
         deadline: deadline ? this.formatDate(deadline) : null,
         remainingAmount: this.roundMoney(remainingAmount),
@@ -374,22 +475,9 @@ export class GoalAchievementPredictionService {
     context: UserPredictionContext,
     overrides: GoalPredictionOverrides = {},
   ): VelocityResult {
-    const goalContribution = this.calculateGoalContributionRate(
-      goal,
-      context.transactions,
-    );
-    if (goalContribution > 0) {
-      return this.applyVelocityOverrides(
-        {
-          currentMonthlySavingRate: goalContribution,
-          projectedMonthlySavingRate: goalContribution,
-          source: 'goal_contribution_history',
-          hasGoalContributionHistory: true,
-        },
-        overrides,
-      );
-    }
-
+    // forecastedMonthlySavings là "Tiết kiệm dự kiến tháng này" — số tổng quan toàn bộ thu chi,
+    // giống với con số hiển thị ở BudgetTrackingSection. Giữ nguyên dấu âm (nếu chi > thu).
+    const forecastedSavings = context.forecastedMonthlySavings;
     const profileSavings = Number(context.profile?.averageMonthlySavings ?? 0);
     const spendingPlanSavings = Number(
       context.capacity?.monthlySavingCapacity ?? 0,
@@ -399,34 +487,51 @@ export class GoalAchievementPredictionService {
     let baseMonthlySavingRate = 0;
     let source: SavingVelocitySource = 'insufficient_data';
 
-    if (profileSavings > 0) {
-      baseMonthlySavingRate = profileSavings;
-      source = 'profile_average_savings';
+    if (forecastedSavings !== 0) {
+      // Dùng trực tiếp forecastedMonthlySavings kể cả khi âm —
+      // phản ánh đúng thực tế "tháng này bạn đang âm/dương bao nhiêu".
+      baseMonthlySavingRate = forecastedSavings;
+      source = 'forecasted_monthly_savings';
     } else if (spendingPlanSavings > 0) {
       baseMonthlySavingRate = spendingPlanSavings;
       source = 'spending_plan_capacity';
+    } else if (profileSavings > 0) {
+      baseMonthlySavingRate = profileSavings;
+      source = 'profile_average_savings';
     } else if (fallbackSavings > 0) {
       baseMonthlySavingRate = fallbackSavings;
       source = 'net_balance_fallback';
     }
 
-    const allocationWeight = this.calculateGoalAllocationWeight(goal, context);
-    const currentMonthlySavingRate = Math.max(
-      0,
-      baseMonthlySavingRate * allocationWeight,
-    );
+    // Không nhân allocationWeight khi nguồn là forecasted_monthly_savings —
+    // đây là chỉ số tổng quan tháng, không phân bổ theo mục tiêu.
+    const shouldAllocate = source !== 'forecasted_monthly_savings';
+    const allocationWeight = shouldAllocate
+      ? this.calculateGoalAllocationWeight(goal, context)
+      : 1;
+
+    const currentMonthlySavingRate =
+      source === 'forecasted_monthly_savings'
+        ? baseMonthlySavingRate
+        : Math.max(0, baseMonthlySavingRate * allocationWeight);
+
     const projectedBase =
-      spendingPlanSavings > 0 ? spendingPlanSavings : baseMonthlySavingRate;
+      forecastedSavings !== 0
+        ? forecastedSavings
+        : spendingPlanSavings > 0
+          ? spendingPlanSavings
+          : baseMonthlySavingRate;
+
+    const projectedMonthlySavingRate =
+      source === 'forecasted_monthly_savings'
+        ? projectedBase
+        : Math.max(0, projectedBase * allocationWeight);
 
     return this.applyVelocityOverrides(
       {
         currentMonthlySavingRate,
-        projectedMonthlySavingRate: Math.max(
-          0,
-          projectedBase * allocationWeight,
-        ),
+        projectedMonthlySavingRate,
         source,
-        hasGoalContributionHistory: false,
       },
       overrides,
     );
@@ -452,27 +557,6 @@ export class GoalAchievementPredictionService {
         velocity.projectedMonthlySavingRate + monthlySavingDelta,
       ),
     };
-  }
-
-  private calculateGoalContributionRate(
-    goal: SavingGoal,
-    transactions: Transaction[],
-  ): number {
-    const walletId = goal.wallet?.id;
-    if (!walletId) return 0;
-
-    const walletTransactions = transactions.filter(
-      (transaction) => transaction.wallet?.id === walletId,
-    );
-    if (walletTransactions.length === 0) return 0;
-
-    const netContribution = walletTransactions.reduce((sum, transaction) => {
-      const amount = Number(transaction.amount ?? 0);
-      return transaction.type === 'income' ? sum + amount : sum - amount;
-    }, 0);
-
-    if (netContribution <= 0) return 0;
-    return netContribution / this.calculateActiveMonths(walletTransactions);
   }
 
   private calculateGoalAllocationWeight(
@@ -537,7 +621,12 @@ export class GoalAchievementPredictionService {
       confidence = confidence * 0.85 + 0.65 * 0.15;
     }
 
-    if (velocity.hasGoalContributionHistory) confidence += 0.05;
+    if (
+      velocity.source === 'forecasted_monthly_savings' ||
+      velocity.source === 'spending_plan_capacity'
+    ) {
+      confidence += 0.05;
+    }
     if (velocity.currentMonthlySavingRate <= 0) confidence -= 0.1;
 
     const goalAgeDays = goal.start_date

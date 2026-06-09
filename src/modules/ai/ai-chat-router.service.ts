@@ -6,6 +6,7 @@ import { AiSavingGoalChatService } from './ai-saving-goal-chat.service';
 import { AiTransactionChatService } from './ai-transaction-chat.service';
 import { AiScenarioWhatIfChatService } from './ai-scenario-what-if-chat.service';
 import { AiBudgetRecommendationChatService } from './ai-budget-recommendation-chat.service';
+import { AiGoalAchievementChatService } from './ai-goal-achievement-chat.service';
 
 @Injectable()
 export class AiChatRouterService {
@@ -16,6 +17,7 @@ export class AiChatRouterService {
     private readonly transactionChatService: AiTransactionChatService,
     private readonly scenarioWhatIfChatService: AiScenarioWhatIfChatService,
     private readonly budgetRecommendationChatService: AiBudgetRecommendationChatService,
+    private readonly goalAchievementChatService: AiGoalAchievementChatService,
   ) {}
 
   async handle(
@@ -77,6 +79,14 @@ export class AiChatRouterService {
         message ?? '',
         userId,
         goalId,
+      );
+    }
+
+    if (
+      this.goalAchievementChatService.isGoalAchievementRequest(message ?? '')
+    ) {
+      return this.goalAchievementChatService.handleGoalAchievementInsight(
+        userId,
       );
     }
 

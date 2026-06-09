@@ -4,6 +4,7 @@ import { Transaction } from 'src/modules/transactions/entities/transaction.entit
 import { PersonalizationService } from 'src/modules/personalization/personalization.service';
 import { SpendingPlansService } from 'src/modules/spending-plans/spending-plans.service';
 import { SavingGoal } from './entities/saving-goal.entity';
+import { AnalyticsService } from '../analytics/analytics.service';
 import { GoalAchievementPredictionService } from './goal-achievement-prediction.service';
 
 describe('GoalAchievementPredictionService', () => {
@@ -12,6 +13,7 @@ describe('GoalAchievementPredictionService', () => {
   let transactionRepo: any;
   let personalizationService: any;
   let spendingPlansService: any;
+  let analyticsService: any;
 
   const fixedNow = new Date('2026-06-06T03:00:00.000Z');
 
@@ -44,6 +46,13 @@ describe('GoalAchievementPredictionService', () => {
           provide: SpendingPlansService,
           useValue: {
             getMonthlySavingCapacity: jest.fn(),
+            getActiveStatistics: jest.fn(),
+          },
+        },
+        {
+          provide: AnalyticsService,
+          useValue: {
+            fetchAiBudgetingSnapshot: jest.fn(),
           },
         },
       ],
@@ -56,6 +65,7 @@ describe('GoalAchievementPredictionService', () => {
     transactionRepo = module.get(getRepositoryToken(Transaction));
     personalizationService = module.get(PersonalizationService);
     spendingPlansService = module.get(SpendingPlansService);
+    analyticsService = module.get(AnalyticsService);
   });
 
   afterEach(() => {
@@ -269,6 +279,38 @@ describe('GoalAchievementPredictionService', () => {
     expect(result.currentMonthlySavingRate).toBe(1500000);
   });
 
+  it('prefers forecasted monthly savings over sparse goal wallet deposits', async () => {
+    setupContext({
+      goals: [
+        buildGoal({
+          target: 10000000,
+          walletBalance: 4000000,
+          endDate: '2026-10-04',
+        }),
+      ],
+      profileSavings: 2000000,
+      planStats: {
+        totalAmount: 12000000,
+        spentAmount: 7000000,
+        projectedEndBalance: 5000000,
+        fixedExpenses: [{ category: { name: 'Ăn uống' } }],
+      },
+      budgetExceedPredictions: [
+        { categoryName: 'Ăn uống', totalForecast: 8500000 },
+      ],
+      transactions: [
+        buildTransaction('income', 5000000, '2026-05-10', { walletId: 11 }),
+      ],
+    });
+
+    const result = await service.predictGoal(1, 1);
+
+    expect(result.supportingData.savingVelocitySource).toBe(
+      'forecasted_monthly_savings',
+    );
+    expect(result.currentMonthlySavingRate).toBe(3500000);
+  });
+
   it('uses monthly transaction averages for fallback saving velocity when profile is missing', async () => {
     setupContext({
       goals: [
@@ -305,6 +347,12 @@ describe('GoalAchievementPredictionService', () => {
     profileSavings: number | null;
     topExpenseCategories?: Array<{ id: number; name: string; amount: number }>;
     transactions?: any[];
+    planStats?: any;
+    budgetExceedPredictions?: Array<{
+      categoryName: string;
+      totalForecast: number;
+    }>;
+    monthlySavingCapacity?: any;
   }) {
     goalRepo.findOne.mockImplementation(({ where }: any) => {
       const id = where.id;
@@ -337,7 +385,21 @@ describe('GoalAchievementPredictionService', () => {
       });
     }
 
-    spendingPlansService.getMonthlySavingCapacity.mockResolvedValue(null);
+    spendingPlansService.getMonthlySavingCapacity.mockResolvedValue(
+      input.monthlySavingCapacity ?? null,
+    );
+    spendingPlansService.getActiveStatistics.mockResolvedValue({
+      success: !!input.planStats,
+      data: input.planStats ?? null,
+    });
+    analyticsService.fetchAiBudgetingSnapshot.mockResolvedValue(
+      input.budgetExceedPredictions
+        ? {
+            budgetExceedPredictions: input.budgetExceedPredictions,
+            expectedSavingsAmount: 0,
+          }
+        : null,
+    );
   }
 
   function buildGoal(input: {
@@ -365,7 +427,7 @@ describe('GoalAchievementPredictionService', () => {
     type: 'income' | 'expense',
     amount: number,
     date: string,
-    options: { isTransfer?: boolean } = {},
+    options: { isTransfer?: boolean; walletId?: number } = {},
   ) {
     return {
       id: Number(`${date.replace(/\D/g, '')}${type === 'income' ? 1 : 2}`),
@@ -373,6 +435,7 @@ describe('GoalAchievementPredictionService', () => {
       type,
       transaction_date: new Date(`${date}T08:00:00.000Z`),
       isTransfer: options.isTransfer ?? false,
+      wallet: options.walletId ? { id: options.walletId } : undefined,
     };
   }
 });

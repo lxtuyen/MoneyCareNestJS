@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule } from '@nestjs/config';
 import { Transaction } from '../transactions/entities/transaction.entity';
@@ -29,7 +29,7 @@ import { AnalyticsModelTrainingService } from './analytics-model-training.servic
     SpendingPlansModule,
     PersonalizationModule,
     AiFeedbackModule,
-    SavingGoalsModule,
+    forwardRef(() => SavingGoalsModule),
     ConfigModule,
   ],
   controllers: [AnalyticsController],

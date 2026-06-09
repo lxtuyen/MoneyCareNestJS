@@ -8,6 +8,7 @@ import { SpendingPlansService } from 'src/modules/spending-plans/spending-plans.
 import { SavingGoalsService } from 'src/modules/saving-goals/saving-goals.service';
 import { WalletsService } from 'src/modules/wallets/wallets.service';
 import { AiGeminiClientService } from './ai-gemini-client.service';
+import { AnalyticsService } from '../analytics/analytics.service';
 import { AiMessagePrefix } from './types/ai.types';
 
 describe('AiSavingGoalChatService', () => {
@@ -18,6 +19,7 @@ describe('AiSavingGoalChatService', () => {
   };
   const savingGoalsService = { create: jest.fn() };
   const walletsService = { transfer: jest.fn() };
+  const analyticsService = { getFinancialSummary: jest.fn() };
   const geminiClient = { generateToolContent: jest.fn() };
   const walletRepo = { find: jest.fn(), findOne: jest.fn() };
   const userRepo = { findOne: jest.fn() };
@@ -28,10 +30,15 @@ describe('AiSavingGoalChatService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    analyticsService.getFinancialSummary.mockResolvedValue({
+      success: false,
+      data: null,
+    });
     service = new AiSavingGoalChatService(
       spendingPlansService as unknown as SpendingPlansService,
       savingGoalsService as unknown as SavingGoalsService,
       walletsService as unknown as WalletsService,
+      analyticsService as unknown as AnalyticsService,
       geminiClient as unknown as AiGeminiClientService,
       walletRepo as unknown as Repository<Wallet>,
       userRepo as unknown as Repository<User>,

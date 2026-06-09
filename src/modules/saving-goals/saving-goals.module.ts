@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { SavingGoal } from './entities/saving-goal.entity';
 import { User } from 'src/modules/user/entities/user.entity';
@@ -10,6 +10,7 @@ import { SavingGoalsController } from './saving-goals.controller';
 import { GoalsSchedulerService } from './goals-scheduler.service';
 import { SpendingPlansModule } from 'src/modules/spending-plans/spending-plans.module';
 import { PersonalizationModule } from 'src/modules/personalization/personalization.module';
+import { AnalyticsModule } from 'src/modules/analytics/analytics.module';
 import { GoalAchievementPredictionService } from './goal-achievement-prediction.service';
 
 @Module({
@@ -17,6 +18,7 @@ import { GoalAchievementPredictionService } from './goal-achievement-prediction.
     TypeOrmModule.forFeature([SavingGoal, User, Transaction, Wallet]),
     SpendingPlansModule,
     PersonalizationModule,
+    forwardRef(() => AnalyticsModule),
   ],
   controllers: [SavingGoalsController],
   providers: [

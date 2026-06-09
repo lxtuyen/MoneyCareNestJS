@@ -26,6 +26,7 @@ import { PersonalizationModule } from 'src/modules/personalization/personalizati
 import { ScenarioPlanningModule } from 'src/modules/scenario-planning/scenario-planning.module';
 import { AnalyticsModule } from '../analytics/analytics.module';
 import { AiBudgetRecommendationChatService } from './ai-budget-recommendation-chat.service';
+import { AiGoalAchievementChatService } from './ai-goal-achievement-chat.service';
 
 @Global()
 @Module({
@@ -60,6 +61,7 @@ import { AiBudgetRecommendationChatService } from './ai-budget-recommendation-ch
     FinancialInsightsService,
     ReceiptOcrService,
     AiBudgetRecommendationChatService,
+    AiGoalAchievementChatService,
   ],
   exports: [AiService, FinancialInsightsService, ReceiptOcrService],
 })

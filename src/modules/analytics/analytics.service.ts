@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { forwardRef, Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Between, Repository } from 'typeorm';
@@ -49,6 +49,7 @@ export class AnalyticsService {
     private readonly predictionService: AnalyticsPredictionService,
     private readonly aiFeedbackService: AiFeedbackService,
     private readonly evaluationService: AnalyticsEvaluationService,
+    @Inject(forwardRef(() => GoalAchievementPredictionService))
     private readonly goalAchievementPredictionService: GoalAchievementPredictionService,
   ) {}
 
@@ -524,6 +525,214 @@ export class AnalyticsService {
         evaluated_runs: 0,
         category_mape: {},
       };
+    }
+  }
+
+  async fetchAiBudgetingSnapshot(userId: number): Promise<{
+    budgetExceedPredictions: Array<{
+      categoryName: string;
+      totalForecast: number;
+    }>;
+    expectedSavingsAmount: number;
+  } | null> {
+    try {
+      const data = await this.requestFinancialAnalyze(userId);
+      if (!data?.ai_budgeting) {
+        return null;
+      }
+
+      const rawPredictions =
+        data.ai_budgeting.budget_exceed_predictions ||
+        data.ai_budgeting.budgetExceedPredictions ||
+        [];
+
+      return {
+        budgetExceedPredictions: rawPredictions
+          .map((pred: any) => ({
+            categoryName: String(
+              pred.category_name || pred.categoryName || '',
+            ).trim(),
+            totalForecast: Number(
+              pred.total_forecast ?? pred.totalForecast ?? 0,
+            ),
+          }))
+          .filter((pred) => pred.categoryName.length > 0),
+        expectedSavingsAmount: Number(
+          data.ai_budgeting.expected_savings_amount ?? 0,
+        ),
+      };
+    } catch (error) {
+      this.logger.warn(
+        `Cannot load AI budgeting snapshot: ${error.message}`,
+      );
+      return null;
+    }
+  }
+
+  private async requestFinancialAnalyze(
+    userId: number,
+    options: FinancialSummaryOptions = {},
+  ): Promise<AnalyticsServiceResponse | null> {
+    const period = 'last_12_months';
+    const targetPeriod = this.resolveTargetPeriod(options);
+    const targetMonthStart = new Date(
+      targetPeriod.year,
+      targetPeriod.month - 1,
+      1,
+    );
+    const targetMonthEnd = new Date(targetPeriod.year, targetPeriod.month, 0);
+    targetMonthEnd.setHours(23, 59, 59, 999);
+    const startDate = new Date(targetMonthStart);
+    startDate.setFullYear(startDate.getFullYear() - 1);
+    const endDate = targetMonthEnd;
+
+    const transactions = await this.transactionRepo.find({
+      where: {
+        user: { id: userId },
+        transaction_date: Between(startDate, endDate),
+      },
+      relations: ['category'],
+      order: { transaction_date: 'DESC' },
+    });
+
+    const savingGoals = await this.goalRepo.find({
+      where: {
+        user: { id: userId },
+        is_completed: false,
+      },
+      order: { updated_at: 'DESC' },
+    });
+
+    const planStatsRes = await this.planStatsService.getActiveStatistics(
+      userId,
+      targetPeriod.month,
+      targetPeriod.year,
+    );
+    const planStats = planStatsRes.success ? planStatsRes.data : null;
+
+    let spendingPlanPayload: any = null;
+    if (planStats && planStats.planId) {
+      const activePlan = await this.planRepo.findOne({
+        where: { id: planStats.planId },
+        relations: ['estimatedExpenses', 'estimatedExpenses.category'],
+      });
+
+      if (activePlan) {
+        spendingPlanPayload = {
+          id: activePlan.id,
+          month: targetPeriod.month,
+          year: targetPeriod.year,
+          planned_budget: Number(activePlan.totalAmount || 0),
+          planned_income: Number(activePlan.totalAmount || 0),
+          items: (planStats.fixedExpenses || []).map((item: any) => ({
+            id: item.id,
+            category_id: item.category?.id || 0,
+            category_name: item.category?.name || 'Khác',
+            limit_amount: Number(item.monthlyLimit || 0),
+            spent_amount: Number(item.spentThisMonth || 0),
+          })),
+        };
+      }
+    }
+
+    const [profileSummary, feedbackSummary, modelEvaluation] =
+      await Promise.all([
+        this.personalizationService.getProfileSummary(userId),
+        this.aiFeedbackService.getSummary(userId, undefined, 'last_180_days'),
+        this.buildModelEvaluationPayload(userId),
+      ]);
+
+    const essentialCategories = Array.isArray(
+      profileSummary.essentialCategories,
+    )
+      ? profileSummary.essentialCategories
+          .map((item: any) => item?.name || item?.categoryName || item)
+          .filter(Boolean)
+      : [];
+
+    const requestData = {
+      user_id: userId,
+      transactions: transactions.map((t) => ({
+        id: t.id,
+        amount: Number(t.amount),
+        transaction_date: t.transaction_date,
+        type: t.type,
+        category: t.category
+          ? {
+              id: t.category.id,
+              name: t.category.name,
+              icon: t.category.icon,
+              type: t.category.type,
+            }
+          : { name: 'Khác' },
+        note: t.note || '',
+        is_transfer: t.isTransfer || false,
+      })),
+      spending_plan: spendingPlanPayload,
+      saving_goals: savingGoals.map((g) => ({
+        id: g.id,
+        name: g.name,
+        target: Number(g.target),
+        saved_amount: Number(g.saved_amount),
+        months: this.calculateMonths(g.start_date, g.end_date),
+        is_completed: g.is_completed,
+      })),
+      period,
+      personal_profile: {
+        spending_style: profileSummary.spendingStyle,
+        risk_level: profileSummary.riskLevel,
+        average_monthly_income: profileSummary.averageMonthlyIncome,
+        savings_rate: profileSummary.savingsRate,
+        budget_discipline_score: profileSummary.budgetDisciplineScore,
+        expense_volatility_score: profileSummary.expenseVolatilityScore,
+        preferred_budget_buffer_pct: profileSummary.preferredBudgetBufferPct,
+        confidence_score: profileSummary.confidenceScore,
+      },
+      feedback_summary: feedbackSummary,
+      model_evaluation: modelEvaluation,
+      essential_categories: essentialCategories,
+      target_month: targetPeriod.month,
+      target_year: targetPeriod.year,
+    };
+
+    const url =
+      this.configService.get<string>('ANALYTICS_SERVICE_URL') ||
+      'http://localhost:8000';
+    const apiKey =
+      this.configService.get<string>('ANALYTICS_SERVICE_API_KEY') || '';
+    const timeoutMs = Number(
+      this.configService.get<number>('ANALYTICS_SERVICE_TIMEOUT_MS') || 5000,
+    );
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => {
+      controller.abort();
+      this.logger.warn(
+        `FastAPI analytics request timed out after ${timeoutMs}ms`,
+      );
+    }, timeoutMs);
+
+    try {
+      const response = await fetch(`${url}/v1/financial/analyze`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-API-Key': apiKey,
+        },
+        body: JSON.stringify(requestData),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      return (await response.json()) as AnalyticsServiceResponse;
+    } catch (error) {
+      clearTimeout(timeoutId);
+      throw error;
     }
   }
 
