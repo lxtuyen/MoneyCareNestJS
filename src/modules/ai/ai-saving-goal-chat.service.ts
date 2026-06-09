@@ -732,7 +732,10 @@ export class AiSavingGoalChatService {
         );
         maxMonthlySaving = recommendation.maxMonthlySaving;
 
-        aiMessage = `Sau khi trích "${formatVnd(activeInitFund)}" từ "${sourceWalletName}" làm vốn ban đầu, bạn còn thiếu "${formatVnd(remainingTarget)}" cho mục tiêu "${name}".\n\n💡 Dựa trên phân tích tài chính, tôi đề xuất mốc "${recommendation.months} tháng", tương đương khoảng "${formatVnd(recommendation.suggestedMonthlySaving)}/tháng" (nằm trong khả năng tiết kiệm "${formatVnd(recommendationCapacity)}/tháng" của bạn).`;
+        const hasInitialFund = activeInitFund > 0;
+        aiMessage = hasInitialFund
+          ? `Sau khi trích "${formatVnd(activeInitFund)}" từ "${sourceWalletName}" làm vốn ban đầu, bạn còn thiếu "${formatVnd(remainingTarget)}" cho mục tiêu "${name}".\n\n💡 Dựa trên phân tích tài chính, tôi đề xuất mốc "${recommendation.months} tháng", tương đương khoảng "${formatVnd(recommendation.suggestedMonthlySaving)}/tháng" (nằm trong khả năng tiết kiệm "${formatVnd(recommendationCapacity)}/tháng" của bạn).`
+          : `Bạn còn thiếu "${formatVnd(remainingTarget)}" cho mục tiêu "${name}".\n\n💡 Dựa trên phân tích tài chính, tôi đề xuất mốc "${recommendation.months} tháng", tương đương khoảng "${formatVnd(recommendation.suggestedMonthlySaving)}/tháng" (nằm trong khả năng tiết kiệm "${formatVnd(recommendationCapacity)}/tháng" của bạn).`;
       } else if (capacity) {
         monthsEstimate = 6;
         daysEstimate = monthsEstimate * daysInMonth;
@@ -792,7 +795,10 @@ export class AiSavingGoalChatService {
         remainingTarget > 0 &&
         recommendationCapacity > 0
       ) {
-        aiMessage = `Sau khi trích "${formatVnd(activeInitFund)}" từ "${sourceWalletName}" làm vốn ban đầu, bạn còn thiếu "${formatVnd(remainingTarget)}" cho mục tiêu "${name}". Dựa trên phân tích tài chính, với khả năng tiết kiệm "${formatVnd(maxMonthlySaving)}/tháng", bạn cần khoảng "${formatDurationFromDays(daysEstimate)}" và giữ mức chi tiêu trung bình khoảng "${formatVnd(suggestedDailySpending)}/ngày".`;
+        const hasInitialFund = activeInitFund > 0;
+        aiMessage = hasInitialFund
+          ? `Sau khi trích "${formatVnd(activeInitFund)}" từ "${sourceWalletName}" làm vốn ban đầu, bạn còn thiếu "${formatVnd(remainingTarget)}" cho mục tiêu "${name}". Dựa trên phân tích tài chính, với khả năng tiết kiệm "${formatVnd(maxMonthlySaving)}/tháng", bạn cần khoảng "${formatDurationFromDays(daysEstimate)}" và giữ mức chi tiêu trung bình khoảng "${formatVnd(suggestedDailySpending)}/ngày".`
+          : `Bạn còn thiếu "${formatVnd(remainingTarget)}" cho mục tiêu "${name}". Dựa trên phân tích tài chính, với khả năng tiết kiệm "${formatVnd(maxMonthlySaving)}/tháng", bạn cần khoảng "${formatDurationFromDays(daysEstimate)}" và giữ mức chi tiêu trung bình khoảng "${formatVnd(suggestedDailySpending)}/ngày".`;
       }
 
       const goalReadiness = buildGoalReadinessForNewGoal(
