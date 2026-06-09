@@ -8,6 +8,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Transaction } from 'src/modules/transactions/entities/transaction.entity';
+import { Wallet } from 'src/modules/wallets/entities/wallet.entity';
 import { PersonalFinanceProfile } from 'src/modules/personalization/entities/personal-finance-profile.entity';
 import { PersonalizationService } from 'src/modules/personalization/personalization.service';
 import { SpendingPlansService } from 'src/modules/spending-plans/spending-plans.service';
@@ -47,6 +48,20 @@ interface ActivePlanStats {
   planCategoryNames: string[];
 }
 
+interface WalletSurplusHint {
+  walletId: number;
+  walletName: string;
+  balance: number;
+}
+
+interface CurrentMilestoneInfo {
+  remaining: number;
+  endDate: Date;
+  daysRemaining: number;
+  target: number;
+  actual: number;
+}
+
 interface UserPredictionContext {
   activeGoals: SavingGoal[];
   transactions: Transaction[];
@@ -60,6 +75,8 @@ interface UserPredictionContext {
   fallbackMonthlySavings: number;
   activeMonths: number;
   totalRemainingAmount: number;
+  /** Regular wallets (not saving goal wallets) with positive balance */
+  surplusWallets: WalletSurplusHint[];
 }
 
 interface VelocityResult {
@@ -95,6 +112,7 @@ export class GoalAchievementPredictionService {
   async predictGoal(
     userId: number,
     goalId: number,
+    milestones?: { startDate: Date; endDate: Date; target: number; actual: number }[],
   ): Promise<GoalAchievementPredictionDto> {
     const goal = await this.goalRepo.findOne({
       where: { id: goalId, user: { id: userId } },
@@ -105,13 +123,14 @@ export class GoalAchievementPredictionService {
     }
 
     const context = await this.buildUserContext(userId);
-    return this.calculatePrediction(goal, context);
+    return this.calculatePrediction(goal, context, {}, milestones);
   }
 
   async predictGoalWithOverrides(
     userId: number,
     goalId: number,
     overrides: GoalPredictionOverrides,
+    milestones?: { startDate: Date; endDate: Date; target: number; actual: number }[],
   ): Promise<GoalAchievementPredictionDto> {
     const goal = await this.goalRepo.findOne({
       where: { id: goalId, user: { id: userId } },
@@ -122,7 +141,7 @@ export class GoalAchievementPredictionService {
     }
 
     const context = await this.buildUserContext(userId);
-    return this.calculatePrediction(goal, context, overrides);
+    return this.calculatePrediction(goal, context, overrides, milestones);
   }
 
   async predictAllGoals(
@@ -168,6 +187,7 @@ export class GoalAchievementPredictionService {
       activeGoals,
       planStatsRes,
       budgetingSnapshot,
+      allWallets,
     ] = await Promise.all([
       this.transactionRepo
         .createQueryBuilder('t')
@@ -192,6 +212,14 @@ export class GoalAchievementPredictionService {
         );
         return null;
       }),
+      // Lấy tất cả ví đang active của user để tìm ví dư
+      this.transactionRepo.manager
+        .getRepository(Wallet)
+        .find({
+          where: { user: { id: userId }, is_active: true },
+          order: { id: 'ASC' },
+        })
+        .catch(() => [] as Wallet[]),
     ]);
 
     const simpleAverages = this.calculateSimpleAverages(transactions);
@@ -223,6 +251,23 @@ export class GoalAchievementPredictionService {
       budgetExceedPredictions,
     });
 
+    // Lấy các ví dư: ví thường (không phải ví saving goal) có số dư > 0
+    const savingGoalWalletIds = new Set(
+      activeGoals
+        .map((g) => g.wallet?.id)
+        .filter((id): id is number => id != null),
+    );
+    const surplusWallets: WalletSurplusHint[] = (allWallets as Wallet[])
+      .filter(
+        (w) =>
+          Number(w.balance) > 0 && !savingGoalWalletIds.has(w.id),
+      )
+      .map((w) => ({
+        walletId: w.id,
+        walletName: w.name,
+        balance: Number(w.balance),
+      }));
+
     return {
       activeGoals,
       transactions,
@@ -236,6 +281,7 @@ export class GoalAchievementPredictionService {
       fallbackMonthlySavings: simpleAverages.averageMonthlySavings,
       activeMonths: simpleAverages.activeMonths,
       totalRemainingAmount,
+      surplusWallets,
     };
   }
 
@@ -272,6 +318,7 @@ export class GoalAchievementPredictionService {
     goal: SavingGoal,
     context: UserPredictionContext,
     overrides: GoalPredictionOverrides = {},
+    milestones?: { startDate: Date; endDate: Date; target: number; actual: number }[],
   ): GoalAchievementPredictionDto {
     const now = getVietnamNow();
     const baseTargetAmount = this.roundMoney(Number(goal.target ?? 0));
@@ -303,6 +350,9 @@ export class GoalAchievementPredictionService {
         )
       : null;
 
+    // Tìm milestone hiện tại (giai đoạn tháng hiện tại)
+    const currentMilestone = this.findCurrentMilestone(milestones, now, savedAmount);
+
     const requiredRates = this.calculateRequiredSavingRates(
       remainingAmount,
       daysRemainingToDeadline,
@@ -312,26 +362,27 @@ export class GoalAchievementPredictionService {
       context,
       overrides,
     );
-    const predictedDaysToComplete =
-      remainingAmount <= 0
-        ? 0
-        : velocity.currentMonthlySavingRate > 0
-          ? Math.ceil(
-              (remainingAmount / velocity.currentMonthlySavingRate) * 30,
-            )
-          : null;
-    const predictedCompletionDate =
-      predictedDaysToComplete === null
-        ? null
-        : this.addDays(now, predictedDaysToComplete);
-    const daysDifference =
-      predictedCompletionDate && deadline
-        ? Math.ceil(
-            (this.startOfDay(predictedCompletionDate).getTime() -
-              deadline.getTime()) /
-              this.dayMs,
-          )
+    
+    // Sử dụng currentMilestone để tính timeline chính xác hơn
+    const timeline = this.calculateCompletionTimeline({
+      remainingAmount,
+      monthlySavingRate: velocity.currentMonthlySavingRate,
+      now,
+      deadline,
+      currentMilestone,
+    });
+    
+    const planScenario =
+      velocity.currentMonthlySavingRate <= 0
+        ? this.calculatePlanBasedScenario(goal, context, {
+            remainingAmount,
+            now,
+            deadline,
+          })
         : null;
+    const predictedDaysToComplete = timeline.predictedDaysToComplete;
+    const predictedCompletionDate = timeline.predictedCompletionDate;
+    const daysDifference = timeline.daysDifference;
     const status = this.resolveGoalStatus({
       remainingAmount,
       daysRemainingToDeadline,
@@ -408,6 +459,7 @@ export class GoalAchievementPredictionService {
         context,
       }),
       supportingData: {
+        goalWalletId: goal.wallet?.id ?? null,
         averageMonthlyIncome: this.roundMoney(
           context.profile?.averageMonthlyIncome ?? context.averageMonthlyIncome,
         ),
@@ -432,8 +484,180 @@ export class GoalAchievementPredictionService {
         deadline: deadline ? this.formatDate(deadline) : null,
         remainingAmount: this.roundMoney(remainingAmount),
         savingVelocitySource: velocity.source,
+        ...(planScenario ?? {}),
         activeMonths: Math.round(context.activeMonths * 10) / 10,
       },
+    };
+  }
+
+  /**
+   * Tìm milestone hiện tại (giai đoạn tháng đang active)
+   */
+  private findCurrentMilestone(
+    milestones: { startDate: Date; endDate: Date; target: number; actual: number }[] | undefined,
+    now: Date,
+    savedAmount: number,
+  ): CurrentMilestoneInfo | null {
+    if (!milestones || milestones.length === 0) return null;
+
+    const today = this.startOfDay(now);
+    
+    // Tìm milestone có startDate <= today <= endDate
+    const active = milestones.find((m) => {
+      const start = this.startOfDay(new Date(m.startDate));
+      const end = this.startOfDay(new Date(m.endDate));
+      return start <= today && today <= end;
+    });
+
+    if (!active) return null;
+
+    const endDate = this.startOfDay(new Date(active.endDate));
+    const daysRemaining = Math.max(
+      0,
+      Math.ceil((endDate.getTime() - today.getTime()) / this.dayMs),
+    );
+    const remaining = Math.max(0, active.target - active.actual);
+
+    return {
+      remaining,
+      endDate,
+      daysRemaining,
+      target: active.target,
+      actual: active.actual,
+    };
+  }
+
+  private calculateCompletionTimeline(input: {
+    remainingAmount: number;
+    monthlySavingRate: number;
+    now: Date;
+    deadline: Date | null;
+    currentMilestone: CurrentMilestoneInfo | null;
+  }): {
+    predictedDaysToComplete: number | null;
+    predictedCompletionDate: Date | null;
+    daysDifference: number | null;
+  } {
+    if (input.remainingAmount <= 0) {
+      return {
+        predictedDaysToComplete: 0,
+        predictedCompletionDate: input.now,
+        daysDifference:
+          input.deadline === null
+            ? null
+            : Math.ceil(
+                (this.startOfDay(input.now).getTime() -
+                  input.deadline.getTime()) /
+                  this.dayMs,
+              ),
+      };
+    }
+
+    if (input.monthlySavingRate <= 0) {
+      return {
+        predictedDaysToComplete: null,
+        predictedCompletionDate: null,
+        daysDifference: null,
+      };
+    }
+
+    // Nếu có milestone hiện tại, dùng logic dựa trên giai đoạn
+    if (input.currentMilestone) {
+      const { remaining, endDate, daysRemaining } = input.currentMilestone;
+      
+      // Tính tốc độ tiết kiệm hàng ngày dựa trên forecastedMonthlySavings
+      const dailySavingRate = input.monthlySavingRate / 30;
+      
+      // Số tiền có thể tiết kiệm được trong số ngày còn lại của milestone
+      const savingsInRemainingDays = dailySavingRate * daysRemaining;
+      
+      if (savingsInRemainingDays >= remaining) {
+        // Đủ tiền để hoàn thành milestone trong giai đoạn này
+        const daysNeeded = Math.ceil(remaining / dailySavingRate);
+        const predictedCompletionDate = this.addDays(input.now, daysNeeded);
+        const daysDifference = Math.ceil(
+          (this.startOfDay(predictedCompletionDate).getTime() - endDate.getTime()) / this.dayMs,
+        );
+        
+        return {
+          predictedDaysToComplete: daysNeeded,
+          predictedCompletionDate,
+          daysDifference,
+        };
+      } else {
+        // Không đủ tiền, sẽ trễ hạn milestone
+        const daysNeeded = Math.ceil(remaining / dailySavingRate);
+        const predictedCompletionDate = this.addDays(input.now, daysNeeded);
+        const daysDifference = Math.ceil(
+          (this.startOfDay(predictedCompletionDate).getTime() - endDate.getTime()) / this.dayMs,
+        );
+        
+        return {
+          predictedDaysToComplete: daysNeeded,
+          predictedCompletionDate,
+          daysDifference,
+        };
+      }
+    }
+
+    // Fallback: logic cũ khi không có milestone
+    const predictedDaysToComplete = Math.ceil(
+      (input.remainingAmount / input.monthlySavingRate) * 30,
+    );
+    const predictedCompletionDate = this.addDays(
+      input.now,
+      predictedDaysToComplete,
+    );
+    const daysDifference =
+      input.deadline === null
+        ? null
+        : Math.ceil(
+            (this.startOfDay(predictedCompletionDate).getTime() -
+              input.deadline.getTime()) /
+              this.dayMs,
+          );
+
+    return {
+      predictedDaysToComplete,
+      predictedCompletionDate,
+      daysDifference,
+    };
+  }
+
+  private calculatePlanBasedScenario(
+    goal: SavingGoal,
+    context: UserPredictionContext,
+    input: {
+      remainingAmount: number;
+      now: Date;
+      deadline: Date | null;
+    },
+  ): Record<string, number | string | null> | null {
+    const allocationWeight = this.calculateGoalAllocationWeight(goal, context);
+    const spendingPlanSavings = Number(
+      context.capacity?.monthlySavingCapacity ?? 0,
+    );
+    if (spendingPlanSavings <= 0) {
+      return null;
+    }
+
+    const planBasedMonthlySavingRate = this.roundMoney(
+      spendingPlanSavings * allocationWeight,
+    );
+    const timeline = this.calculateCompletionTimeline({
+      remainingAmount: input.remainingAmount,
+      monthlySavingRate: planBasedMonthlySavingRate,
+      now: input.now,
+      deadline: input.deadline,
+      currentMilestone: null, // Plan scenario không dùng milestone
+    });
+
+    return {
+      planBasedMonthlySavingRate,
+      planBasedPredictedCompletionDate: timeline.predictedCompletionDate
+        ? this.formatDate(timeline.predictedCompletionDate)
+        : null,
+      planBasedDaysDifference: timeline.daysDifference,
     };
   }
 
@@ -717,29 +941,39 @@ export class GoalAchievementPredictionService {
       });
     }
 
-    const flexibleCategory = this.findFlexibleCutCategory(input.context);
-    if (
-      flexibleCategory &&
-      ['slightly_at_risk', 'at_risk', 'off_track', 'unlikely'].includes(
-        input.status,
-      )
-    ) {
-      const amount = this.roundMoney(
-        Math.min(
-          Math.max(input.shortfallAmount, 100000),
-          flexibleCategory.amount * 0.2,
-        ),
-      );
-      if (amount > 0) {
-        actions.push({
-          actionType: 'reduce_expense',
-          categoryName: flexibleCategory.name,
-          amount,
-          message: `Giảm ${flexibleCategory.name} khoảng ${amount.toLocaleString('vi-VN')} VND/tháng để tăng khả năng hoàn thành mục tiêu.`,
-          impactDays: input.daysDifference
-            ? Math.max(1, Math.min(30, Math.round(input.daysDifference * 0.4)))
-            : undefined,
-        });
+    // Ưu tiên đề xuất chuyển tiền từ ví dư thay vì cắt giảm chi tiêu
+    const walletTransferAction = this.buildWalletTransferAction(input);
+    if (walletTransferAction) {
+      actions.push(walletTransferAction);
+    } else {
+      // Fallback: đề xuất cắt giảm danh mục linh hoạt nếu không có ví dư
+      const flexibleCategory = this.findFlexibleCutCategory(input.context);
+      if (
+        flexibleCategory &&
+        ['slightly_at_risk', 'at_risk', 'off_track', 'unlikely'].includes(
+          input.status,
+        )
+      ) {
+        const amount = this.roundMoney(
+          Math.min(
+            Math.max(input.shortfallAmount, 100000),
+            flexibleCategory.amount * 0.2,
+          ),
+        );
+        if (amount > 0) {
+          actions.push({
+            actionType: 'reduce_expense',
+            categoryName: flexibleCategory.name,
+            amount,
+            message: `Giảm ${flexibleCategory.name} khoảng ${amount.toLocaleString('vi-VN')} VND/tháng để tăng khả năng hoàn thành mục tiêu.`,
+            impactDays: input.daysDifference
+              ? Math.max(
+                  1,
+                  Math.min(30, Math.round(input.daysDifference * 0.4)),
+                )
+              : undefined,
+          });
+        }
       }
     }
 
@@ -760,6 +994,52 @@ export class GoalAchievementPredictionService {
     }
 
     return actions.slice(0, 3);
+  }
+
+  /**
+   * Tìm ví thường có số dư đủ để bù đắp shortfall.
+   * Trả về action đề xuất chuyển tiền nếu tìm thấy ví phù hợp.
+   */
+  private buildWalletTransferAction(input: {
+    status: GoalAchievementStatus;
+    shortfallAmount: number;
+    context: UserPredictionContext;
+  }): GoalRecommendedActionDto | null {
+    if (
+      !['slightly_at_risk', 'at_risk', 'off_track', 'unlikely'].includes(
+        input.status,
+      )
+    ) {
+      return null;
+    }
+
+    const { surplusWallets } = input.context;
+    if (!surplusWallets || surplusWallets.length === 0) return null;
+
+    // Tìm ví có số dư cao nhất
+    const bestWallet = surplusWallets.reduce((best, w) =>
+      w.balance > best.balance ? w : best,
+    );
+
+    if (bestWallet.balance <= 0) return null;
+
+    // Đề xuất chuyển toàn bộ shortfall hoặc tối đa 50% số dư ví (để không rỗng ví)
+    const suggestedTransfer = this.roundMoney(
+      Math.min(
+        Math.max(input.shortfallAmount, 100000),
+        bestWallet.balance * 0.5,
+      ),
+    );
+
+    if (suggestedTransfer <= 0) return null;
+
+    return {
+      actionType: 'transfer_from_wallet',
+      walletId: bestWallet.walletId,
+      walletName: bestWallet.walletName,
+      amount: suggestedTransfer,
+      message: `${bestWallet.walletName} đang dư ${bestWallet.balance.toLocaleString('vi-VN')} đ. Chuyển ${suggestedTransfer.toLocaleString('vi-VN')} đ vào ví tiết kiệm để kịp tiến độ.`,
+    };
   }
 
   private calculateSimpleAverages(transactions: Transaction[]) {

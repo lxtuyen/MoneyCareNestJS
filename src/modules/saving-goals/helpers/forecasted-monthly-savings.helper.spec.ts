@@ -15,6 +15,19 @@ describe('computeForecastedMonthlySavings', () => {
     expect(result).toBe(2300000);
   });
 
+  it('allows negative savings when spending forecast exceeds planned income', () => {
+    const result = computeForecastedMonthlySavings({
+      plannedIncome: 3000000,
+      totalSpent: 1880000,
+      planCategoryNames: ['Ăn uống'],
+      budgetExceedPredictions: [
+        { categoryName: 'Ăn uống', totalForecast: 3610283 },
+      ],
+    });
+
+    expect(result).toBe(-610283);
+  });
+
   it('falls back to planned income minus spent when forecasts are unavailable', () => {
     const result = computeForecastedMonthlySavings({
       plannedIncome: 12000000,

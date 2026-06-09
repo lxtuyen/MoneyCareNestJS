@@ -296,6 +296,7 @@ export class SpendingPlanStatisticsService {
       monthlyLimit: number;
       frequencyType: SpendingPlanExpenseFrequency;
       frequencyValue: number;
+      spentThisMonth: number;
     }>;
   } | null> {
     let plan = await this.findActivePlanEntity(userId);
@@ -351,6 +352,7 @@ export class SpendingPlanStatisticsService {
         monthlyLimit: Number(item.monthlyLimit ?? item.amount ?? 0),
         frequencyType: item.frequencyType,
         frequencyValue: item.frequencyValue,
+        spentThisMonth: item.spentThisMonth,
       })),
     };
   }

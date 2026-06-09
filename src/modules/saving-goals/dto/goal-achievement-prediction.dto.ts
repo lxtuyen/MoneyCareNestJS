@@ -15,13 +15,17 @@ export type GoalRecommendedActionType =
   | 'reduce_expense'
   | 'extend_deadline'
   | 'lower_target'
-  | 'keep_current_plan';
+  | 'keep_current_plan'
+  | 'transfer_from_wallet';
 
 export class GoalRecommendedActionDto {
   actionType!: GoalRecommendedActionType;
   amount?: number;
   categoryName?: string;
   suggestedDeadline?: string;
+  /** Wallet to transfer FROM (only for transfer_from_wallet action) */
+  walletId?: number;
+  walletName?: string;
   message!: string;
   impactDays?: number;
 }

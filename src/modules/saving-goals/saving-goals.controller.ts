@@ -105,8 +105,8 @@ export class SavingGoalsController {
   ) {
     return this.savingGoalsService.extendGoal(
       id,
-      dto.new_end_date,
-      dto.new_start_date,
+      new Date(dto.new_end_date),
+      dto.new_start_date ? new Date(dto.new_start_date) : undefined,
       userId,
     );
   }
@@ -124,9 +124,19 @@ export class SavingGoalsController {
     @Param('id', ParseIntPipe) id: number,
     @User('sub') userId: number,
   ) {
+    // Lấy report để có milestones
+    const reportResponse = await this.savingGoalsStatisticsService.getGoalReport(id, userId);
+    const milestones = reportResponse.data?.milestones?.map(m => ({
+      startDate: new Date(m.start_date),
+      endDate: new Date(m.end_date),
+      target: m.target,
+      actual: m.actual,
+    })) || [];
+
     const data = await this.goalAchievementPredictionService.predictGoal(
       userId,
       id,
+      milestones,
     );
     return ok(data, 'Lấy dự báo mục tiêu tiết kiệm thành công');
   }

@@ -117,13 +117,16 @@ export function buildSavingGoalAnalyticsContext(
 export function resolveEffectiveMonthlySavings(
   context: SavingGoalAnalyticsContext,
 ): number {
+  if (context.monthlySavingCapacity > 0) {
+    return context.monthlySavingCapacity;
+  }
   if (context.projectedMonthlySavings > 0) {
     return context.projectedMonthlySavings;
   }
   if (context.currentMonthlySavingRate > 0) {
     return context.currentMonthlySavingRate;
   }
-  return context.monthlySavingCapacity;
+  return 0;
 }
 
 export function resolvePrimaryGoalPrediction(
@@ -152,7 +155,13 @@ export function filterGoalBudgetRecommendations(
       const isDecrease =
         item.actionType === 'decrease' &&
         item.recommendedLimitAmount < item.currentLimitAmount;
-      return hasGoalPressure || isDecrease;
+      
+      // Chỉ hiển thị khi có thay đổi đáng kể (>= 5%)
+      const hasMeaningfulChange = 
+        item.currentLimitAmount <= 0 ||
+        Math.abs(item.recommendedLimitAmount - item.currentLimitAmount) / item.currentLimitAmount >= 0.05;
+      
+      return (hasGoalPressure || isDecrease) && hasMeaningfulChange;
     })
     .map((item) => ({
       recommendationId: item.recommendationId,

@@ -458,20 +458,27 @@ export class AiTransactionChatService {
           }
         }
 
-        if (!walletId && goalId > 0) {
-          const selectedGoal = await this.goalRepo.findOne({
-            where: { id: goalId },
-            relations: ['wallet'],
-          });
-          if (selectedGoal?.wallet && selectedGoal.wallet.is_active) {
-            walletId = selectedGoal.wallet.id;
-            selectedWallet = selectedGoal.wallet;
-          }
-        }
-
+        // Don't use saving goal wallet, prefer "Ví 1" or first non-saving wallet
         if (!walletId && wallets.length > 0) {
-          walletId = wallets[0].id;
-          selectedWallet = wallets[0];
+          // Get wallets with savingGoals relation to identify saving wallets
+          const walletsWithGoals = await this.walletRepo.find({
+            where: { user: { id: userId }, is_active: true },
+            relations: ['savingGoals'],
+          });
+
+          // Try to find "Ví 1" first
+          selectedWallet = walletsWithGoals.find(
+            (w) => w.name === 'Ví 1' && (!w.savingGoals || w.savingGoals.length === 0),
+          ) || null;
+
+          // Fallback to first non-saving wallet
+          if (!selectedWallet) {
+            selectedWallet = walletsWithGoals.find(
+              (w) => !w.savingGoals || w.savingGoals.length === 0,
+            ) || walletsWithGoals[0];
+          }
+
+          walletId = selectedWallet?.id;
         }
 
         const dto: CreateTransactionDto = {
@@ -550,20 +557,27 @@ export class AiTransactionChatService {
       let walletId: number | undefined;
       let selectedWallet: Wallet | null = null;
 
-      if (goalId > 0) {
-        const selectedGoal = await this.goalRepo.findOne({
-          where: { id: goalId },
-          relations: ['wallet'],
+      // Don't use saving goal wallet, prefer "Ví 1" or first non-saving wallet
+      if (wallets.length > 0) {
+        // Get wallets with savingGoals relation to identify saving wallets
+        const walletsWithGoals = await this.walletRepo.find({
+          where: { user: { id: userId }, is_active: true },
+          relations: ['savingGoals'],
         });
-        if (selectedGoal?.wallet && selectedGoal.wallet.is_active) {
-          walletId = selectedGoal.wallet.id;
-          selectedWallet = selectedGoal.wallet;
-        }
-      }
 
-      if (!walletId && wallets.length > 0) {
-        walletId = wallets[0].id;
-        selectedWallet = wallets[0];
+        // Try to find "Ví 1" first
+        selectedWallet = walletsWithGoals.find(
+          (w) => w.name === 'Ví 1' && (!w.savingGoals || w.savingGoals.length === 0),
+        ) || null;
+
+        // Fallback to first non-saving wallet
+        if (!selectedWallet) {
+          selectedWallet = walletsWithGoals.find(
+            (w) => !w.savingGoals || w.savingGoals.length === 0,
+          ) || walletsWithGoals[0];
+        }
+
+        walletId = selectedWallet?.id;
       }
 
       const transactionDateStr =

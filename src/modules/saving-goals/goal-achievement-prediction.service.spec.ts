@@ -279,6 +279,44 @@ describe('GoalAchievementPredictionService', () => {
     expect(result.currentMonthlySavingRate).toBe(1500000);
   });
 
+  it('does not show early completion when forecasted monthly savings is negative', async () => {
+    setupContext({
+      goals: [
+        buildGoal({
+          target: 471200,
+          walletBalance: 380000,
+          endDate: '2026-07-20',
+        }),
+      ],
+      profileSavings: 500000,
+      planStats: {
+        totalAmount: 3000000,
+        spentAmount: 1880000,
+        projectedEndBalance: 1120000,
+        fixedExpenses: [{ category: { name: 'Ăn uống' } }],
+      },
+      budgetExceedPredictions: [
+        { categoryName: 'Ăn uống', totalForecast: 3610283 },
+      ],
+      monthlySavingCapacity: {
+        totalAmount: 3000000,
+        monthlySavingCapacity: 264760,
+        estimatedExpenses: [{ category: { name: 'Ăn uống' } }],
+      },
+    });
+
+    const result = await service.predictGoal(1, 1);
+
+    expect(result.currentMonthlySavingRate).toBe(-610283);
+    expect(result.predictedCompletionDate).toBeNull();
+    expect(result.daysDifference).toBeNull();
+    expect(result.status).toBe('unlikely');
+    expect(result.reasonCodes).toContain('negative_cash_flow');
+    expect(result.supportingData.planBasedMonthlySavingRate).toBe(264760);
+    expect(result.supportingData.planBasedPredictedCompletionDate).not.toBeNull();
+    expect(result.supportingData.planBasedDaysDifference).toBeLessThan(0);
+  });
+
   it('prefers forecasted monthly savings over sparse goal wallet deposits', async () => {
     setupContext({
       goals: [

@@ -16,6 +16,7 @@ import { SpendingPlansService } from 'src/modules/spending-plans/spending-plans.
 import { SavingGoalsService } from 'src/modules/saving-goals/saving-goals.service';
 import { WalletsService } from 'src/modules/wallets/wallets.service';
 import { AnalyticsService } from '../analytics/analytics.service';
+import { PersonalizationService } from '../personalization/personalization.service';
 import {
   buildAnalyticsProposalExtras,
   buildGoalReadinessForNewGoal,
@@ -118,6 +119,7 @@ export class AiSavingGoalChatService {
     private readonly savingGoalsService: SavingGoalsService,
     private readonly walletsService: WalletsService,
     private readonly analyticsService: AnalyticsService,
+    private readonly personalizationService: PersonalizationService,
     private readonly geminiClient: AiGeminiClientService,
     @InjectRepository(Wallet)
     private readonly walletRepo: Repository<Wallet>,
@@ -128,6 +130,43 @@ export class AiSavingGoalChatService {
     @InjectRepository(UserCategoryPreference)
     private readonly userCategoryPreferenceRepo: Repository<UserCategoryPreference>,
   ) {}
+
+  private async loadEffectiveSavingsCapacity(userId: number): Promise<{
+    capacity: Awaited<ReturnType<SpendingPlansService['getMonthlySavingCapacity']>>;
+    plannedSavingCapacity: number;
+    effectiveSavingsForProposal: number;
+    profileAverageSavings: number;
+  }> {
+    const capacity =
+      await this.spendingPlansService.getMonthlySavingCapacity(userId);
+    
+    // Load profile để lấy averageMonthlySavings (dữ liệu trung bình ổn định hơn)
+    const profile = await this.personalizationService
+      .getOrBuildProfile(userId)
+      .catch(() => null);
+    
+    const profileAverageSavings = Number(profile?.averageMonthlySavings ?? 0);
+
+    const plannedSavingCapacity = capacity
+      ? Math.max(
+          0,
+          capacity.monthlySavingCapacity ??
+            capacity.totalAmount - capacity.fixedExpenseTotal,
+        )
+      : 0;
+    
+    // Ưu tiên dùng averageMonthlySavings từ profile, fallback về capacity hiện tại
+    const effectiveSavingsForProposal = profileAverageSavings > 0
+      ? profileAverageSavings
+      : plannedSavingCapacity;
+    
+    return {
+      capacity,
+      plannedSavingCapacity,
+      effectiveSavingsForProposal,
+      profileAverageSavings,
+    };
+  }
 
   isSavingGoalRequest(message: string): boolean {
     const normalized = norm(message || '');
@@ -161,19 +200,15 @@ export class AiSavingGoalChatService {
     userId: number,
   ): Promise<ApiResponse<string>> {
     try {
-      const capacity =
-        await this.spendingPlansService.getMonthlySavingCapacity(userId);
-
-      const plannedSavingCapacity = capacity
-        ? Math.max(
-            0,
-            capacity.monthlySavingCapacity ??
-              capacity.totalAmount - capacity.fixedExpenseTotal,
-          )
-        : 0;
+      const {
+        capacity,
+        plannedSavingCapacity,
+        effectiveSavingsForProposal,
+      } = await this.loadEffectiveSavingsCapacity(userId);
+      
       const analyticsContext = await this.loadAnalyticsContext(
         userId,
-        plannedSavingCapacity,
+        effectiveSavingsForProposal,
       );
       const effectiveMonthlySavings = resolveEffectiveMonthlySavings(
         analyticsContext,
@@ -181,7 +216,7 @@ export class AiSavingGoalChatService {
       const recommendationCapacity =
         effectiveMonthlySavings > 0
           ? effectiveMonthlySavings
-          : plannedSavingCapacity;
+          : effectiveSavingsForProposal;
 
       const nowIso = new Date().toISOString();
       const prompt = getProposeSavingGoalPrompt(message, nowIso, capacity);
@@ -397,7 +432,7 @@ export class AiSavingGoalChatService {
           monthsEstimate,
           daysEstimate,
           endDate: endDate.toISOString(),
-          monthlySavingCapacity: plannedSavingCapacity,
+          monthlySavingCapacity: effectiveSavingsForProposal,
           dailySavingCapacity: capacity?.dailySavingCapacity ?? 0,
           totalAmount: budgetPlan.totalAmount,
           suggestedMonthlySaving,
@@ -443,8 +478,10 @@ export class AiSavingGoalChatService {
         sourceWalletId,
         preserveCurrentBudget = false,
       } = payload;
-      const capacity =
-        await this.spendingPlansService.getMonthlySavingCapacity(userId);
+      const {
+        capacity,
+        effectiveSavingsForProposal,
+      } = await this.loadEffectiveSavingsCapacity(userId);
       const daysInMonth = capacity?.daysInMonth ?? 30;
       const activeDays = Math.max(0, Math.round(Number(days) || 0));
       const monthsEstimate = activeDays
@@ -469,13 +506,6 @@ export class AiSavingGoalChatService {
       );
 
       const createdGoal = createResult.data;
-      const plannedSavingCapacity = capacity
-        ? Math.max(
-            0,
-            capacity.monthlySavingCapacity ??
-              capacity.totalAmount - capacity.fixedExpenseTotal,
-          )
-        : 0;
       const suggestedMonthlySaving = activeDays
         ? roundVndUp(Number(target) / (activeDays / daysInMonth))
         : roundVndUp(Number(target) / monthsEstimate);
@@ -544,9 +574,9 @@ export class AiSavingGoalChatService {
           target: Number(target),
           monthsEstimate,
           endDate: endDate.toISOString(),
-          monthlySavingCapacity: plannedSavingCapacity,
+          monthlySavingCapacity: effectiveSavingsForProposal,
           suggestedMonthlySaving,
-          maxMonthlySaving: plannedSavingCapacity,
+          maxMonthlySaving: effectiveSavingsForProposal,
           spendingPlanId: spendingPlanResult.planId,
           preserveCurrentBudget,
           hasPlan: !!capacity,
@@ -588,18 +618,14 @@ export class AiSavingGoalChatService {
       const activeSourceWalletId = Number(sourceWalletId) || 0;
       const remainingTarget = Math.max(0, Number(target) - activeInitFund);
 
-      const capacity =
-        await this.spendingPlansService.getMonthlySavingCapacity(userId);
-      const plannedSavingCapacity = capacity
-        ? Math.max(
-            0,
-            capacity.monthlySavingCapacity ??
-              capacity.totalAmount - capacity.fixedExpenseTotal,
-          )
-        : 0;
+      const {
+        capacity,
+        effectiveSavingsForProposal,
+      } = await this.loadEffectiveSavingsCapacity(userId);
+      
       const analyticsContext = await this.loadAnalyticsContext(
         userId,
-        plannedSavingCapacity,
+        effectiveSavingsForProposal,
       );
       const effectiveMonthlySavings = resolveEffectiveMonthlySavings(
         analyticsContext,
@@ -607,7 +633,7 @@ export class AiSavingGoalChatService {
       const recommendationCapacity =
         effectiveMonthlySavings > 0
           ? effectiveMonthlySavings
-          : plannedSavingCapacity;
+          : effectiveSavingsForProposal;
       const activeWallets = await this.walletRepo.find({
         where: { user: { id: userId }, is_active: true },
       });
@@ -632,7 +658,7 @@ export class AiSavingGoalChatService {
         capacity,
         suggestedMonthlySaving,
       );
-      let maxMonthlySaving = plannedSavingCapacity;
+      let maxMonthlySaving = effectiveSavingsForProposal;
       let isWarning = false;
       let aiMessage = '';
 
@@ -653,7 +679,7 @@ export class AiSavingGoalChatService {
           months: daysEstimate / daysInMonth,
           days: daysEstimate,
           capacity,
-          plannedSavingCapacity,
+          plannedSavingCapacity: effectiveSavingsForProposal,
           mode: 'with_init_fund',
           initFund: activeInitFund,
           sourceWalletName,
@@ -676,7 +702,7 @@ export class AiSavingGoalChatService {
           amountToSave: remainingTarget,
           months: monthsEstimate,
           capacity,
-          plannedSavingCapacity,
+          plannedSavingCapacity: effectiveSavingsForProposal,
           mode: 'with_init_fund',
           initFund: activeInitFund,
           sourceWalletName,
@@ -743,7 +769,7 @@ export class AiSavingGoalChatService {
         !hasRequestedDuration &&
         remainingTarget > 0 &&
         !!capacity &&
-        plannedSavingCapacity > 0 &&
+        effectiveSavingsForProposal > 0 &&
         (capacity.estimatedExpenses?.length ?? 0) > 0;
       const shouldSkipBudgetProposal =
         preserveCurrentBudget ||
@@ -788,7 +814,7 @@ export class AiSavingGoalChatService {
           monthsEstimate,
           daysEstimate,
           endDate: endDate.toISOString(),
-          monthlySavingCapacity: plannedSavingCapacity,
+          monthlySavingCapacity: effectiveSavingsForProposal,
           dailySavingCapacity: capacity?.dailySavingCapacity ?? 0,
           totalAmount: budgetPlan.totalAmount,
           suggestedMonthlySaving,
@@ -839,15 +865,11 @@ export class AiSavingGoalChatService {
       const activeInitFund = Number(initFund) || 0;
       const remainingTarget = Math.max(0, Number(target) - activeInitFund);
 
-      const capacity =
-        await this.spendingPlansService.getMonthlySavingCapacity(userId);
-      const plannedSavingCapacity = capacity
-        ? Math.max(
-            0,
-            capacity.monthlySavingCapacity ??
-              capacity.totalAmount - capacity.fixedExpenseTotal,
-          )
-        : 0;
+      const {
+        capacity,
+        effectiveSavingsForProposal,
+      } = await this.loadEffectiveSavingsCapacity(userId);
+      
       const daysInMonth = capacity?.daysInMonth ?? 30;
       const requestedDays = Math.max(
         1,
@@ -865,7 +887,7 @@ export class AiSavingGoalChatService {
         capacity,
         requiredPerMonth,
       );
-      const maxMonthlySaving = plannedSavingCapacity;
+      const maxMonthlySaving = effectiveSavingsForProposal;
 
       const durationMessage = buildSavingGoalDurationMessage({
         name,
@@ -874,7 +896,7 @@ export class AiSavingGoalChatService {
         months: requestedDays / daysInMonth,
         days: requestedDays,
         capacity,
-        plannedSavingCapacity,
+        plannedSavingCapacity: effectiveSavingsForProposal,
         mode: activeInitFund > 0 ? 'with_init_fund' : 'change_duration',
         initFund: activeInitFund,
         sourceWalletName: sourceWalletId ? 'ví đã chọn' : '',
@@ -903,7 +925,7 @@ export class AiSavingGoalChatService {
           remainingTarget,
           monthsEstimate: requestedMonths,
           daysEstimate: requestedDays,
-          monthlySavingCapacity: plannedSavingCapacity,
+          monthlySavingCapacity: effectiveSavingsForProposal,
           dailySavingCapacity: capacity?.dailySavingCapacity ?? 0,
           totalAmount: budgetPlan.totalAmount,
           suggestedMonthlySaving: requiredPerMonth,
