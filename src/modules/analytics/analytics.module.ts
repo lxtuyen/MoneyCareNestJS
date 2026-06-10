@@ -16,6 +16,8 @@ import { AnalyticsPredictionService } from './analytics-prediction.service';
 import { AnalyticsEvaluationService } from './analytics-evaluation.service';
 import { AnalyticsEvaluationScheduler } from './analytics-evaluation.scheduler';
 import { AnalyticsModelTrainingService } from './analytics-model-training.service';
+import { AnalyticsPayloadBuilderService } from './analytics-payload-builder.service';
+import { AnalyticsServiceClient } from './analytics-service-client.service';
 
 @Module({
   imports: [
@@ -39,6 +41,8 @@ import { AnalyticsModelTrainingService } from './analytics-model-training.servic
     AnalyticsEvaluationService,
     AnalyticsEvaluationScheduler,
     AnalyticsModelTrainingService,
+    AnalyticsPayloadBuilderService,
+    AnalyticsServiceClient,
   ],
   exports: [AnalyticsService],
 })

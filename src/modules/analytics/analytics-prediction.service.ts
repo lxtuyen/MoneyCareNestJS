@@ -1,7 +1,14 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Between, Repository } from 'typeorm';
+import { Between, FindOptionsWhere, Repository } from 'typeorm';
 import { AiPredictionRun } from './entities/ai-prediction-run.entity';
+import {
+  AnalyticsMappedAiBudgeting,
+  AnalyticsMappedMonthlyForecast,
+  AnalyticsMappedResponse,
+} from './types/analytics-service-response.type';
+import { AnalyticsPredictionMetadata } from './types/analytics-payload.type';
+import { getVietnamMonthRange, getVietnamNow } from 'src/common/utils/date.util';
 
 @Injectable()
 export class AnalyticsPredictionService {
@@ -18,13 +25,8 @@ export class AnalyticsPredictionService {
    */
   async logFromAnalyticsResponse(
     userId: number,
-    mappedData: any,
-    metadata: {
-      transactionCount: number;
-      period: string;
-      hasSpendingPlan: boolean;
-      activeGoalCount: number;
-    },
+    mappedData: AnalyticsMappedResponse,
+    metadata: AnalyticsPredictionMetadata,
   ): Promise<void> {
     const now = new Date();
 
@@ -57,8 +59,8 @@ export class AnalyticsPredictionService {
    */
   async logForecastingRun(
     userId: number,
-    forecasting: any,
-    metadata: any,
+    forecasting: AnalyticsMappedMonthlyForecast,
+    metadata: AnalyticsPredictionMetadata,
     now: Date,
   ): Promise<AiPredictionRun | null> {
     const modelName = forecasting.method || 'unknown';
@@ -134,8 +136,8 @@ export class AnalyticsPredictionService {
    */
   async logBudgetingRun(
     userId: number,
-    budgeting: any,
-    metadata: any,
+    budgeting: AnalyticsMappedAiBudgeting,
+    metadata: AnalyticsPredictionMetadata,
     now: Date,
   ): Promise<AiPredictionRun | null> {
     const modelName = budgeting.method || 'unknown';
@@ -161,16 +163,11 @@ export class AnalyticsPredictionService {
       return existing;
     }
 
-    // Target period: từ đầu tháng hiện tại đến cuối tháng
-    const targetStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const targetEnd = new Date(
-      now.getFullYear(),
-      now.getMonth() + 1,
-      0,
-      23,
-      59,
-      59,
-      999,
+    // Target period: từ đầu tháng hiện tại đến cuối tháng (Vietnam timezone)
+    const vnNow = getVietnamNow();
+    const { start: targetStart, end: targetEnd } = getVietnamMonthRange(
+      vnNow.getMonth() + 1,
+      vnNow.getFullYear(),
     );
 
     const inputPeriodEnd = new Date(now);
@@ -217,9 +214,9 @@ export class AnalyticsPredictionService {
     const todayEnd = new Date();
     todayEnd.setHours(23, 59, 59, 999);
 
-    const whereClause: any = {
+    const whereClause: FindOptionsWhere<AiPredictionRun> = {
       userId,
-      modelType: modelType as any,
+      modelType: modelType as AiPredictionRun['modelType'],
       modelName,
       createdAt: Between(todayStart, todayEnd),
     };

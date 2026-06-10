@@ -13,6 +13,7 @@ import { AnalyticsService } from './analytics.service';
 import { AnalyticsEvaluationService } from './analytics-evaluation.service';
 import { AnalyticsModelTrainingService } from './analytics-model-training.service';
 import { ok } from 'src/common/utils/response.util';
+import { RunModelEvaluationDto } from './dto/run-model-evaluation.dto';
 
 @Controller('analytics')
 @UseGuards(JwtAuthGuard)
@@ -58,7 +59,7 @@ export class AnalyticsController {
   @Post('model-evaluation/run')
   async runEvaluation(
     @User('sub') userId: number,
-    @Body() body: { modelType?: string },
+    @Body() body: RunModelEvaluationDto,
   ) {
     const count = await this.evaluationService.evaluateDuePredictions(
       userId,

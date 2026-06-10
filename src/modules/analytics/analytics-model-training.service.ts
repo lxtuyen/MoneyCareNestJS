@@ -132,8 +132,9 @@ export class AnalyticsModelTrainingService {
 
       if (!response.ok) {
         const errorText = await response.text();
+        const truncatedError = errorText.substring(0, 500);
         throw new Error(
-          `HTTP error! status: ${response.status}, body=${errorText}`,
+          `HTTP error! status: ${response.status}, body=${truncatedError}`,
         );
       }
 

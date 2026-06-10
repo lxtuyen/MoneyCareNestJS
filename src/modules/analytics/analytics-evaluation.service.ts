@@ -10,9 +10,12 @@ import {
   meanAbsoluteError,
   rootMeanSquaredError,
   meanAbsolutePercentageError,
-  absolutePercentageError,
   PredictedActualPair,
 } from './utils/model-metrics.util';
+import {
+  calculateForecastingMetrics,
+  calculateBudgetingMetrics,
+} from './utils/evaluation-calculators';
 import {
   ModelEvaluationSummaryDto,
   ForecastingSummaryDto,
@@ -73,17 +76,11 @@ export class AnalyticsEvaluationService {
    * Đánh giá một forecasting run.
    */
   async evaluateForecastingRun(run: AiPredictionRun): Promise<void> {
-    const actualTransactions = await this.transactionRepo
-      .createQueryBuilder('t')
-      .leftJoinAndSelect('t.category', 'category')
-      .where('t.userId = :userId', { userId: run.userId })
-      .andWhere('t.type = :type', { type: 'expense' })
-      .andWhere('t.isTransfer = :isTransfer', { isTransfer: false })
-      .andWhere('t.transaction_date >= :start', {
-        start: run.predictionTargetStart,
-      })
-      .andWhere('t.transaction_date <= :end', { end: run.predictionTargetEnd })
-      .getMany();
+    const actualTransactions = await this.getActualTransactions(
+      run.userId,
+      run.predictionTargetStart,
+      run.predictionTargetEnd,
+    );
 
     if (actualTransactions.length === 0) {
       await this.predictionService.markSkipped(run.id);
@@ -91,99 +88,52 @@ export class AnalyticsEvaluationService {
       return;
     }
 
-    // Tính actual total
-    const actualTotalExpense = actualTransactions.reduce(
-      (sum, t) => sum + Number(t.amount || 0),
-      0,
+    const result = calculateForecastingMetrics(
+      run.predictionPayload,
+      actualTransactions,
     );
 
-    // Actual daily expenses
-    const dailyActual: Record<string, number> = {};
-    for (const t of actualTransactions) {
-      const dateStr = new Date(t.transaction_date).toISOString().split('T')[0];
-      dailyActual[dateStr] =
-        (dailyActual[dateStr] || 0) + Number(t.amount || 0);
-    }
-
-    // Actual category expenses
-    const categoryActual: Record<string, number> = {};
-    for (const t of actualTransactions) {
-      const catName = t.category?.name || 'Khác';
-      categoryActual[catName] =
-        (categoryActual[catName] || 0) + Number(t.amount || 0);
-    }
-
-    const payload = run.predictionPayload;
-    const predictedTotal = payload.totalForecast || 0;
-
-    // Tổng hợp metrics
     const totalPair: PredictedActualPair = {
-      predicted: predictedTotal,
-      actual: actualTotalExpense,
+      predicted: result.predictedTotal,
+      actual: result.actualTotalExpense,
     };
-
-    // Daily pairs (nếu có dailyPoints)
-    const dailyPairs: PredictedActualPair[] = [];
-    if (payload.dailyPoints && Array.isArray(payload.dailyPoints)) {
-      for (const dp of payload.dailyPoints) {
-        const actual = dailyActual[dp.date] || 0;
-        dailyPairs.push({ predicted: dp.predictedAmount || 0, actual });
-      }
-    }
-
-    // Category pairs
-    const categoryMetricsDetail: any[] = [];
-    if (payload.categoryForecasts && Array.isArray(payload.categoryForecasts)) {
-      for (const cf of payload.categoryForecasts) {
-        const actual = categoryActual[cf.categoryName] || 0;
-        const ape = absolutePercentageError(cf.predictedAmount || 0, actual);
-        categoryMetricsDetail.push({
-          categoryName: cf.categoryName,
-          predictedAmount: cf.predictedAmount || 0,
-          actualAmount: actual,
-          absoluteError: Math.abs(actual - (cf.predictedAmount || 0)),
-          absolutePercentageError:
-            ape !== null ? Math.round(ape * 100) / 100 : null,
-        });
-      }
-    }
-
-    // Tính metrics dựa trên total pair
-    const pairsForMetrics = dailyPairs.length > 0 ? dailyPairs : [totalPair];
+    const pairsForMetrics =
+      result.dailyPairs.length > 0 ? result.dailyPairs : [totalPair];
     const mae = meanAbsoluteError(pairsForMetrics);
     const rmse = rootMeanSquaredError(pairsForMetrics);
     const mape = meanAbsolutePercentageError(pairsForMetrics);
 
-    const totalErrorAmount = Math.abs(actualTotalExpense - predictedTotal);
+    const totalErrorAmount = Math.abs(
+      result.actualTotalExpense - result.predictedTotal,
+    );
     const totalErrorPct =
-      actualTotalExpense > 0
-        ? Math.round((totalErrorAmount / actualTotalExpense) * 10000) / 100
+      result.actualTotalExpense > 0
+        ? Math.round(
+            (totalErrorAmount / result.actualTotalExpense) * 10000,
+          ) / 100
         : 0;
 
     const evaluation = this.evalRepo.create({
       predictionRunId: run.id,
       userId: run.userId,
       actualPayload: {
-        actualTotalExpense,
-        actualDailyExpenses: Object.entries(dailyActual).map(
+        actualTotalExpense: result.actualTotalExpense,
+        actualDailyExpenses: Object.entries(result.dailyActual).map(
           ([date, amount]) => ({ date, amount }),
         ),
-        actualCategoryExpenses: Object.entries(categoryActual).map(
-          ([categoryName, amount]) => ({
-            categoryName,
-            amount,
-          }),
+        actualCategoryExpenses: Object.entries(result.categoryActual).map(
+          ([categoryName, amount]) => ({ categoryName, amount }),
         ),
       },
       metrics: {
         totalErrorAmount,
         totalErrorPct,
-        categoryMetrics: categoryMetricsDetail,
+        categoryMetrics: result.categoryMetrics,
       },
       mae: Math.round(mae),
       rmse: Math.round(rmse),
       mape: Math.round(mape * 100) / 100,
-      directionalAccuracy: null, // Cần previous run để tính
+      directionalAccuracy: null,
       evaluatedAt: new Date(),
     });
 
@@ -193,21 +143,20 @@ export class AnalyticsEvaluationService {
       `Evaluated forecasting run #${run.id}: MAE=${Math.round(mae)}, MAPE=${Math.round(mape * 100) / 100}%`,
     );
 
-    // Auto-retrain nếu MAPE vượt ngưỡng
     if (mape > MAPE_RETRAIN_THRESHOLD) {
       this.logger.warn(
         `MAPE=${Math.round(mape * 100) / 100}% > ${MAPE_RETRAIN_THRESHOLD}% threshold for userId=${run.userId}. Triggering auto-retrain...`,
       );
       this.modelTrainingService
         .trainForecastingModel(run.userId)
-        .then((result) => {
+        .then((r) => {
           this.logger.log(
-            `Auto-retrain completed for userId=${run.userId}: status=${result.status}, artifactSaved=${result.artifactSaved}`,
+            `Auto-retrain completed for userId=${run.userId}: status=${r.status}, artifactSaved=${r.artifactSaved}`,
           );
         })
-        .catch((error) => {
+        .catch((err) => {
           this.logger.error(
-            `Auto-retrain failed for userId=${run.userId}: ${error.message}`,
+            `Auto-retrain failed for userId=${run.userId}: ${err.message}`,
           );
         });
     }
@@ -217,17 +166,11 @@ export class AnalyticsEvaluationService {
    * Đánh giá một budgeting run.
    */
   async evaluateBudgetingRun(run: AiPredictionRun): Promise<void> {
-    const actualTransactions = await this.transactionRepo
-      .createQueryBuilder('t')
-      .leftJoinAndSelect('t.category', 'category')
-      .where('t.userId = :userId', { userId: run.userId })
-      .andWhere('t.type = :type', { type: 'expense' })
-      .andWhere('t.isTransfer = :isTransfer', { isTransfer: false })
-      .andWhere('t.transaction_date >= :start', {
-        start: run.predictionTargetStart,
-      })
-      .andWhere('t.transaction_date <= :end', { end: run.predictionTargetEnd })
-      .getMany();
+    const actualTransactions = await this.getActualTransactions(
+      run.userId,
+      run.predictionTargetStart,
+      run.predictionTargetEnd,
+    );
 
     if (actualTransactions.length === 0) {
       await this.predictionService.markSkipped(run.id);
@@ -235,79 +178,27 @@ export class AnalyticsEvaluationService {
       return;
     }
 
-    const actualTotalExpense = actualTransactions.reduce(
-      (sum, t) => sum + Number(t.amount || 0),
-      0,
+    const result = calculateBudgetingMetrics(
+      run.predictionPayload,
+      actualTransactions,
     );
-
-    const categoryActual: Record<string, number> = {};
-    for (const t of actualTransactions) {
-      const catName = t.category?.name || 'Khác';
-      categoryActual[catName] =
-        (categoryActual[catName] || 0) + Number(t.amount || 0);
-    }
-
-    const payload = run.predictionPayload;
-    const recommendedTotal = payload.recommendedTotalBudget || 0;
-    const items = payload.items || [];
-
-    let overrunCount = 0;
-    let totalOverrunAmount = 0;
-    let adoptedCount = 0;
-    const categoryDetails: any[] = [];
-
-    for (const item of items) {
-      const actual = categoryActual[item.categoryName] || 0;
-      const recommended = item.recommendedLimitAmount || 0;
-      const overrun = actual > recommended ? actual - recommended : 0;
-
-      if (overrun > 0) {
-        overrunCount++;
-        totalOverrunAmount += overrun;
-      }
-
-      // Heuristic adoption: nếu actual gần recommended (±10%), coi như adopted
-      if (
-        recommended > 0 &&
-        Math.abs(actual - recommended) / recommended <= 0.1
-      ) {
-        adoptedCount++;
-      }
-
-      categoryDetails.push({
-        categoryName: item.categoryName,
-        recommendedLimit: recommended,
-        predictedSpend: item.predictedSpendAmount || 0,
-        actualSpend: actual,
-        overrunAmount: overrun,
-        wasOverBudget: overrun > 0,
-      });
-    }
-
-    const overrunRate = items.length > 0 ? overrunCount / items.length : 0;
-    const adoptionRate = items.length > 0 ? adoptedCount / items.length : 0;
-    const avgOverrunAmount =
-      overrunCount > 0 ? totalOverrunAmount / overrunCount : 0;
 
     const evaluation = this.evalRepo.create({
       predictionRunId: run.id,
       userId: run.userId,
       actualPayload: {
-        actualTotalExpense,
-        actualCategoryExpenses: Object.entries(categoryActual).map(
-          ([categoryName, amount]) => ({
-            categoryName,
-            amount,
-          }),
+        actualTotalExpense: result.actualTotalExpense,
+        actualCategoryExpenses: Object.entries(result.categoryActual).map(
+          ([categoryName, amount]) => ({ categoryName, amount }),
         ),
       },
       metrics: {
-        recommendedTotalBudget: recommendedTotal,
-        actualTotalExpense,
-        overrunRate: Math.round(overrunRate * 10000) / 100,
-        adoptionRate: Math.round(adoptionRate * 10000) / 100,
-        averageOverrunAmount: Math.round(avgOverrunAmount),
-        categoryDetails,
+        recommendedTotalBudget: result.recommendedTotal,
+        actualTotalExpense: result.actualTotalExpense,
+        overrunRate: Math.round(result.overrunRate * 10000) / 100,
+        adoptionRate: Math.round(result.adoptionRate * 10000) / 100,
+        averageOverrunAmount: Math.round(result.averageOverrunAmount),
+        categoryDetails: result.categoryDetails,
       },
       mae: null,
       rmse: null,
@@ -319,8 +210,26 @@ export class AnalyticsEvaluationService {
     await this.evalRepo.save(evaluation);
     await this.predictionService.markEvaluated(run.id);
     this.logger.log(
-      `Evaluated budgeting run #${run.id}: overrunRate=${Math.round(overrunRate * 100)}%`,
+      `Evaluated budgeting run #${run.id}: overrunRate=${Math.round(result.overrunRate * 100)}%`,
     );
+  }
+
+  // ── Private: shared transaction query ──
+
+  private async getActualTransactions(
+    userId: number,
+    start: Date,
+    end: Date,
+  ): Promise<Transaction[]> {
+    return this.transactionRepo
+      .createQueryBuilder('t')
+      .leftJoinAndSelect('t.category', 'category')
+      .where('t.userId = :userId', { userId })
+      .andWhere('t.type = :type', { type: 'expense' })
+      .andWhere('t.isTransfer = :isTransfer', { isTransfer: false })
+      .andWhere('t.transaction_date >= :start', { start })
+      .andWhere('t.transaction_date <= :end', { end })
+      .getMany();
   }
 
   /**
