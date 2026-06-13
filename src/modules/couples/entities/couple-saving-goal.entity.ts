@@ -11,11 +11,19 @@ import {
 } from 'typeorm';
 import { ColumnNumericTransformer } from 'src/common/transformers/decimal.transformer';
 import { CoupleSavingGoalContribution } from './couple-saving-goal-contribution.entity';
+import { Wallet } from 'src/modules/wallets/entities/wallet.entity';
 
 @Entity('couple_saving_goals')
 export class CoupleSavingGoal {
   @PrimaryGeneratedColumn()
   id!: number;
+
+  @ManyToOne(() => Wallet, { onDelete: 'SET NULL', nullable: true })
+  @JoinColumn({ name: 'walletId' })
+  wallet?: Wallet | null;
+
+  @Column({ nullable: true })
+  walletId?: number | null;
 
   @ManyToOne(() => Couple, { onDelete: 'CASCADE', nullable: false })
   @JoinColumn({ name: 'coupleId' })

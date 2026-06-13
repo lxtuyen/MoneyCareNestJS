@@ -20,6 +20,8 @@ import { SavingGoal } from '../saving-goals/entities/saving-goal.entity';
 import { ApiResponse } from 'src/common/dto/api-response.dto';
 import { FinancialCacheInvalidationService } from 'src/common/cache/financial-cache-invalidation.service';
 import { CouplesService } from '../couples/couples.service';
+import { CoupleSavingGoal } from '../couples/entities/couple-saving-goal.entity';
+import { CoupleSavingGoalContribution } from '../couples/entities/couple-saving-goal-contribution.entity';
 
 @Injectable()
 export class WalletsService {
@@ -32,6 +34,10 @@ export class WalletsService {
     private categoryRepository: Repository<Category>,
     @InjectRepository(SavingGoal)
     private goalRepo: Repository<SavingGoal>,
+    @InjectRepository(CoupleSavingGoal)
+    private coupleGoalRepo: Repository<CoupleSavingGoal>,
+    @InjectRepository(CoupleSavingGoalContribution)
+    private coupleContributionRepo: Repository<CoupleSavingGoalContribution>,
     private financialCacheInvalidationService: FinancialCacheInvalidationService,
     private couplesService: CouplesService,
   ) {}
@@ -260,6 +266,43 @@ export class WalletsService {
       console.error(
         '>>> [BE] Error invalidating financial cache during transfer:',
         cacheError,
+      );
+    }
+
+    try {
+      const coupleGoal = await this.coupleGoalRepo.findOne({
+        where: { walletId: toWalletId },
+        relations: ['wallet'],
+      });
+      if (coupleGoal) {
+        const contribution = this.coupleContributionRepo.create({
+          savingGoalId: coupleGoal.id,
+          userId: user.id,
+          amount: amount,
+        });
+        await this.coupleContributionRepo.save(contribution);
+
+        const allContributions = await this.coupleContributionRepo.find({
+          where: { savingGoalId: coupleGoal.id },
+        });
+        const totalSaved = allContributions.reduce(
+          (sum, curr) => sum + Number(curr.amount),
+          0,
+        );
+
+        coupleGoal.saved_amount = coupleGoal.wallet
+          ? Number(coupleGoal.wallet.balance)
+          : totalSaved;
+        coupleGoal.status =
+          coupleGoal.target && coupleGoal.saved_amount >= coupleGoal.target
+            ? 'completed'
+            : 'active';
+        await this.coupleGoalRepo.save(coupleGoal);
+      }
+    } catch (coupleGoalError) {
+      console.error(
+        '>>> [BE] Error creating couple saving goal contribution during transfer:',
+        coupleGoalError,
       );
     }
 

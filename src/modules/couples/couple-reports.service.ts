@@ -7,7 +7,6 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Between, LessThanOrEqual, Repository } from 'typeorm';
 import { getVietnamMonthRange } from 'src/common/utils/date.util';
 import { Transaction } from 'src/modules/transactions/entities/transaction.entity';
-import { CoupleBudget } from './entities/couple-budget.entity';
 import { CoupleSavingGoal } from './entities/couple-saving-goal.entity';
 import { CoupleMember } from './entities/couple-member.entity';
 import { CoupleSpendingAlert } from './entities/couple-spending-alert.entity';
@@ -33,8 +32,6 @@ export class CoupleReportsService {
   constructor(
     @InjectRepository(Transaction)
     private readonly transactionRepo: Repository<Transaction>,
-    @InjectRepository(CoupleBudget)
-    private readonly budgetRepo: Repository<CoupleBudget>,
     @InjectRepository(CoupleSavingGoal)
     private readonly savingGoalRepo: Repository<CoupleSavingGoal>,
     @InjectRepository(CoupleMember)
@@ -54,7 +51,7 @@ export class CoupleReportsService {
     const historyStart = new Date(start);
     historyStart.setMonth(historyStart.getMonth() - 6);
 
-    const [transactions, historyTransactions, budgets, savingGoals, members] =
+    const [transactions, historyTransactions, savingGoals, members] =
       await Promise.all([
         this.transactionRepo.find({
           where: {
@@ -79,12 +76,9 @@ export class CoupleReportsService {
           relations: ['category'],
           order: { transaction_date: 'DESC' },
         }),
-        this.budgetRepo.find({
-          where: { coupleId, month },
-          relations: ['category'],
-        }),
         this.savingGoalRepo.find({
           where: { coupleId },
+          relations: ['wallet'],
           order: { updatedAt: 'DESC' },
         }),
         this.coupleMemberRepo.find({
@@ -92,6 +86,8 @@ export class CoupleReportsService {
           relations: ['user', 'user.profile'],
         }),
       ]);
+
+    const budgets: any[] = [];
 
     const alerts = await this.syncAlerts(
       coupleId,
@@ -108,21 +104,24 @@ export class CoupleReportsService {
       members,
     );
     const budgetProgress = this.buildBudgetProgress(transactions, budgets);
-    const savingProgress = savingGoals.map((goal) => ({
-      id: goal.id,
-      name: goal.name,
-      target: Number(goal.target ?? 0),
-      savedAmount: Number(goal.saved_amount ?? 0),
-      progress:
-        Number(goal.target ?? 0) > 0
-          ? Math.min(
-              100,
-              (Number(goal.saved_amount ?? 0) / Number(goal.target)) * 100,
-            )
-          : 0,
-      status: goal.status,
-      endDate: goal.end_date,
-    }));
+    const savingProgress = savingGoals.map((goal) => {
+      const displaySavedAmount = goal.wallet ? Number(goal.wallet.balance) : Number(goal.saved_amount ?? 0);
+      return {
+        id: goal.id,
+        name: goal.name,
+        target: Number(goal.target ?? 0),
+        savedAmount: displaySavedAmount,
+        progress:
+          Number(goal.target ?? 0) > 0
+            ? Math.min(
+                100,
+                (displaySavedAmount / Number(goal.target)) * 100,
+              )
+            : 0,
+        status: goal.status,
+        endDate: goal.end_date,
+      };
+    });
     const weeklyTrend = this.buildWeeklyTrend(transactions, start);
     const insights = this.buildInsights({
       summary,
@@ -284,7 +283,7 @@ export class CoupleReportsService {
 
   private buildBudgetProgress(
     transactions: Transaction[],
-    budgets: CoupleBudget[],
+    budgets: any[],
   ) {
     return budgets.map((budget) => {
       const spentAmount = this.sum(
@@ -412,7 +411,7 @@ export class CoupleReportsService {
     month: string,
     transactions: Transaction[],
     historyTransactions: Transaction[],
-    budgets: CoupleBudget[],
+    budgets: any[],
   ): Promise<CoupleSpendingAlert[]> {
     const drafts = this.buildAlertDrafts(
       coupleId,
@@ -446,7 +445,7 @@ export class CoupleReportsService {
     month: string,
     transactions: Transaction[],
     historyTransactions: Transaction[],
-    budgets: CoupleBudget[],
+    budgets: any[],
   ): AlertDraft[] {
     const drafts: AlertDraft[] = [];
     const expenses = transactions.filter((item) => item.type === 'expense');

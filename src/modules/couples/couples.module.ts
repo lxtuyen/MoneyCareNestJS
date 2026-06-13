@@ -2,14 +2,11 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Couple } from './entities/couple.entity';
 import { CoupleMember } from './entities/couple-member.entity';
-import { CoupleBudget } from './entities/couple-budget.entity';
 import { User } from 'src/modules/user/entities/user.entity';
 import { Transaction } from 'src/modules/transactions/entities/transaction.entity';
 import { Category } from 'src/modules/categories/entities/category.entity';
 import { CouplesController } from './couples.controller';
 import { CouplesService } from './couples.service';
-import { CoupleBudgetsController } from './couple-budgets.controller';
-import { CoupleBudgetsService } from './couple-budgets.service';
 
 import { CoupleSavingGoal } from './entities/couple-saving-goal.entity';
 import { CoupleSavingGoalContribution } from './entities/couple-saving-goal-contribution.entity';
@@ -30,7 +27,6 @@ import { Wallet } from '../wallets/entities/wallet.entity';
       Couple,
       CoupleMember,
       User,
-      CoupleBudget,
       Transaction,
       Category,
       CoupleSavingGoal,
@@ -42,21 +38,18 @@ import { Wallet } from '../wallets/entities/wallet.entity';
   ],
   controllers: [
     CouplesController,
-    CoupleBudgetsController,
     CoupleSavingsController,
     CoupleSettlementController,
     CoupleReportsController,
   ],
   providers: [
     CouplesService,
-    CoupleBudgetsService,
     CoupleSavingsService,
     CoupleSettlementService,
     CoupleReportsService,
   ],
   exports: [
     CouplesService,
-    CoupleBudgetsService,
     CoupleSavingsService,
     CoupleSettlementService,
     CoupleReportsService,

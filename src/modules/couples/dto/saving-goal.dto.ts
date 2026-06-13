@@ -31,4 +31,23 @@ export class AddContributionDto {
   @IsNotEmpty()
   @Min(1)
   amount!: number;
+
+  @IsNumber()
+  @IsOptional()
+  sourceWalletId?: number;
+}
+
+export class UpdateCoupleSavingGoalDto {
+  @IsString()
+  @IsOptional()
+  name?: string;
+
+  @IsNumber()
+  @IsOptional()
+  @Min(1)
+  target?: number;
+
+  @IsOptional()
+  @IsDateString()
+  end_date?: string;
 }

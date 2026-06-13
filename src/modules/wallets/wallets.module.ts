@@ -6,11 +6,20 @@ import { Wallet } from './entities/wallet.entity';
 import { Transaction } from '../transactions/entities/transaction.entity';
 import { Category } from '../categories/entities/category.entity';
 import { SavingGoal } from '../saving-goals/entities/saving-goal.entity';
+import { CoupleSavingGoal } from '../couples/entities/couple-saving-goal.entity';
+import { CoupleSavingGoalContribution } from '../couples/entities/couple-saving-goal-contribution.entity';
 import { CouplesModule } from '../couples/couples.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Wallet, Transaction, Category, SavingGoal]),
+    TypeOrmModule.forFeature([
+      Wallet,
+      Transaction,
+      Category,
+      SavingGoal,
+      CoupleSavingGoal,
+      CoupleSavingGoalContribution,
+    ]),
     CouplesModule,
   ],
   controllers: [WalletsController],

@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Delete,
+  Patch,
   Body,
   Param,
   Query,
@@ -13,6 +14,7 @@ import { CoupleSavingsService } from './couple-savings.service';
 import {
   CreateCoupleSavingGoalDto,
   AddContributionDto,
+  UpdateCoupleSavingGoalDto,
 } from './dto/saving-goal.dto';
 import { JwtAuthGuard } from 'src/modules/auth/jwt-auth.guard';
 import { User } from 'src/common/decorators/user.decorator';
@@ -53,6 +55,15 @@ export class CoupleSavingsController {
     @Body() dto: AddContributionDto,
   ) {
     return this.coupleSavingsService.contribute(id, dto, userId);
+  }
+
+  @Patch(':id')
+  async update(
+    @User('sub') userId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateCoupleSavingGoalDto,
+  ) {
+    return this.coupleSavingsService.update(id, dto, userId);
   }
 
   @Delete(':id')

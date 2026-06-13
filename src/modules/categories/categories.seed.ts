@@ -125,6 +125,12 @@ export const SYSTEM_CATEGORY_SEEDS: SystemCategorySeed[] = [
     type: CategoryType.EXPENSE,
     is_system: true,
   },
+  {
+    name: 'Du lịch',
+    icon: '🏖️',
+    type: CategoryType.EXPENSE,
+    is_system: true,
+  },
 ];
 
 export const SYSTEM_CATEGORY_RENAME_ALIASES: Array<{
