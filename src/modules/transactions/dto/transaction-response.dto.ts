@@ -4,6 +4,9 @@ import { SubCategoryResponseDto } from 'src/modules/categories/dto/category-resp
 
 export class TransactionResponseDto {
   @Expose()
+  id: number;
+
+  @Expose()
   amount: number;
 
   @Expose()
@@ -22,6 +25,29 @@ export class TransactionResponseDto {
   @Expose()
   @Type(() => SubCategoryResponseDto)
   subCategory?: SubCategoryResponseDto;
+
+  @Expose()
+  wallet?: {
+    id: number;
+    name: string;
+    balance: number;
+    coupleId?: number | null;
+  } | null;
+
+  @Expose()
+  coupleId?: number | null;
+
+  @Expose()
+  payerId?: number | null;
+
+  @Expose()
+  payerName?: string | null;
+
+  @Expose()
+  creatorId?: number | null;
+
+  @Expose()
+  creatorName?: string | null;
 
   @Expose()
   created_at: Date;

@@ -8,9 +8,14 @@ import {
   Delete,
   UseGuards,
   Request,
+  Query,
 } from '@nestjs/common';
 import { WalletsService } from './wallets.service';
-import { UpdateWalletDto, TransferDto } from './dto/wallet.dto';
+import {
+  UpdateWalletDto,
+  TransferDto,
+  CreateWalletDto,
+} from './dto/wallet.dto';
 import { JwtAuthGuard } from 'src/modules/auth/jwt-auth.guard';
 
 @Controller('wallets')
@@ -19,8 +24,8 @@ export class WalletsController {
   constructor(private readonly walletsService: WalletsService) {}
 
   @Post()
-  async create(@Request() req) {
-    return this.walletsService.create(req.user);
+  async create(@Body() createWalletDto: CreateWalletDto, @Request() req) {
+    return this.walletsService.create(req.user, createWalletDto);
   }
 
   @Post('transfer')
@@ -29,8 +34,11 @@ export class WalletsController {
   }
 
   @Get()
-  async findAll(@Request() req) {
-    return this.walletsService.findAll(req.user);
+  async findAll(@Request() req, @Query('coupleId') coupleId?: string) {
+    return this.walletsService.findAll(
+      req.user,
+      coupleId ? +coupleId : undefined,
+    );
   }
 
   @Get('total-assets')

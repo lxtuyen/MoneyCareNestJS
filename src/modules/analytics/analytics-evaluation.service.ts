@@ -5,7 +5,10 @@ import { AiPredictionRun } from './entities/ai-prediction-run.entity';
 import { AiPredictionEvaluation } from './entities/ai-prediction-evaluation.entity';
 import { Transaction } from 'src/modules/transactions/entities/transaction.entity';
 import { AnalyticsPredictionService } from './analytics-prediction.service';
-import { AnalyticsModelTrainingService, MAPE_RETRAIN_THRESHOLD } from './analytics-model-training.service';
+import {
+  AnalyticsModelTrainingService,
+  MAPE_RETRAIN_THRESHOLD,
+} from './analytics-model-training.service';
 import {
   meanAbsoluteError,
   rootMeanSquaredError,
@@ -108,9 +111,8 @@ export class AnalyticsEvaluationService {
     );
     const totalErrorPct =
       result.actualTotalExpense > 0
-        ? Math.round(
-            (totalErrorAmount / result.actualTotalExpense) * 10000,
-          ) / 100
+        ? Math.round((totalErrorAmount / result.actualTotalExpense) * 10000) /
+          100
         : 0;
 
     const evaluation = this.evalRepo.create({

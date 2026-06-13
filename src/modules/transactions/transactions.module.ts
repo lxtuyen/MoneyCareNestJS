@@ -13,6 +13,9 @@ import { MailModule } from '../mailer/mail.module';
 import { TransactionExportService } from './transactions-export.service';
 import { SavingGoalsModule } from 'src/modules/saving-goals/saving-goals.module';
 import { TransactionStatisticsService } from './transactions-statistics.service';
+import { CouplesModule } from '../couples/couples.module';
+import { TransactionPrivacyService } from './transaction-privacy.service';
+import { TransactionSplit } from './entities/transaction-split.entity';
 
 @Module({
   imports: [
@@ -23,22 +26,26 @@ import { TransactionStatisticsService } from './transactions-statistics.service'
       User,
       SavingGoal,
       Wallet,
+      TransactionSplit,
     ]),
     forwardRef(() => UserModule),
     MailModule,
     SavingGoalsModule,
+    CouplesModule,
   ],
   controllers: [TransactionController],
   providers: [
     TransactionService,
     TransactionExportService,
     TransactionStatisticsService,
+    TransactionPrivacyService,
   ],
   exports: [
     TypeOrmModule,
     TransactionService,
     TransactionExportService,
     TransactionStatisticsService,
+    TransactionPrivacyService,
   ],
 })
 export class TransactionsModule {}

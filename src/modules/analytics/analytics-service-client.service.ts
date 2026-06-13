@@ -69,9 +69,7 @@ export class AnalyticsServiceClient {
         );
       }
 
-      this.logger.error(
-        `Error calling FastAPI analytics: ${error.message}`,
-      );
+      this.logger.error(`Error calling FastAPI analytics: ${error.message}`);
       throw error;
     }
   }

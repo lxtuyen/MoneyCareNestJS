@@ -111,8 +111,8 @@ export class AnalyticsPayloadBuilderService {
       : [];
 
     // --- Map transactions to payload ---
-    const transactionPayloads: AnalyticsTransactionPayload[] =
-      transactions.map((t) => ({
+    const transactionPayloads: AnalyticsTransactionPayload[] = transactions.map(
+      (t) => ({
         id: t.id,
         amount: Number(t.amount),
         transaction_date: t.transaction_date,
@@ -127,7 +127,8 @@ export class AnalyticsPayloadBuilderService {
           : { name: 'Khác' },
         note: t.note || '',
         is_transfer: t.isTransfer || false,
-      }));
+      }),
+    );
 
     // --- Build request payload ---
     const requestData: AnalyticsAnalyzeRequestPayload = {

@@ -65,8 +65,8 @@ export function mapAnalyticsResponse(
         categoryIcon: tx?.category?.icon ?? null,
         type: tx?.type ?? 'expense',
         note: tx?.note ?? null,
-        walletId: (tx as any)?.wallet?.id ?? null,
-        walletName: (tx as any)?.wallet?.name ?? null,
+        walletId: tx?.wallet?.id ?? null,
+        walletName: tx?.wallet?.name ?? null,
         reason: anomaly.reason,
       };
     }),
@@ -153,7 +153,9 @@ export function mapAnalyticsResponse(
             };
           }),
           budgetExceedPredictions: (
-            (data.ai_budgeting.budget_exceed_predictions || data.ai_budgeting['budgetExceedPredictions']) || []
+            data.ai_budgeting.budget_exceed_predictions ||
+            data.ai_budgeting['budgetExceedPredictions'] ||
+            []
           ).map((pred) => ({
             categoryName: (pred.category_name || pred['categoryName']) ?? '',
             limitAmount: pred.limit_amount ?? pred['limitAmount'] ?? 0,
@@ -161,15 +163,19 @@ export function mapAnalyticsResponse(
             totalForecast: pred.total_forecast ?? pred['totalForecast'] ?? 0,
             exceedAmount: pred.exceed_amount ?? pred['exceedAmount'] ?? 0,
             willExceed: pred.will_exceed ?? pred['willExceed'] ?? false,
-            exceedProbability: pred.exceed_probability ?? pred['exceedProbability'] ?? 0,
+            exceedProbability:
+              pred.exceed_probability ?? pred['exceedProbability'] ?? 0,
             confidence: pred.confidence ?? 0,
             trend: pred.trend ?? 'stable',
             riskLevel: (pred.risk_level || pred['riskLevel']) ?? 'low',
             actualRatio: pred.actual_ratio ?? pred['actualRatio'] ?? 0,
             forecastRatio: pred.forecast_ratio ?? pred['forecastRatio'] ?? 0,
-            expectedTodayRatio: pred.expected_today_ratio ?? pred['expectedTodayRatio'] ?? null,
-            expectedTodayAmount: pred.expected_today_amount ?? pred['expectedTodayAmount'] ?? null,
-            dailyForecastAmount: pred.daily_forecast_amount ?? pred['dailyForecastAmount'] ?? null,
+            expectedTodayRatio:
+              pred.expected_today_ratio ?? pred['expectedTodayRatio'] ?? null,
+            expectedTodayAmount:
+              pred.expected_today_amount ?? pred['expectedTodayAmount'] ?? null,
+            dailyForecastAmount:
+              pred.daily_forecast_amount ?? pred['dailyForecastAmount'] ?? null,
             isFrequent: pred.is_frequent ?? pred['isFrequent'] ?? false,
           })),
           summary: data.ai_budgeting.summary,

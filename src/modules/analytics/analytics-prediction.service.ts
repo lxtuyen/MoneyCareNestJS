@@ -8,7 +8,10 @@ import {
   AnalyticsMappedResponse,
 } from './types/analytics-service-response.type';
 import { AnalyticsPredictionMetadata } from './types/analytics-payload.type';
-import { getVietnamMonthRange, getVietnamNow } from 'src/common/utils/date.util';
+import {
+  getVietnamMonthRange,
+  getVietnamNow,
+} from 'src/common/utils/date.util';
 
 @Injectable()
 export class AnalyticsPredictionService {

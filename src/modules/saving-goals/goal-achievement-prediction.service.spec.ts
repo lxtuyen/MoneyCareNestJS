@@ -313,7 +313,9 @@ describe('GoalAchievementPredictionService', () => {
     expect(result.status).toBe('unlikely');
     expect(result.reasonCodes).toContain('negative_cash_flow');
     expect(result.supportingData.planBasedMonthlySavingRate).toBe(264760);
-    expect(result.supportingData.planBasedPredictedCompletionDate).not.toBeNull();
+    expect(
+      result.supportingData.planBasedPredictedCompletionDate,
+    ).not.toBeNull();
     expect(result.supportingData.planBasedDaysDifference).toBeLessThan(0);
   });
 

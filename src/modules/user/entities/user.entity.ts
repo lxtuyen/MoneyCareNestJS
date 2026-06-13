@@ -7,6 +7,7 @@ import { Notification } from 'src/modules/notifications/entities/notification.en
 import { Wallet } from 'src/modules/wallets/entities/wallet.entity';
 import { GamificationEntity } from 'src/modules/gamification/entities/gamification.entity';
 import { UserCategoryPreference } from 'src/modules/categories/entities/user-category-preference.entity';
+import { CoupleMember } from 'src/modules/couples/entities/couple-member.entity';
 import {
   Entity,
   PrimaryGeneratedColumn,
@@ -67,4 +68,7 @@ export class User {
 
   @OneToOne(() => GamificationEntity, (gamification) => gamification.user)
   gamification!: GamificationEntity;
+
+  @OneToMany(() => CoupleMember, (member) => member.user)
+  coupleMembers!: CoupleMember[];
 }

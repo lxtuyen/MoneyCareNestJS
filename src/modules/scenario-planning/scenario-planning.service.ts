@@ -709,18 +709,18 @@ export class ScenarioPlanningService {
     );
     const monthlyLimit = roundMoney(Number(planItem?.monthlyLimit ?? 0));
     const spentSoFar = roundMoney(Number(planItem?.spentThisMonth ?? 0));
-    
+
     // Calculate phase-based forecast (current spending + projection to end of phase)
     const daysInMonth = baseline.capacity?.daysInMonth ?? 30;
     const currentDay = baseline.capacity?.currentDay ?? 1;
-    const daysLeft = baseline.capacity?.daysLeft ?? (daysInMonth - currentDay);
-    
+    const daysLeft = baseline.capacity?.daysLeft ?? daysInMonth - currentDay;
+
     // Daily rate based on current spending in this phase
     const dailyRate = currentDay > 0 ? spentSoFar / currentDay : 0;
-    
+
     // Forecast to end of phase = what's spent + (daily rate × days left)
     const forecastBefore = roundMoney(spentSoFar + dailyRate * daysLeft);
-    
+
     const categoryDelta = roundMoney(
       Object.entries(delta.categoryDeltas).find(
         ([name]) => norm(name) === categoryKey,

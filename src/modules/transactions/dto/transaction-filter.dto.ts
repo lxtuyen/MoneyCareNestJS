@@ -1,8 +1,9 @@
 import { IsOptional, IsNumber, IsDateString } from 'class-validator';
 
 export class TransactionFilterDto {
+  @IsOptional()
   @IsNumber()
-  userId: number;
+  userId?: number;
 
   @IsOptional()
   @IsNumber()
@@ -33,4 +34,8 @@ export class TransactionFilterDto {
 
   @IsOptional()
   includeTransfer?: string;
+
+  @IsOptional()
+  @IsNumber()
+  coupleId?: number;
 }

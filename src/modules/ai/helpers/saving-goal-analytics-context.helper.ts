@@ -55,7 +55,9 @@ export function buildSavingGoalAnalyticsContext(
   const forecasting = analytics?.forecasting;
   const currentProjection = forecasting?.currentMonthProjection;
   const nextProjection = forecasting?.nextMonthForecast;
-  const plannedIncome = Number(analytics?.aiBudgeting?.recommendedTotalBudget || 0);
+  const plannedIncome = Number(
+    analytics?.aiBudgeting?.recommendedTotalBudget || 0,
+  );
   const forecastedExpense = Number(
     nextProjection?.totalForecast ??
       currentProjection?.totalForecast ??
@@ -155,12 +157,14 @@ export function filterGoalBudgetRecommendations(
       const isDecrease =
         item.actionType === 'decrease' &&
         item.recommendedLimitAmount < item.currentLimitAmount;
-      
+
       // Chỉ hiển thị khi có thay đổi đáng kể (>= 5%)
-      const hasMeaningfulChange = 
+      const hasMeaningfulChange =
         item.currentLimitAmount <= 0 ||
-        Math.abs(item.recommendedLimitAmount - item.currentLimitAmount) / item.currentLimitAmount >= 0.05;
-      
+        Math.abs(item.recommendedLimitAmount - item.currentLimitAmount) /
+          item.currentLimitAmount >=
+          0.05;
+
       return (hasGoalPressure || isDecrease) && hasMeaningfulChange;
     })
     .map((item) => ({
@@ -208,7 +212,10 @@ export function buildGoalReadinessForNewGoal(
     status = 'unlikely';
     reasonCodes.push('negative_cash_flow');
   } else if (shortfallAmount > 0) {
-    status = shortfallAmount / requiredMonthlySaving > 0.3 ? 'at_risk' : 'slightly_at_risk';
+    status =
+      shortfallAmount / requiredMonthlySaving > 0.3
+        ? 'at_risk'
+        : 'slightly_at_risk';
     reasonCodes.push('saving_velocity_below_required');
   } else {
     reasonCodes.push('saving_velocity_above_required');
@@ -258,7 +265,8 @@ export function mapAiBudgetingToProposalItems(
   );
 
   return {
-    totalAmount: recommendedBudget + Math.max(0, Math.round(suggestedMonthlySaving)),
+    totalAmount:
+      recommendedBudget + Math.max(0, Math.round(suggestedMonthlySaving)),
     budgetItems,
   };
 }
@@ -268,12 +276,16 @@ export function buildAnalyticsProposalExtras(
   goalReadiness: GoalReadinessSnapshot,
 ): Record<string, unknown> {
   return {
-    analyticsSource: context.available ? 'analytics-service' : 'spending-plan-fallback',
+    analyticsSource: context.available
+      ? 'analytics-service'
+      : 'spending-plan-fallback',
     projectedMonthlySavings: context.projectedMonthlySavings,
     currentMonthlySavingRate: context.currentMonthlySavingRate,
     confidence: context.confidence,
     forecastRiskLevel: context.forecastRiskLevel,
-    budgetStrategy: context.aiBudgeting ? 'ai_budget_optimizer' : 'template-fallback',
+    budgetStrategy: context.aiBudgeting
+      ? 'ai_budget_optimizer'
+      : 'template-fallback',
     goalReadiness,
   };
 }

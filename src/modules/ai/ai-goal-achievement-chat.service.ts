@@ -87,8 +87,7 @@ export class AiGoalAchievementChatService {
       analytics.aiBudgeting,
     );
     const planId =
-      analytics.aiBudgeting?.items?.find((item) => item.planId)?.planId ??
-      null;
+      analytics.aiBudgeting?.items?.find((item) => item.planId)?.planId ?? null;
 
     const summary = this.buildSummary(prediction);
     const payload = {
@@ -125,7 +124,8 @@ export class AiGoalAchievementChatService {
       },
       budgetRecommendations,
       expectedSavingsAmount: analytics.aiBudgeting?.expectedSavingsAmount ?? 0,
-      recommendedTotalBudget: analytics.aiBudgeting?.recommendedTotalBudget ?? 0,
+      recommendedTotalBudget:
+        analytics.aiBudgeting?.recommendedTotalBudget ?? 0,
     };
 
     const responseText = `__GOAL_ACHIEVEMENT_INSIGHT__${JSON.stringify(payload)}`;

@@ -74,7 +74,22 @@ export class TransactionStatisticsService {
 
     transactionQuery
       .select('category.id', 'categoryId')
-      .addSelect('SUM(transaction.amount)', 'total')
+      .addSelect(
+        `SUM(
+          CASE
+            WHEN transaction.coupleId IS NOT NULL THEN
+              CASE
+                WHEN transaction.splitMethod != 'none' THEN
+                  COALESCE(splits.amount, 0)
+                ELSE
+                  CASE WHEN transaction.payerId = :userId THEN transaction.amount ELSE 0 END
+              END
+            ELSE
+              transaction.amount
+          END
+        )`,
+        'total',
+      )
       .groupBy('category.id');
 
     const [categories, totals] = await Promise.all([
@@ -143,9 +158,23 @@ export class TransactionStatisticsService {
       },
     );
 
+    const amountFormula = `
+      CASE
+        WHEN transaction.coupleId IS NOT NULL THEN
+          CASE
+            WHEN transaction.splitMethod != 'none' THEN
+              COALESCE(splits.amount, 0)
+            ELSE
+              CASE WHEN transaction.payerId = :userId THEN transaction.amount ELSE 0 END
+          END
+        ELSE
+          transaction.amount
+      END
+    `;
+
     const [incomeTotalRes, expenseTotalRes] = await Promise.all([
-      incomeQuery.select('SUM(transaction.amount)', 'total').getRawOne(),
-      expenseQuery.select('SUM(transaction.amount)', 'total').getRawOne(),
+      incomeQuery.select(`SUM(${amountFormula})`, 'total').getRawOne(),
+      expenseQuery.select(`SUM(${amountFormula})`, 'total').getRawOne(),
     ]);
 
     const incomeTotal = Number(incomeTotalRes?.total ?? 0);
@@ -262,12 +291,26 @@ export class TransactionStatisticsService {
       },
     );
 
+    const amountFormula = `
+      CASE
+        WHEN transaction.coupleId IS NOT NULL THEN
+          CASE
+            WHEN transaction.splitMethod != 'none' THEN
+              COALESCE(splits.amount, 0)
+            ELSE
+              CASE WHEN transaction.payerId = :userId THEN transaction.amount ELSE 0 END
+          END
+        ELSE
+          transaction.amount
+      END
+    `;
+
     const [incomeRes, expenseRes] = await Promise.all([
       incomeQuery
-        .select('SUM(transaction.amount)', 'total')
+        .select(`SUM(${amountFormula})`, 'total')
         .getRawOne<{ total: string }>(),
       expenseQuery
-        .select('SUM(transaction.amount)', 'total')
+        .select(`SUM(${amountFormula})`, 'total')
         .getRawOne<{ total: string }>(),
     ]);
 
@@ -303,13 +346,27 @@ export class TransactionStatisticsService {
       },
     );
 
+    const amountFormula = `
+      CASE
+        WHEN transaction.coupleId IS NOT NULL THEN
+          CASE
+            WHEN transaction.splitMethod != 'none' THEN
+              COALESCE(splits.amount, 0)
+            ELSE
+              CASE WHEN transaction.payerId = :userId THEN transaction.amount ELSE 0 END
+          END
+        ELSE
+          transaction.amount
+      END
+    `;
+
     const [incomeRes, expenseRes] = await Promise.all([
       incomeQuery
         .select(
           "DATE(transaction.transaction_date AT TIME ZONE 'Asia/Ho_Chi_Minh')",
           'date',
         )
-        .addSelect('SUM(transaction.amount)', 'total')
+        .addSelect(`SUM(${amountFormula})`, 'total')
         .groupBy(
           "DATE(transaction.transaction_date AT TIME ZONE 'Asia/Ho_Chi_Minh')",
         )
@@ -319,7 +376,7 @@ export class TransactionStatisticsService {
           "DATE(transaction.transaction_date AT TIME ZONE 'Asia/Ho_Chi_Minh')",
           'date',
         )
-        .addSelect('SUM(transaction.amount)', 'total')
+        .addSelect(`SUM(${amountFormula})`, 'total')
         .groupBy(
           "DATE(transaction.transaction_date AT TIME ZONE 'Asia/Ho_Chi_Minh')",
         )

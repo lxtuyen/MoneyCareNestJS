@@ -23,6 +23,7 @@ import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { PersonalizationModule } from './modules/personalization/personalization.module';
 import { AiFeedbackModule } from './modules/ai-feedback/ai-feedback.module';
 import { ScenarioPlanningModule } from './modules/scenario-planning/scenario-planning.module';
+import { CouplesModule } from './modules/couples/couples.module';
 
 @Module({
   imports: [
@@ -81,6 +82,7 @@ import { ScenarioPlanningModule } from './modules/scenario-planning/scenario-pla
     PersonalizationModule,
     AiFeedbackModule,
     ScenarioPlanningModule,
+    CouplesModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -132,19 +132,21 @@ export class AiSavingGoalChatService {
   ) {}
 
   private async loadEffectiveSavingsCapacity(userId: number): Promise<{
-    capacity: Awaited<ReturnType<SpendingPlansService['getMonthlySavingCapacity']>>;
+    capacity: Awaited<
+      ReturnType<SpendingPlansService['getMonthlySavingCapacity']>
+    >;
     plannedSavingCapacity: number;
     effectiveSavingsForProposal: number;
     profileAverageSavings: number;
   }> {
     const capacity =
       await this.spendingPlansService.getMonthlySavingCapacity(userId);
-    
+
     // Load profile để lấy averageMonthlySavings (dữ liệu trung bình ổn định hơn)
     const profile = await this.personalizationService
       .getOrBuildProfile(userId)
       .catch(() => null);
-    
+
     const profileAverageSavings = Number(profile?.averageMonthlySavings ?? 0);
 
     const plannedSavingCapacity = capacity
@@ -154,12 +156,11 @@ export class AiSavingGoalChatService {
             capacity.totalAmount - capacity.fixedExpenseTotal,
         )
       : 0;
-    
+
     // Ưu tiên dùng averageMonthlySavings từ profile, fallback về capacity hiện tại
-    const effectiveSavingsForProposal = profileAverageSavings > 0
-      ? profileAverageSavings
-      : plannedSavingCapacity;
-    
+    const effectiveSavingsForProposal =
+      profileAverageSavings > 0 ? profileAverageSavings : plannedSavingCapacity;
+
     return {
       capacity,
       plannedSavingCapacity,
@@ -200,19 +201,15 @@ export class AiSavingGoalChatService {
     userId: number,
   ): Promise<ApiResponse<string>> {
     try {
-      const {
-        capacity,
-        plannedSavingCapacity,
-        effectiveSavingsForProposal,
-      } = await this.loadEffectiveSavingsCapacity(userId);
-      
+      const { capacity, plannedSavingCapacity, effectiveSavingsForProposal } =
+        await this.loadEffectiveSavingsCapacity(userId);
+
       const analyticsContext = await this.loadAnalyticsContext(
         userId,
         effectiveSavingsForProposal,
       );
-      const effectiveMonthlySavings = resolveEffectiveMonthlySavings(
-        analyticsContext,
-      );
+      const effectiveMonthlySavings =
+        resolveEffectiveMonthlySavings(analyticsContext);
       const recommendationCapacity =
         effectiveMonthlySavings > 0
           ? effectiveMonthlySavings
@@ -478,10 +475,8 @@ export class AiSavingGoalChatService {
         sourceWalletId,
         preserveCurrentBudget = false,
       } = payload;
-      const {
-        capacity,
-        effectiveSavingsForProposal,
-      } = await this.loadEffectiveSavingsCapacity(userId);
+      const { capacity, effectiveSavingsForProposal } =
+        await this.loadEffectiveSavingsCapacity(userId);
       const daysInMonth = capacity?.daysInMonth ?? 30;
       const activeDays = Math.max(0, Math.round(Number(days) || 0));
       const monthsEstimate = activeDays
@@ -618,18 +613,15 @@ export class AiSavingGoalChatService {
       const activeSourceWalletId = Number(sourceWalletId) || 0;
       const remainingTarget = Math.max(0, Number(target) - activeInitFund);
 
-      const {
-        capacity,
-        effectiveSavingsForProposal,
-      } = await this.loadEffectiveSavingsCapacity(userId);
-      
+      const { capacity, effectiveSavingsForProposal } =
+        await this.loadEffectiveSavingsCapacity(userId);
+
       const analyticsContext = await this.loadAnalyticsContext(
         userId,
         effectiveSavingsForProposal,
       );
-      const effectiveMonthlySavings = resolveEffectiveMonthlySavings(
-        analyticsContext,
-      );
+      const effectiveMonthlySavings =
+        resolveEffectiveMonthlySavings(analyticsContext);
       const recommendationCapacity =
         effectiveMonthlySavings > 0
           ? effectiveMonthlySavings
@@ -871,11 +863,9 @@ export class AiSavingGoalChatService {
       const activeInitFund = Number(initFund) || 0;
       const remainingTarget = Math.max(0, Number(target) - activeInitFund);
 
-      const {
-        capacity,
-        effectiveSavingsForProposal,
-      } = await this.loadEffectiveSavingsCapacity(userId);
-      
+      const { capacity, effectiveSavingsForProposal } =
+        await this.loadEffectiveSavingsCapacity(userId);
+
       const daysInMonth = capacity?.daysInMonth ?? 30;
       const requestedDays = Math.max(
         1,
@@ -965,17 +955,27 @@ export class AiSavingGoalChatService {
     fallbackMonthlySavingCapacity: number,
   ): Promise<SavingGoalAnalyticsContext> {
     try {
-      const summaryRes = await this.analyticsService.getFinancialSummary(userId);
+      const summaryRes =
+        await this.analyticsService.getFinancialSummary(userId);
       if (!summaryRes.success || !summaryRes.data) {
-        return buildSavingGoalAnalyticsContext(null, fallbackMonthlySavingCapacity);
+        return buildSavingGoalAnalyticsContext(
+          null,
+          fallbackMonthlySavingCapacity,
+        );
       }
       return buildSavingGoalAnalyticsContext(
         summaryRes.data,
         fallbackMonthlySavingCapacity,
       );
     } catch (error) {
-      this.logger.warn('Failed to load analytics context for saving goal chat', error);
-      return buildSavingGoalAnalyticsContext(null, fallbackMonthlySavingCapacity);
+      this.logger.warn(
+        'Failed to load analytics context for saving goal chat',
+        error,
+      );
+      return buildSavingGoalAnalyticsContext(
+        null,
+        fallbackMonthlySavingCapacity,
+      );
     }
   }
 

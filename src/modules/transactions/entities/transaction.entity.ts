@@ -2,6 +2,8 @@ import { Category } from 'src/modules/categories/entities/category.entity';
 import { SubCategory } from 'src/modules/categories/entities/sub-category.entity';
 import { User } from 'src/modules/user/entities/user.entity';
 import { Wallet } from 'src/modules/wallets/entities/wallet.entity';
+import { Couple } from 'src/modules/couples/entities/couple.entity';
+import { TransactionSplit } from './transaction-split.entity';
 import {
   Entity,
   PrimaryGeneratedColumn,
@@ -9,6 +11,7 @@ import {
   ManyToOne,
   CreateDateColumn,
   UpdateDateColumn,
+  OneToMany,
 } from 'typeorm';
 
 @Entity('transactions')
@@ -60,4 +63,33 @@ export class Transaction {
     onDelete: 'SET NULL',
   })
   wallet?: Wallet | null;
+
+  @ManyToOne(() => Couple, { onDelete: 'SET NULL', nullable: true })
+  couple?: Couple | null;
+
+  @Column({ type: 'int', nullable: true })
+  coupleId?: number | null;
+
+  @ManyToOne(() => User, { onDelete: 'SET NULL', nullable: true })
+  payer?: User | null;
+
+  @Column({ type: 'int', nullable: true })
+  payerId?: number | null;
+
+  @Column({ type: 'varchar', default: 'none' })
+  splitMethod!: string; // 'none', 'equal', 'percentage', 'fixed'
+
+  @Column({ type: 'varchar', nullable: true })
+  settlementStatus?: string | null; // 'unsettled', 'settled', null for non-split
+
+  @Column({ type: 'timestamp with time zone', nullable: true })
+  settledAt?: Date | null;
+
+  @Column({ type: 'int', nullable: true })
+  settledById?: number | null;
+
+  @OneToMany(() => TransactionSplit, (split) => split.transaction, {
+    cascade: true,
+  })
+  splits!: TransactionSplit[];
 }

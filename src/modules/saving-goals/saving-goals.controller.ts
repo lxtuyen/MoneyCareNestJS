@@ -125,13 +125,15 @@ export class SavingGoalsController {
     @User('sub') userId: number,
   ) {
     // Lấy report để có milestones
-    const reportResponse = await this.savingGoalsStatisticsService.getGoalReport(id, userId);
-    const milestones = reportResponse.data?.milestones?.map(m => ({
-      startDate: new Date(m.start_date),
-      endDate: new Date(m.end_date),
-      target: m.target,
-      actual: m.actual,
-    })) || [];
+    const reportResponse =
+      await this.savingGoalsStatisticsService.getGoalReport(id, userId);
+    const milestones =
+      reportResponse.data?.milestones?.map((m) => ({
+        startDate: new Date(m.start_date),
+        endDate: new Date(m.end_date),
+        target: m.target,
+        actual: m.actual,
+      })) || [];
 
     const data = await this.goalAchievementPredictionService.predictGoal(
       userId,

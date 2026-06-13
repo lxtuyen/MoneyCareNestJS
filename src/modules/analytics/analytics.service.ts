@@ -124,9 +124,7 @@ export class AnalyticsService {
         ),
       };
     } catch (error) {
-      this.logger.warn(
-        `Cannot load AI budgeting snapshot: ${error.message}`,
-      );
+      this.logger.warn(`Cannot load AI budgeting snapshot: ${error.message}`);
       return null;
     }
   }
@@ -266,8 +264,10 @@ export class AnalyticsService {
       fallbackTotalForecast - currentMonthExpense,
     );
 
-    const { start: periodStartDate, end: periodEndDate } =
-      getVietnamMonthRange(currentMonth, currentYear);
+    const { start: periodStartDate, end: periodEndDate } = getVietnamMonthRange(
+      currentMonth,
+      currentYear,
+    );
 
     const nextMonth = currentMonth === 12 ? 1 : currentMonth + 1;
     const nextYear = currentMonth === 12 ? currentYear + 1 : currentYear;

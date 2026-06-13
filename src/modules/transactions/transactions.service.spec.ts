@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { TransactionService } from './transactions.service';
 import { Transaction } from './entities/transaction.entity';
+import { TransactionSplit } from './entities/transaction-split.entity';
 import { User } from '../user/entities/user.entity';
 import { Category } from '../categories/entities/category.entity';
 import { SavingGoal } from '../saving-goals/entities/saving-goal.entity';
@@ -14,6 +15,7 @@ import {
   buildAiAnalysisRegistryKey,
   getFinancialCacheKeys,
 } from 'src/common/cache/financial-cache.util';
+import { CouplesService } from '../couples/couples.service';
 
 describe('TransactionsService', () => {
   let module: TestingModule;
@@ -97,6 +99,14 @@ describe('TransactionsService', () => {
           provide: getRepositoryToken(Transaction),
           useValue: transactionRepo,
         },
+        {
+          provide: getRepositoryToken(TransactionSplit),
+          useValue: {
+            create: jest.fn(),
+            save: jest.fn(),
+            remove: jest.fn(),
+          },
+        },
         { provide: getRepositoryToken(User), useValue: userRepo },
         { provide: getRepositoryToken(Category), useValue: categoryRepo },
         {
@@ -122,6 +132,12 @@ describe('TransactionsService', () => {
         {
           provide: FinancialCacheInvalidationService,
           useValue: financialCacheInvalidationService,
+        },
+        {
+          provide: CouplesService,
+          useValue: {
+            getActiveCoupleForUser: jest.fn(),
+          },
         },
       ],
     }).compile();

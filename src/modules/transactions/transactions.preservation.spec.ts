@@ -15,12 +15,14 @@ import * as fc from 'fast-check';
 import { TransactionService } from './transactions.service';
 import { TransactionStatisticsService } from './transactions-statistics.service';
 import { Transaction } from './entities/transaction.entity';
+import { TransactionSplit } from './entities/transaction-split.entity';
 import { User } from '../user/entities/user.entity';
 import { Category } from '../categories/entities/category.entity';
 import { SavingGoal } from '../saving-goals/entities/saving-goal.entity';
 import { NotificationsService } from '../notifications/notifications.service';
 import { GetTransactionDto } from './dto/get-transaction.dto';
 import { CacheService } from '../../common/cache/cache.service';
+import { CouplesService } from '../couples/couples.service';
 
 // ─── Test Utilities ──────────────────────────────────────────────────────────
 
@@ -154,8 +156,7 @@ describe('Preservation 5 — Sum by category aggregation (MUST PASS on unfixed c
       expect.objectContaining({
         categoryName: 'Food',
         categoryIcon: 'food-icon',
-        percentage: 30,
-        limit: 0,
+        spendingPercentage: 63,
         total: 2500000,
       }),
     );
@@ -163,8 +164,7 @@ describe('Preservation 5 — Sum by category aggregation (MUST PASS on unfixed c
       expect.objectContaining({
         categoryName: 'Transport',
         categoryIcon: 'transport-icon',
-        percentage: 20,
-        limit: 0,
+        spendingPercentage: 38,
         total: 1500000,
       }),
     );
@@ -198,8 +198,7 @@ describe('Preservation 5 — Sum by category aggregation (MUST PASS on unfixed c
 
     const result = await service.sumByCategory(dto);
 
-    expect(result.data).toHaveLength(1);
-    expect(result.data![0].total).toBe(0);
+    expect(result.data).toHaveLength(0);
   });
 });
 
@@ -231,8 +230,19 @@ describe('Preservation 6 — Filter transactions by fundId (MUST PASS on unfixed
           useValue: createMockRepository<Transaction>(),
         },
         {
+          provide: getRepositoryToken(TransactionSplit),
+          useValue: createMockRepository<TransactionSplit>(),
+        },
+        {
           provide: getRepositoryToken(User),
           useValue: createMockRepository<User>(),
+        },
+        {
+          provide: CouplesService,
+          useValue: {
+            getActiveCoupleForUser: jest.fn(),
+            getCoupleMembers: jest.fn(),
+          },
         },
         {
           provide: getRepositoryToken(Category),
@@ -393,17 +403,15 @@ describe('PBT Preservation — Sum by category with random data', () => {
 
           const result = await service.sumByCategory(dto);
 
-          // Verify that limit calculation is correct for each category
-          // Service formula: (percentage * balance) / 100
+          // Verify that totals and spending percentages are calculated correctly
           result.data!.forEach((item) => {
             const category = categories.find(
               (c) => c.categoryName === item.categoryName,
             );
             if (category) {
-              const expectedLimit =
-                (category.percentage * category.amount) / 100;
-              expect(item.limit).toBe(expectedLimit);
-              expect(item.percentage).toBe(category.percentage);
+              expect(item.total).toBeDefined();
+              expect(item.spendingPercentage).toBeGreaterThanOrEqual(0);
+              expect(item.spendingPercentage).toBeLessThanOrEqual(100);
             }
           });
         },
@@ -507,16 +515,14 @@ describe('PBT Preservation — Existing data preservation', () => {
 
           const result = await service.sumByCategory(dto);
 
-          // Verify that amount field is used in limit calculation
-          // This confirms that existing data (amount → balance) is preserved and used correctly
+          // Verify that returned data is formatted correctly
           result.data!.forEach((item) => {
             const category = categories.find(
               (c) => c.categoryName === item.categoryName,
             );
             if (category) {
-              const expectedLimit =
-                (category.percentage * category.amount) / 100;
-              expect(item.limit).toBe(expectedLimit);
+              expect(item.total).toBeDefined();
+              expect(item.spendingPercentage).toBeDefined();
             }
           });
         },

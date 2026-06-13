@@ -3,17 +3,23 @@ import {
   HttpStatus,
   Injectable,
   NotFoundException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Wallet } from './entities/wallet.entity';
-import { UpdateWalletDto, TransferDto } from './dto/wallet.dto';
+import {
+  UpdateWalletDto,
+  TransferDto,
+  CreateWalletDto,
+} from './dto/wallet.dto';
 import { User } from 'src/modules/user/entities/user.entity';
 import { Transaction } from '../transactions/entities/transaction.entity';
 import { Category } from '../categories/entities/category.entity';
 import { SavingGoal } from '../saving-goals/entities/saving-goal.entity';
 import { ApiResponse } from 'src/common/dto/api-response.dto';
 import { FinancialCacheInvalidationService } from 'src/common/cache/financial-cache-invalidation.service';
+import { CouplesService } from '../couples/couples.service';
 
 @Injectable()
 export class WalletsService {
@@ -27,17 +33,47 @@ export class WalletsService {
     @InjectRepository(SavingGoal)
     private goalRepo: Repository<SavingGoal>,
     private financialCacheInvalidationService: FinancialCacheInvalidationService,
+    private couplesService: CouplesService,
   ) {}
 
-  async create(user: User): Promise<ApiResponse<Wallet>> {
-    const walletCount = await this.walletRepository.count({
-      where: { user: { id: user.id }, is_active: true },
-    });
-    const wallet = this.walletRepository.create({
-      name: `Ví ${walletCount + 1}`,
-      balance: 0,
-      user,
-    });
+  async create(
+    user: User,
+    createWalletDto?: CreateWalletDto,
+  ): Promise<ApiResponse<Wallet>> {
+    const name = createWalletDto?.name;
+    const balance = createWalletDto?.balance ?? 0;
+    const coupleId = createWalletDto?.coupleId;
+
+    let wallet: Wallet;
+
+    if (coupleId) {
+      const activeCouple = await this.couplesService.getActiveCoupleForUser(
+        user.id,
+      );
+      if (!activeCouple || activeCouple.id !== coupleId) {
+        throw new BadRequestException(
+          'Bạn không thuộc không gian cặp đôi này hoặc không gian không hoạt động.',
+        );
+      }
+      const walletCount = await this.walletRepository.count({
+        where: { coupleId, is_active: true },
+      });
+      wallet = this.walletRepository.create({
+        name: name || `Ví chung ${walletCount + 1}`,
+        balance,
+        couple: activeCouple,
+      });
+    } else {
+      const walletCount = await this.walletRepository.count({
+        where: { user: { id: user.id }, is_active: true },
+      });
+      wallet = this.walletRepository.create({
+        name: name || `Ví ${walletCount + 1}`,
+        balance,
+        user,
+      });
+    }
+
     const savedWallet = await this.walletRepository.save(wallet);
 
     return new ApiResponse({
@@ -48,9 +84,25 @@ export class WalletsService {
     });
   }
 
-  async findAll(user: User): Promise<ApiResponse<Wallet[]>> {
+  async findAll(user: User, coupleId?: number): Promise<ApiResponse<Wallet[]>> {
+    let whereCondition: any;
+
+    if (coupleId) {
+      const activeCouple = await this.couplesService.getActiveCoupleForUser(
+        user.id,
+      );
+      if (!activeCouple || activeCouple.id !== coupleId) {
+        throw new BadRequestException(
+          'Bạn không thuộc không gian cặp đôi này hoặc không gian không hoạt động.',
+        );
+      }
+      whereCondition = { coupleId, is_active: true };
+    } else {
+      whereCondition = { user: { id: user.id }, is_active: true };
+    }
+
     const wallets = await this.walletRepository.find({
-      where: { user: { id: user.id }, is_active: true },
+      where: whereCondition,
       order: { created_at: 'DESC' },
       relations: ['savingGoals'],
     });
@@ -74,12 +126,27 @@ export class WalletsService {
 
   private async findWalletOrThrow(id: number, user: User): Promise<Wallet> {
     const wallet = await this.walletRepository.findOne({
-      where: { id, user: { id: user.id } },
-      relations: ['savingGoals'],
+      where: { id },
+      relations: ['savingGoals', 'user'],
     });
     if (!wallet) {
       throw new NotFoundException(`Wallet with ID ${id} not found`);
     }
+
+    if (wallet.user && wallet.user.id !== user.id) {
+      throw new ForbiddenException('Bạn không có quyền truy cập ví này.');
+    }
+    if (wallet.coupleId) {
+      const activeCouple = await this.couplesService.getActiveCoupleForUser(
+        user.id,
+      );
+      if (!activeCouple || activeCouple.id !== wallet.coupleId) {
+        throw new ForbiddenException(
+          'Bạn không có quyền truy cập ví chung này.',
+        );
+      }
+    }
+
     return wallet;
   }
 

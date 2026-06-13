@@ -467,15 +467,19 @@ export class AiTransactionChatService {
           });
 
           // Try to find "Ví 1" first
-          selectedWallet = walletsWithGoals.find(
-            (w) => w.name === 'Ví 1' && (!w.savingGoals || w.savingGoals.length === 0),
-          ) || null;
+          selectedWallet =
+            walletsWithGoals.find(
+              (w) =>
+                w.name === 'Ví 1' &&
+                (!w.savingGoals || w.savingGoals.length === 0),
+            ) || null;
 
           // Fallback to first non-saving wallet
           if (!selectedWallet) {
-            selectedWallet = walletsWithGoals.find(
-              (w) => !w.savingGoals || w.savingGoals.length === 0,
-            ) || walletsWithGoals[0];
+            selectedWallet =
+              walletsWithGoals.find(
+                (w) => !w.savingGoals || w.savingGoals.length === 0,
+              ) || walletsWithGoals[0];
           }
 
           walletId = selectedWallet?.id;
@@ -566,15 +570,19 @@ export class AiTransactionChatService {
         });
 
         // Try to find "Ví 1" first
-        selectedWallet = walletsWithGoals.find(
-          (w) => w.name === 'Ví 1' && (!w.savingGoals || w.savingGoals.length === 0),
-        ) || null;
+        selectedWallet =
+          walletsWithGoals.find(
+            (w) =>
+              w.name === 'Ví 1' &&
+              (!w.savingGoals || w.savingGoals.length === 0),
+          ) || null;
 
         // Fallback to first non-saving wallet
         if (!selectedWallet) {
-          selectedWallet = walletsWithGoals.find(
-            (w) => !w.savingGoals || w.savingGoals.length === 0,
-          ) || walletsWithGoals[0];
+          selectedWallet =
+            walletsWithGoals.find(
+              (w) => !w.savingGoals || w.savingGoals.length === 0,
+            ) || walletsWithGoals[0];
         }
 
         walletId = selectedWallet?.id;

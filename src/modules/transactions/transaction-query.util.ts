@@ -1,4 +1,4 @@
-import { Repository } from 'typeorm';
+import { Repository, Brackets } from 'typeorm';
 import {
   getVietnamMonthRange,
   getVietnamNow,
@@ -14,6 +14,7 @@ export interface TransactionBaseQueryOptions {
   withRelations?: boolean;
   categoryName?: string;
   excludeTransfer?: boolean;
+  coupleId?: number;
 }
 
 export function buildTransactionBaseQuery(
@@ -29,6 +30,7 @@ export function buildTransactionBaseQuery(
     withRelations = false,
     categoryName,
     excludeTransfer = true,
+    coupleId,
   }: TransactionBaseQueryOptions = {},
 ) {
   const query = transactionRepo.createQueryBuilder('transaction');
@@ -37,17 +39,44 @@ export function buildTransactionBaseQuery(
     query.leftJoinAndSelect('transaction.category', 'category');
     query.leftJoinAndSelect('transaction.subCategory', 'subCategory');
     query.leftJoinAndSelect('transaction.user', 'user');
+    query.leftJoinAndSelect('user.profile', 'userProfile');
     query.leftJoinAndSelect('transaction.wallet', 'wallet');
+    query.leftJoinAndSelect('transaction.payer', 'payer');
+    query.leftJoinAndSelect('payer.profile', 'payerProfile');
+    query.leftJoinAndSelect('transaction.couple', 'couple');
+    query.leftJoinAndSelect('transaction.splits', 'splits');
   } else {
     query.leftJoin('transaction.category', 'category');
     query.leftJoin('transaction.subCategory', 'subCategory');
     query.leftJoin('transaction.user', 'user');
+    query.leftJoin('user.profile', 'userProfile');
     query.leftJoin('transaction.wallet', 'wallet');
+    query.leftJoin('transaction.payer', 'payer');
+    query.leftJoin('payer.profile', 'payerProfile');
+    query.leftJoin('transaction.couple', 'couple');
+    query.leftJoin('transaction.splits', 'splits', 'splits.userId = :userId', {
+      userId,
+    });
   }
 
-  query
-    .where('user.id = :userId', { userId })
-    .andWhere('transaction.type = :type', { type });
+  if (coupleId) {
+    query
+      .where('transaction.coupleId = :coupleId', { coupleId })
+      .andWhere('transaction.type = :type', { type });
+  } else {
+    query
+      .where(
+        new Brackets((qb) => {
+          qb.where('transaction.coupleId IS NULL AND user.id = :userId', {
+            userId,
+          }).orWhere(
+            'transaction.coupleId IS NOT NULL AND (user.id = :userId OR transaction.payerId = :userId OR splits.userId = :userId)',
+            { userId },
+          );
+        }),
+      )
+      .andWhere('transaction.type = :type', { type });
+  }
 
   if (excludeTransfer) {
     query.andWhere('transaction.isTransfer = :isTransfer', {

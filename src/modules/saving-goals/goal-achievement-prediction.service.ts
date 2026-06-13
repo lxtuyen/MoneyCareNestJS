@@ -112,7 +112,12 @@ export class GoalAchievementPredictionService {
   async predictGoal(
     userId: number,
     goalId: number,
-    milestones?: { startDate: Date; endDate: Date; target: number; actual: number }[],
+    milestones?: {
+      startDate: Date;
+      endDate: Date;
+      target: number;
+      actual: number;
+    }[],
   ): Promise<GoalAchievementPredictionDto> {
     const goal = await this.goalRepo.findOne({
       where: { id: goalId, user: { id: userId } },
@@ -130,7 +135,12 @@ export class GoalAchievementPredictionService {
     userId: number,
     goalId: number,
     overrides: GoalPredictionOverrides,
-    milestones?: { startDate: Date; endDate: Date; target: number; actual: number }[],
+    milestones?: {
+      startDate: Date;
+      endDate: Date;
+      target: number;
+      actual: number;
+    }[],
   ): Promise<GoalAchievementPredictionDto> {
     const goal = await this.goalRepo.findOne({
       where: { id: goalId, user: { id: userId } },
@@ -257,11 +267,8 @@ export class GoalAchievementPredictionService {
         .map((g) => g.wallet?.id)
         .filter((id): id is number => id != null),
     );
-    const surplusWallets: WalletSurplusHint[] = (allWallets as Wallet[])
-      .filter(
-        (w) =>
-          Number(w.balance) > 0 && !savingGoalWalletIds.has(w.id),
-      )
+    const surplusWallets: WalletSurplusHint[] = allWallets
+      .filter((w) => Number(w.balance) > 0 && !savingGoalWalletIds.has(w.id))
       .map((w) => ({
         walletId: w.id,
         walletName: w.name,
@@ -293,7 +300,8 @@ export class GoalAchievementPredictionService {
       return null;
     }
 
-    const fixedExpenses = planStats?.fixedExpenses ?? capacity?.estimatedExpenses ?? [];
+    const fixedExpenses =
+      planStats?.fixedExpenses ?? capacity?.estimatedExpenses ?? [];
     const planCategoryNames: string[] = Array.from(
       new Set(
         fixedExpenses
@@ -318,7 +326,12 @@ export class GoalAchievementPredictionService {
     goal: SavingGoal,
     context: UserPredictionContext,
     overrides: GoalPredictionOverrides = {},
-    milestones?: { startDate: Date; endDate: Date; target: number; actual: number }[],
+    milestones?: {
+      startDate: Date;
+      endDate: Date;
+      target: number;
+      actual: number;
+    }[],
   ): GoalAchievementPredictionDto {
     const now = getVietnamNow();
     const baseTargetAmount = this.roundMoney(Number(goal.target ?? 0));
@@ -351,7 +364,11 @@ export class GoalAchievementPredictionService {
       : null;
 
     // Tìm milestone hiện tại (giai đoạn tháng hiện tại)
-    const currentMilestone = this.findCurrentMilestone(milestones, now, savedAmount);
+    const currentMilestone = this.findCurrentMilestone(
+      milestones,
+      now,
+      savedAmount,
+    );
 
     const requiredRates = this.calculateRequiredSavingRates(
       remainingAmount,
@@ -362,7 +379,7 @@ export class GoalAchievementPredictionService {
       context,
       overrides,
     );
-    
+
     // Sử dụng currentMilestone để tính timeline chính xác hơn
     const timeline = this.calculateCompletionTimeline({
       remainingAmount,
@@ -371,7 +388,7 @@ export class GoalAchievementPredictionService {
       deadline,
       currentMilestone,
     });
-    
+
     const planScenario =
       velocity.currentMonthlySavingRate <= 0
         ? this.calculatePlanBasedScenario(goal, context, {
@@ -474,8 +491,9 @@ export class GoalAchievementPredictionService {
         forecastedMonthlyExpense: this.roundMoney(
           Math.max(
             0,
-            (context.planStats?.totalAmount ?? context.capacity?.totalAmount ?? 0) -
-              context.forecastedMonthlySavings,
+            (context.planStats?.totalAmount ??
+              context.capacity?.totalAmount ??
+              0) - context.forecastedMonthlySavings,
           ),
         ),
         forecastedMonthlySavings: this.roundMoney(
@@ -494,14 +512,16 @@ export class GoalAchievementPredictionService {
    * Tìm milestone hiện tại (giai đoạn tháng đang active)
    */
   private findCurrentMilestone(
-    milestones: { startDate: Date; endDate: Date; target: number; actual: number }[] | undefined,
+    milestones:
+      | { startDate: Date; endDate: Date; target: number; actual: number }[]
+      | undefined,
     now: Date,
     savedAmount: number,
   ): CurrentMilestoneInfo | null {
     if (!milestones || milestones.length === 0) return null;
 
     const today = this.startOfDay(now);
-    
+
     // Tìm milestone có startDate <= today <= endDate
     const active = milestones.find((m) => {
       const start = this.startOfDay(new Date(m.startDate));
@@ -564,21 +584,23 @@ export class GoalAchievementPredictionService {
     // Nếu có milestone hiện tại, dùng logic dựa trên giai đoạn
     if (input.currentMilestone) {
       const { remaining, endDate, daysRemaining } = input.currentMilestone;
-      
+
       // Tính tốc độ tiết kiệm hàng ngày dựa trên forecastedMonthlySavings
       const dailySavingRate = input.monthlySavingRate / 30;
-      
+
       // Số tiền có thể tiết kiệm được trong số ngày còn lại của milestone
       const savingsInRemainingDays = dailySavingRate * daysRemaining;
-      
+
       if (savingsInRemainingDays >= remaining) {
         // Đủ tiền để hoàn thành milestone trong giai đoạn này
         const daysNeeded = Math.ceil(remaining / dailySavingRate);
         const predictedCompletionDate = this.addDays(input.now, daysNeeded);
         const daysDifference = Math.ceil(
-          (this.startOfDay(predictedCompletionDate).getTime() - endDate.getTime()) / this.dayMs,
+          (this.startOfDay(predictedCompletionDate).getTime() -
+            endDate.getTime()) /
+            this.dayMs,
         );
-        
+
         return {
           predictedDaysToComplete: daysNeeded,
           predictedCompletionDate,
@@ -589,9 +611,11 @@ export class GoalAchievementPredictionService {
         const daysNeeded = Math.ceil(remaining / dailySavingRate);
         const predictedCompletionDate = this.addDays(input.now, daysNeeded);
         const daysDifference = Math.ceil(
-          (this.startOfDay(predictedCompletionDate).getTime() - endDate.getTime()) / this.dayMs,
+          (this.startOfDay(predictedCompletionDate).getTime() -
+            endDate.getTime()) /
+            this.dayMs,
         );
-        
+
         return {
           predictedDaysToComplete: daysNeeded,
           predictedCompletionDate,

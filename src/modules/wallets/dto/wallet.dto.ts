@@ -1,5 +1,19 @@
 import { IsString, IsNumber, IsOptional, IsBoolean } from 'class-validator';
 
+export class CreateWalletDto {
+  @IsString()
+  @IsOptional()
+  name?: string;
+
+  @IsNumber()
+  @IsOptional()
+  balance?: number;
+
+  @IsNumber()
+  @IsOptional()
+  coupleId?: number;
+}
+
 export class UpdateWalletDto {
   @IsString()
   @IsOptional()

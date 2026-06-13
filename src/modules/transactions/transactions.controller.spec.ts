@@ -3,6 +3,7 @@ import { TransactionController } from './transactions.controller';
 import { TransactionService } from './transactions.service';
 import { TransactionExportService } from './transactions-export.service';
 import { TransactionStatisticsService } from './transactions-statistics.service';
+import { TransactionPrivacyService } from './transaction-privacy.service';
 
 describe('TransactionsController', () => {
   let controller: TransactionController;
@@ -37,6 +38,13 @@ describe('TransactionsController', () => {
             getTotalsByType: jest.fn(),
             sumByCategory: jest.fn(),
             getStatisticsSummary: jest.fn(),
+          },
+        },
+        {
+          provide: TransactionPrivacyService,
+          useValue: {
+            ensureCanAccessPersonalTransactions: jest.fn(),
+            ensureCanAccessCouple: jest.fn(),
           },
         },
       ],
