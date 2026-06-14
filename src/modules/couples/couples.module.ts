@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { JwtModule } from '@nestjs/jwt';
 import { Couple } from './entities/couple.entity';
 import { CoupleMember } from './entities/couple-member.entity';
 import { User } from 'src/modules/user/entities/user.entity';
@@ -23,6 +25,11 @@ import { Wallet } from '../wallets/entities/wallet.entity';
 import { SpendingPlansModule } from '../spending-plans/spending-plans.module';
 import { AiPredictionRun } from 'src/modules/analytics/entities/ai-prediction-run.entity';
 
+import { CoupleMessage } from './entities/couple-message.entity';
+import { CoupleChatService } from './couple-chat.service';
+import { CoupleChatController } from './couple-chat.controller';
+import { CoupleChatGateway } from './couple-chat.gateway';
+
 @Module({
   imports: [
     TypeOrmModule.forFeature([
@@ -37,26 +44,39 @@ import { AiPredictionRun } from 'src/modules/analytics/entities/ai-prediction-ru
       TransactionSplit,
       Wallet,
       AiPredictionRun,
+      CoupleMessage,
     ]),
     SpendingPlansModule,
+    ConfigModule,
+    JwtModule.registerAsync({
+      imports: [ConfigModule],
+      useFactory: (config: ConfigService) => ({
+        secret: config.get<string>('JWT_SECRET'),
+      }),
+      inject: [ConfigService],
+    }),
   ],
   controllers: [
     CouplesController,
     CoupleSavingsController,
     CoupleSettlementController,
     CoupleReportsController,
+    CoupleChatController,
   ],
   providers: [
     CouplesService,
     CoupleSavingsService,
     CoupleSettlementService,
     CoupleReportsService,
+    CoupleChatService,
+    CoupleChatGateway,
   ],
   exports: [
     CouplesService,
     CoupleSavingsService,
     CoupleSettlementService,
     CoupleReportsService,
+    CoupleChatService,
   ],
 })
 export class CouplesModule {}

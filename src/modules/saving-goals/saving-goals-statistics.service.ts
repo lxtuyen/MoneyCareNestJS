@@ -35,6 +35,24 @@ export class SavingGoalsStatisticsService {
     private readonly spendingPlansService: SpendingPlansService,
   ) {}
 
+  async getMilestonesForGoal(
+    goal: SavingGoal,
+  ): Promise<SavingGoalMilestone[]> {
+    const current_automated_balance = goal.wallet?.balance || 0;
+    const milestoneTransactions =
+      await this.fetchWalletTransactionsForMilestones(
+        goal.user.id,
+        goal.start_date || undefined,
+        goal.end_date || undefined,
+        goal.wallet?.id,
+      );
+    return this.calculateMilestones(
+      goal,
+      milestoneTransactions,
+      current_automated_balance,
+    );
+  }
+
   async getGoalReport(
     id: number,
     userId?: number,

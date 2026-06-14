@@ -30,6 +30,18 @@ export class GoalRecommendedActionDto {
   impactDays?: number;
 }
 
+export class GoalAchievementNextMonthPredictionDto {
+  targetAmount!: number;
+  savedAmount!: number;
+  remainingAmount!: number;
+  startDate!: string;
+  deadline!: string;
+  predictedCompletionDate!: string | null;
+  status!: GoalAchievementStatus;
+  riskLevel!: GoalAchievementRiskLevel;
+  daysDifference!: number | null;
+}
+
 export class GoalAchievementPredictionDto {
   goalId!: number;
   name!: string;
@@ -56,6 +68,7 @@ export class GoalAchievementPredictionDto {
   reasonCodes!: string[];
   recommendedActions!: GoalRecommendedActionDto[];
   supportingData!: Record<string, unknown>;
+  nextMonthPrediction!: GoalAchievementNextMonthPredictionDto | null;
 }
 
 export class GoalAchievementPredictionSummaryDto {

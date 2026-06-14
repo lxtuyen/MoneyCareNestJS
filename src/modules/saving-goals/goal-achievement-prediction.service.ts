@@ -13,6 +13,7 @@ import { PersonalFinanceProfile } from 'src/modules/personalization/entities/per
 import { PersonalizationService } from 'src/modules/personalization/personalization.service';
 import { SpendingPlansService } from 'src/modules/spending-plans/spending-plans.service';
 import { AnalyticsService } from '../analytics/analytics.service';
+import { SavingGoalsStatisticsService } from './saving-goals-statistics.service';
 import {
   BudgetExceedPredictionLite,
   computeForecastedMonthlySavings,
@@ -28,6 +29,7 @@ import {
   GoalAchievementRiskLevel,
   GoalAchievementStatus,
   GoalRecommendedActionDto,
+  GoalAchievementNextMonthPredictionDto,
 } from './dto/goal-achievement-prediction.dto';
 
 type SavingVelocitySource =
@@ -107,6 +109,7 @@ export class GoalAchievementPredictionService {
     private readonly spendingPlansService: SpendingPlansService,
     @Inject(forwardRef(() => AnalyticsService))
     private readonly analyticsService: AnalyticsService,
+    private readonly savingGoalsStatisticsService: SavingGoalsStatisticsService,
   ) {}
 
   async predictGoal(
@@ -128,7 +131,17 @@ export class GoalAchievementPredictionService {
     }
 
     const context = await this.buildUserContext(userId, [], false);
-    return this.calculatePrediction(goal, context, {}, milestones);
+    let calcMilestones = milestones;
+    if (!calcMilestones) {
+      const dbMilestones = await this.savingGoalsStatisticsService.getMilestonesForGoal(goal);
+      calcMilestones = dbMilestones.map((m) => ({
+        startDate: m.start_date,
+        endDate: m.end_date,
+        target: m.target,
+        actual: m.actual,
+      }));
+    }
+    return this.calculatePrediction(goal, context, {}, calcMilestones);
   }
 
   async predictGoalWithOverrides(
@@ -151,7 +164,17 @@ export class GoalAchievementPredictionService {
     }
 
     const context = await this.buildUserContext(userId, [], false);
-    return this.calculatePrediction(goal, context, overrides, milestones);
+    let calcMilestones = milestones;
+    if (!calcMilestones) {
+      const dbMilestones = await this.savingGoalsStatisticsService.getMilestonesForGoal(goal);
+      calcMilestones = dbMilestones.map((m) => ({
+        startDate: m.start_date,
+        endDate: m.end_date,
+        target: m.target,
+        actual: m.actual,
+      }));
+    }
+    return this.calculatePrediction(goal, context, overrides, calcMilestones);
   }
 
   async predictAllGoals(
@@ -165,8 +188,17 @@ export class GoalAchievementPredictionService {
     });
 
     const context = await this.buildUserContext(userId, goals, skipAiSnapshot);
-    const predictions = goals.map((goal) =>
-      this.calculatePrediction(goal, context),
+    const predictions = await Promise.all(
+      goals.map(async (goal) => {
+        const dbMilestones = await this.savingGoalsStatisticsService.getMilestonesForGoal(goal);
+        const calcMilestones = dbMilestones.map((m) => ({
+          startDate: m.start_date,
+          endDate: m.end_date,
+          target: m.target,
+          actual: m.actual,
+        }));
+        return this.calculatePrediction(goal, context, {}, calcMilestones);
+      }),
     );
 
     return {
@@ -431,6 +463,82 @@ export class GoalAchievementPredictionService {
       context,
     });
 
+    let nextMonthPrediction: GoalAchievementNextMonthPredictionDto | null = null;
+
+    if (currentMilestone && milestones && milestones.length > 0) {
+      const isCurrentMilestoneCompleted = currentMilestone.actual >= currentMilestone.target;
+      if (isCurrentMilestoneCompleted) {
+        // Find next milestone
+        const activeIndex = milestones.findIndex((m) => {
+          const start = this.startOfDay(new Date(m.startDate));
+          const end = this.startOfDay(new Date(m.endDate));
+          return start <= this.startOfDay(now) && this.startOfDay(now) <= end;
+        });
+
+        if (activeIndex !== -1 && activeIndex + 1 < milestones.length) {
+          const nextMilestone = milestones[activeIndex + 1];
+          const nextTargetAmount = this.roundMoney(Number(nextMilestone.target ?? 0));
+          
+          // Calculate surplus from current milestone
+          const surplus = Math.max(0, currentMilestone.actual - currentMilestone.target);
+          const nextSavedAmount = this.roundMoney(surplus);
+          const nextRemainingAmount = Math.max(0, nextTargetAmount - nextSavedAmount);
+          
+          // Next milestone dates
+          const nextStartDate = new Date(nextMilestone.startDate);
+          const nextEndDate = new Date(nextMilestone.endDate);
+          
+          // Calculate completion prediction starting from today (now)
+          let nextPredictedCompletionDate: Date | null = null;
+          let nextDaysDifference: number | null = null;
+          
+          const dailySavingRate = velocity.currentMonthlySavingRate / 30;
+          
+          if (nextRemainingAmount <= 0) {
+            nextPredictedCompletionDate = now;
+          } else if (dailySavingRate > 0) {
+            const nextDaysNeeded = Math.ceil(nextRemainingAmount / dailySavingRate);
+            nextPredictedCompletionDate = this.addDays(now, nextDaysNeeded);
+          }
+          
+          if (nextPredictedCompletionDate) {
+            const nextDeadlineOfDay = this.startOfDay(nextEndDate);
+            nextDaysDifference = Math.ceil(
+              (this.startOfDay(nextPredictedCompletionDate).getTime() - nextDeadlineOfDay.getTime()) / this.dayMs,
+            );
+          }
+          
+          const nextDaysRemainingToDeadline = Math.ceil(
+            (this.startOfDay(nextEndDate).getTime() - this.startOfDay(now).getTime()) / this.dayMs,
+          );
+          
+          const nextStatus = this.resolveGoalStatus({
+            remainingAmount: nextRemainingAmount,
+            daysRemainingToDeadline: nextDaysRemainingToDeadline,
+            currentMonthlySavingRate: velocity.currentMonthlySavingRate,
+            daysDifference: nextDaysDifference,
+            hasDeadline: true,
+          });
+          
+          const nextRiskLevel = this.resolveRiskLevel(nextStatus);
+          
+          nextMonthPrediction = {
+            targetAmount: nextTargetAmount,
+            savedAmount: nextSavedAmount,
+            remainingAmount: this.roundMoney(nextRemainingAmount),
+            startDate: this.formatDate(nextStartDate),
+            deadline: this.formatDate(nextEndDate),
+            predictedCompletionDate: nextPredictedCompletionDate
+              ? this.formatDate(nextPredictedCompletionDate)
+              : null,
+            status: nextStatus,
+            riskLevel: nextRiskLevel,
+            daysDifference: nextDaysDifference,
+          };
+        }
+      }
+    }
+
     return {
       goalId: goal.id,
       name: goal.name,
@@ -507,6 +615,7 @@ export class GoalAchievementPredictionService {
         ...(planScenario ?? {}),
         activeMonths: Math.round(context.activeMonths * 10) / 10,
       },
+      nextMonthPrediction,
     };
   }
 
