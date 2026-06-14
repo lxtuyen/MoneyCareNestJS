@@ -127,7 +127,7 @@ export class GoalAchievementPredictionService {
       throw new NotFoundException('Saving goal not found');
     }
 
-    const context = await this.buildUserContext(userId);
+    const context = await this.buildUserContext(userId, [], false);
     return this.calculatePrediction(goal, context, {}, milestones);
   }
 
@@ -150,12 +150,13 @@ export class GoalAchievementPredictionService {
       throw new NotFoundException('Saving goal not found');
     }
 
-    const context = await this.buildUserContext(userId);
+    const context = await this.buildUserContext(userId, [], false);
     return this.calculatePrediction(goal, context, overrides, milestones);
   }
 
   async predictAllGoals(
     userId: number,
+    skipAiSnapshot = false,
   ): Promise<GoalAchievementPredictionSummaryDto> {
     const goals = await this.goalRepo.find({
       where: { user: { id: userId }, is_completed: false },
@@ -163,7 +164,7 @@ export class GoalAchievementPredictionService {
       order: { updated_at: 'DESC' },
     });
 
-    const context = await this.buildUserContext(userId, ...goals);
+    const context = await this.buildUserContext(userId, goals, skipAiSnapshot);
     const predictions = goals.map((goal) =>
       this.calculatePrediction(goal, context),
     );
@@ -185,7 +186,8 @@ export class GoalAchievementPredictionService {
 
   private async buildUserContext(
     userId: number,
-    ...goals: SavingGoal[]
+    goals: SavingGoal[],
+    skipAiSnapshot = false,
   ): Promise<UserPredictionContext> {
     const periodStart = getVietnamNow();
     periodStart.setDate(periodStart.getDate() - 180);
@@ -216,12 +218,16 @@ export class GoalAchievementPredictionService {
             relations: ['wallet', 'user'],
           }),
       this.spendingPlansService.getActiveStatistics(userId),
-      this.analyticsService.fetchAiBudgetingSnapshot(userId).catch((error) => {
-        this.logger.warn(
-          `Cannot load budgeting snapshot for goal prediction: ${error.message}`,
-        );
-        return null;
-      }),
+      skipAiSnapshot
+        ? Promise.resolve(null)
+        : this.analyticsService
+            .fetchAiBudgetingSnapshot(userId)
+            .catch((error) => {
+              this.logger.warn(
+                `Cannot load budgeting snapshot for goal prediction: ${error.message}`,
+              );
+              return null;
+            }),
       // Lấy tất cả ví đang active của user để tìm ví dư
       this.transactionRepo.manager
         .getRepository(Wallet)
@@ -364,11 +370,7 @@ export class GoalAchievementPredictionService {
       : null;
 
     // Tìm milestone hiện tại (giai đoạn tháng hiện tại)
-    const currentMilestone = this.findCurrentMilestone(
-      milestones,
-      now,
-      savedAmount,
-    );
+    const currentMilestone = this.findCurrentMilestone(milestones, now);
 
     const requiredRates = this.calculateRequiredSavingRates(
       remainingAmount,
@@ -516,7 +518,6 @@ export class GoalAchievementPredictionService {
       | { startDate: Date; endDate: Date; target: number; actual: number }[]
       | undefined,
     now: Date,
-    savedAmount: number,
   ): CurrentMilestoneInfo | null {
     if (!milestones || milestones.length === 0) return null;
 

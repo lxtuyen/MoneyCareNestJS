@@ -307,7 +307,11 @@ export class TransactionService {
     return new ApiResponse({
       success: true,
       statusCode: HttpStatus.OK,
-      data: this.mapTransactionResponse(savedTransaction, requestUserId, !!dto.coupleId),
+      data: this.mapTransactionResponse(
+        savedTransaction,
+        requestUserId,
+        !!dto.coupleId,
+      ),
     });
   }
 
@@ -614,7 +618,11 @@ export class TransactionService {
     return new ApiResponse({
       success: true,
       statusCode: HttpStatus.OK,
-      data: this.mapTransactionResponse(savedTransaction, userId, !!savedTransaction.coupleId),
+      data: this.mapTransactionResponse(
+        savedTransaction,
+        userId,
+        !!savedTransaction.coupleId,
+      ),
     });
   }
 
@@ -698,10 +706,18 @@ export class TransactionService {
       statusCode: HttpStatus.OK,
       data: {
         income: income.map((transaction) =>
-          this.mapTransactionResponse(transaction, requestingUserId, isCoupleSpaceQuery),
+          this.mapTransactionResponse(
+            transaction,
+            requestingUserId,
+            isCoupleSpaceQuery,
+          ),
         ),
         expense: expense.map((transaction) =>
-          this.mapTransactionResponse(transaction, requestingUserId, isCoupleSpaceQuery),
+          this.mapTransactionResponse(
+            transaction,
+            requestingUserId,
+            isCoupleSpaceQuery,
+          ),
         ),
       },
     });

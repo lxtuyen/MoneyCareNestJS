@@ -155,6 +155,7 @@ export class AnalyticsPredictionService {
         recommendedTotalBudget: budgeting.recommendedTotalBudget,
         expectedSavingsAmount: budgeting.expectedSavingsAmount,
         items: budgeting.items,
+        budgetExceedPredictions: budgeting.budgetExceedPredictions,
       };
       existing.confidence =
         budgeting.confidence || budgeting.items?.[0]?.confidence || 0;
@@ -190,6 +191,7 @@ export class AnalyticsPredictionService {
         recommendedTotalBudget: budgeting.recommendedTotalBudget,
         expectedSavingsAmount: budgeting.expectedSavingsAmount,
         items: budgeting.items,
+        budgetExceedPredictions: budgeting.budgetExceedPredictions,
       },
       inputSnapshot: metadata,
       confidence: budgeting.confidence || budgeting.items?.[0]?.confidence || 0,

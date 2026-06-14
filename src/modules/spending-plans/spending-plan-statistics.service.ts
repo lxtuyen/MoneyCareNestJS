@@ -289,6 +289,7 @@ export class SpendingPlanStatisticsService {
     daysInMonth: number;
     currentDay: number;
     daysLeft: number;
+    spentAmount?: number;
     estimatedExpenses: Array<{
       categoryId?: number;
       categoryName: string;
@@ -345,6 +346,7 @@ export class SpendingPlanStatisticsService {
       daysInMonth,
       currentDay,
       daysLeft,
+      spentAmount: context.spentAmount,
       estimatedExpenses: context.planItems.map((item) => ({
         categoryId: item.category?.id,
         categoryName: item.category?.name ?? 'Khoản chi',

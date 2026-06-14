@@ -255,6 +255,7 @@ export class AnalyticsPayloadBuilderService {
     try {
       return await this.goalAchievementPredictionService.predictAllGoals(
         userId,
+        true, // skipAiSnapshot
       );
     } catch (error) {
       this.logger.warn(

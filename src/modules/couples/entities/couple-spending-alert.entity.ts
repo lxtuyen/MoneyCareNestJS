@@ -58,6 +58,22 @@ export class CoupleSpendingAlert {
   @Column({ type: 'decimal', precision: 15, scale: 2, nullable: true })
   amount?: number | null;
 
+  @Column({ type: 'jsonb', nullable: true })
+  details?: {
+    exceededCategories?: string[];
+    atRiskCategories?: string[];
+    anomalies?: Array<{
+      id: number;
+      categoryName: string;
+      amount: number;
+      date: string;
+      note: string;
+    }>;
+    projectedSaving?: number;
+    savingGoalImpacts?: string[];
+    impactsGoals?: boolean;
+  } | null;
+
   @Column({ default: false })
   isRead!: boolean;
 

@@ -62,6 +62,13 @@ export class CoupleSavingGoal {
   })
   status!: string;
 
+  @Column({
+    type: 'boolean',
+    default: false,
+    name: 'completion_notified',
+  })
+  completion_notified!: boolean;
+
   @OneToMany(
     () => CoupleSavingGoalContribution,
     (contrib) => contrib.savingGoal,

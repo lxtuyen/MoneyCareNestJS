@@ -5,7 +5,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Between, LessThanOrEqual, Repository } from 'typeorm';
-import { getVietnamMonthRange } from 'src/common/utils/date.util';
+import { getVietnamMonthRange, setStartOfDay, setEndOfDay, getDaysDiff } from 'src/common/utils/date.util';
 import { Transaction } from 'src/modules/transactions/entities/transaction.entity';
 import { CoupleSavingGoal } from './entities/couple-saving-goal.entity';
 import { CoupleMember } from './entities/couple-member.entity';
@@ -13,6 +13,8 @@ import { CoupleSpendingAlert } from './entities/couple-spending-alert.entity';
 import { UpdateCoupleAlertDto } from './dto/couple-report.dto';
 import { ApiResponse } from 'src/common/dto/api-response.dto';
 import { ok } from 'src/common/utils/response.util';
+import { SpendingPlanStatisticsService } from '../spending-plans/spending-plan-statistics.service';
+import { AiPredictionRun } from 'src/modules/analytics/entities/ai-prediction-run.entity';
 
 type AlertDraft = Pick<
   CoupleSpendingAlert,
@@ -25,6 +27,7 @@ type AlertDraft = Pick<
   | 'transactionId'
   | 'categoryId'
   | 'amount'
+  | 'details'
 >;
 
 @Injectable()
@@ -38,6 +41,9 @@ export class CoupleReportsService {
     private readonly coupleMemberRepo: Repository<CoupleMember>,
     @InjectRepository(CoupleSpendingAlert)
     private readonly alertRepo: Repository<CoupleSpendingAlert>,
+    @InjectRepository(AiPredictionRun)
+    private readonly predictionRunRepo: Repository<AiPredictionRun>,
+    private readonly spendingPlanStatsService: SpendingPlanStatisticsService,
   ) {}
 
   async getReport(
@@ -57,6 +63,7 @@ export class CoupleReportsService {
           where: {
             coupleId,
             transaction_date: Between(start, end),
+            isTransfer: false,
           },
           relations: [
             'category',
@@ -72,6 +79,7 @@ export class CoupleReportsService {
             coupleId,
             transaction_date: Between(historyStart, end),
             type: 'expense',
+            isTransfer: false,
           },
           relations: ['category'],
           order: { transaction_date: 'DESC' },
@@ -95,6 +103,8 @@ export class CoupleReportsService {
       transactions,
       historyTransactions,
       budgets,
+      members,
+      savingGoals,
     );
 
     const summary = this.buildSummary(transactions, month);
@@ -105,7 +115,9 @@ export class CoupleReportsService {
     );
     const budgetProgress = this.buildBudgetProgress(transactions, budgets);
     const savingProgress = savingGoals.map((goal) => {
-      const displaySavedAmount = goal.wallet ? Number(goal.wallet.balance) : Number(goal.saved_amount ?? 0);
+      const displaySavedAmount = goal.wallet
+        ? Number(goal.wallet.balance)
+        : Number(goal.saved_amount ?? 0);
       return {
         id: goal.id,
         name: goal.name,
@@ -113,10 +125,7 @@ export class CoupleReportsService {
         savedAmount: displaySavedAmount,
         progress:
           Number(goal.target ?? 0) > 0
-            ? Math.min(
-                100,
-                (displaySavedAmount / Number(goal.target)) * 100,
-              )
+            ? Math.min(100, (displaySavedAmount / Number(goal.target)) * 100)
             : 0,
         status: goal.status,
         endDate: goal.end_date,
@@ -281,10 +290,7 @@ export class CoupleReportsService {
     }));
   }
 
-  private buildBudgetProgress(
-    transactions: Transaction[],
-    budgets: any[],
-  ) {
+  private buildBudgetProgress(transactions: Transaction[], budgets: any[]) {
     return budgets.map((budget) => {
       const spentAmount = this.sum(
         transactions.filter(
@@ -412,20 +418,48 @@ export class CoupleReportsService {
     transactions: Transaction[],
     historyTransactions: Transaction[],
     budgets: any[],
+    members: CoupleMember[],
+    savingGoals: CoupleSavingGoal[],
   ): Promise<CoupleSpendingAlert[]> {
-    const drafts = this.buildAlertDrafts(
+    const drafts = await this.buildAlertDrafts(
       coupleId,
       month,
       transactions,
       historyTransactions,
       budgets,
+      members,
+      savingGoals,
     );
 
     for (const draft of drafts) {
       const existing = await this.alertRepo.findOne({
         where: { coupleId, alertKey: draft.alertKey },
       });
-      if (existing) continue;
+      if (existing) {
+        if (draft.type === 'personal_budget_risk') {
+          const hasChanges =
+            existing.message !== draft.message ||
+            existing.severity !== draft.severity ||
+            Number(existing.amount) !== Number(draft.amount) ||
+            JSON.stringify(existing.details) !== JSON.stringify(draft.details);
+
+          if (hasChanges) {
+            const shouldResetRead =
+              (existing.severity !== 'high' && draft.severity === 'high') ||
+              Number(draft.amount) > Number(existing.amount);
+
+            existing.message = draft.message;
+            existing.severity = draft.severity;
+            existing.amount = draft.amount;
+            existing.details = draft.details;
+            if (shouldResetRead) {
+              existing.isRead = false;
+            }
+            await this.alertRepo.save(existing);
+          }
+        }
+        continue;
+      }
       await this.alertRepo.save(this.alertRepo.create(draft));
     }
 
@@ -440,13 +474,15 @@ export class CoupleReportsService {
     });
   }
 
-  private buildAlertDrafts(
+  private async buildAlertDrafts(
     coupleId: number,
     month: string,
     transactions: Transaction[],
     historyTransactions: Transaction[],
     budgets: any[],
-  ): AlertDraft[] {
+    members: CoupleMember[],
+    savingGoals: CoupleSavingGoal[],
+  ): Promise<AlertDraft[]> {
     const drafts: AlertDraft[] = [];
     const expenses = transactions.filter((item) => item.type === 'expense');
     const categoryStats = this.buildCategoryStats(historyTransactions);
@@ -471,6 +507,7 @@ export class CoupleReportsService {
           transactionId: transaction.id,
           categoryId: transaction.category?.id ?? null,
           amount: Number(transaction.amount),
+          details: null,
         });
       }
     }
@@ -491,6 +528,7 @@ export class CoupleReportsService {
           transactionId: null,
           categoryId: budget.categoryId,
           amount: spent - amount,
+          details: null,
         });
       }
     }
@@ -517,7 +555,428 @@ export class CoupleReportsService {
         transactionId: list[0].id,
         categoryId: list[0].category?.id ?? null,
         amount: this.sum(list),
+        details: null,
       });
+    }
+
+    // New Personal Budget Warning & Impact on Couple Savings Goals
+    const { start, end } = this.getMonthRange(month);
+
+    for (const member of members) {
+      const stats =
+        await this.spendingPlanStatsService.getMonthlySavingCapacity(
+          member.userId,
+        );
+      if (!stats) continue;
+
+      // Check if there is an AI prediction run for this user for the current month
+      const latestForecast = await this.predictionRunRepo.findOne({
+        where: {
+          userId: member.userId,
+          modelType: 'forecasting',
+          predictionTargetStart: Between(start, end),
+        },
+        order: {
+          createdAt: 'DESC',
+        },
+      });
+
+      const latestBudgeting = await this.predictionRunRepo.findOne({
+        where: {
+          userId: member.userId,
+          modelType: 'budgeting',
+          predictionTargetStart: Between(start, end),
+        },
+        order: {
+          createdAt: 'DESC',
+        },
+      });
+
+      const predictionPayload = latestForecast?.predictionPayload as
+        | Record<string, unknown>
+        | undefined;
+      const totalForecast =
+        predictionPayload &&
+        (typeof predictionPayload.totalForecast === 'number' ||
+          typeof predictionPayload.totalForecast === 'string')
+          ? Number(predictionPayload.totalForecast)
+          : null;
+
+      let projectedEndBalance: number;
+
+      if (totalForecast !== null) {
+        let categoryForecastSum = 0;
+        if (predictionPayload && Array.isArray(predictionPayload.categoryForecasts)) {
+          const plannedCategoryNames = new Set(
+            stats.estimatedExpenses.map((item) =>
+              item.categoryName.trim().toLowerCase(),
+            ),
+          );
+          for (const catF of predictionPayload.categoryForecasts) {
+            const name = String(catF.categoryName || '').trim().toLowerCase();
+            if (plannedCategoryNames.has(name)) {
+              categoryForecastSum += Number(catF.predictedAmount ?? catF.predicted_amount ?? 0);
+            }
+          }
+        }
+        const finalForecast = categoryForecastSum > 0 ? categoryForecastSum : totalForecast;
+        projectedEndBalance = Number(stats.totalAmount ?? 0) - finalForecast;
+      } else {
+        // Fallback calculations: Math.max(limit, spent) for planned categories, plus unplanned daily average projection
+        const plannedSpentAmount = stats.estimatedExpenses.reduce(
+          (sum, item) => sum + item.spentThisMonth,
+          0,
+        );
+        const spentAmount = stats.spentAmount ?? plannedSpentAmount;
+        const unplannedSpentAmount = Math.max(
+          0,
+          spentAmount - plannedSpentAmount,
+        );
+
+        const currentDay = stats.currentDay || 1;
+        const avgDailyUnplanned = unplannedSpentAmount / currentDay;
+        const projectedUnplannedSpending =
+          avgDailyUnplanned * stats.daysInMonth;
+
+        const projectedPlannedSpending = stats.estimatedExpenses.reduce(
+          (sum, item) => sum + Math.max(item.monthlyLimit, item.spentThisMonth),
+          0,
+        );
+
+        const projectedMonthlySpending =
+          projectedPlannedSpending + projectedUnplannedSpending;
+        projectedEndBalance =
+          Number(stats.totalAmount ?? 0) - projectedMonthlySpending;
+      }
+
+      let projectedOverspent = 0;
+      let hasAiBudgeting = false;
+
+      if (latestBudgeting?.predictionPayload) {
+        const payload = latestBudgeting.predictionPayload as any;
+        const predictions = payload.budgetExceedPredictions || [];
+        if (predictions.length > 0) {
+          hasAiBudgeting = true;
+          for (const pred of predictions) {
+            const exceedAmt = Number(pred.exceedAmount ?? pred.exceed_amount ?? 0);
+            if (exceedAmt > 0) {
+              projectedOverspent += exceedAmt;
+            }
+          }
+        }
+      }
+
+      if (!hasAiBudgeting) {
+        // Build category forecast map from forecasting run if available
+        const categoryForecastMap = new Map<string, number>();
+        if (latestForecast?.predictionPayload) {
+          const payload = latestForecast.predictionPayload as any;
+          const categoryForecasts = payload.categoryForecasts || [];
+          for (const catF of categoryForecasts) {
+            if (catF.categoryName) {
+              const normName = String(catF.categoryName).trim().toLowerCase();
+              const predictedAmt = Number(catF.predictedAmount ?? catF.predicted_amount ?? 0);
+              categoryForecastMap.set(normName, predictedAmt);
+            }
+          }
+        }
+
+        const currentDay = stats.currentDay || 1;
+        const daysInMonth = stats.daysInMonth || 30;
+
+        for (const item of stats.estimatedExpenses) {
+          const limit = Number(item.monthlyLimit ?? 0);
+          if (limit <= 0) continue;
+
+          let projectedSpent = 0;
+          const normName = String(item.categoryName || '').trim().toLowerCase();
+
+          if (categoryForecastMap.has(normName)) {
+            projectedSpent = categoryForecastMap.get(normName)!;
+          } else {
+            projectedSpent = (item.spentThisMonth / currentDay) * daysInMonth;
+          }
+
+          const exceed = projectedSpent - limit;
+          if (exceed > 0) {
+            projectedOverspent += exceed;
+          }
+        }
+      }
+
+      if (projectedOverspent > 0) {
+        const memberName = this.getUserName(member);
+
+        // Fetch personal transactions of this member for current month
+        const personalTransactions = await this.transactionRepo.find({
+          where: {
+            user: { id: member.userId },
+            transaction_date: Between(start, end),
+            type: 'expense',
+            isTransfer: false,
+          },
+          relations: ['category'],
+        });
+
+        // Fetch personal transactions of this member for the last 6 months (historical statistics)
+        const { start: monthStart } = this.getMonthRange(month);
+        const personalHistoryStart = new Date(monthStart);
+        personalHistoryStart.setMonth(personalHistoryStart.getMonth() - 6);
+
+        const personalHistoryTransactions = await this.transactionRepo.find({
+          where: {
+            user: { id: member.userId },
+            transaction_date: Between(personalHistoryStart, end),
+            type: 'expense',
+            isTransfer: false,
+          },
+          relations: ['category'],
+        });
+
+        // Build category stats for this member
+        const personalCategoryStats = this.buildCategoryStats(personalHistoryTransactions);
+        const personalAnomalies: Transaction[] = [];
+        for (const transaction of personalTransactions) {
+          const categoryId = transaction.category?.id ?? 0;
+          const catStats = personalCategoryStats.get(categoryId);
+          if (!catStats || catStats.count < 3) continue;
+          const threshold = Math.max(
+            catStats.average * 2.5,
+            catStats.average + catStats.stdDev * 2,
+          );
+          if (Number(transaction.amount) > threshold) {
+            personalAnomalies.push(transaction);
+          }
+        }
+
+        // Determine exceeded/will-exceed budget categories
+        const exceededCategories: string[] = [];
+        const atRiskCategories: string[] = [];
+        if (latestBudgeting?.predictionPayload) {
+          const payload = latestBudgeting.predictionPayload as any;
+          const predictions = payload.budgetExceedPredictions || [];
+          for (const pred of predictions) {
+            const limit = Number(pred.limitAmount ?? pred.limit_amount ?? 0);
+            const spent = Number(pred.actualAmount ?? pred.actual_amount ?? 0);
+            const exceedAmt = Number(pred.exceedAmount ?? pred.exceed_amount ?? 0);
+            if (spent > limit) {
+              exceededCategories.push(pred.categoryName);
+            } else if (pred.willExceed && exceedAmt > 0) {
+              atRiskCategories.push(pred.categoryName);
+            }
+          }
+        }
+
+        if (exceededCategories.length === 0 && atRiskCategories.length === 0) {
+          // Fallback to estimatedExpenses comparison
+          const currentDay = stats.currentDay || 1;
+          const daysInMonth = stats.daysInMonth || 30;
+
+          // Build category forecast map from forecasting run if available
+          const categoryForecastMap = new Map<string, number>();
+          if (latestForecast?.predictionPayload) {
+            const payload = latestForecast.predictionPayload as any;
+            const categoryForecasts = payload.categoryForecasts || [];
+            for (const catF of categoryForecasts) {
+              if (catF.categoryName) {
+                const normName = String(catF.categoryName).trim().toLowerCase();
+                const predictedAmt = Number(catF.predictedAmount ?? catF.predicted_amount ?? 0);
+                categoryForecastMap.set(normName, predictedAmt);
+              }
+            }
+          }
+
+          for (const item of stats.estimatedExpenses) {
+            const limit = Number(item.monthlyLimit ?? 0);
+            if (limit <= 0) continue;
+
+            let projectedSpent = 0;
+            const normName = String(item.categoryName || '').trim().toLowerCase();
+
+            if (categoryForecastMap.has(normName)) {
+              projectedSpent = categoryForecastMap.get(normName)!;
+            } else {
+              projectedSpent = (item.spentThisMonth / currentDay) * daysInMonth;
+            }
+
+            if (item.spentThisMonth > limit) {
+              exceededCategories.push(item.categoryName);
+            } else if (projectedSpent > limit) {
+              atRiskCategories.push(item.categoryName);
+            }
+          }
+        }
+
+        let impactsGoals = false;
+        const goalImpactDetails: string[] = [];
+
+        // Active couple saving goals
+        const activeGoals = savingGoals.filter(
+          (g) => g.status === 'active' && g.walletId !== null,
+        );
+
+        for (const goal of activeGoals) {
+          const displaySavedAmount = goal.wallet
+            ? Number(goal.wallet.balance)
+            : Number(goal.saved_amount ?? 0);
+          const remainingAmount = Number(goal.target ?? 0) - displaySavedAmount;
+          if (remainingAmount <= 0) continue;
+
+          let perPersonMonthly = 0;
+
+          if (goal.end_date) {
+            const start = setStartOfDay(goal.createdAt);
+            const end = setEndOfDay(goal.end_date);
+
+            const totalDays = Math.max(1, getDaysDiff(end, start));
+            const milestoneDates: Date[] = [];
+            const current = new Date(start);
+
+            milestoneDates.push(new Date(start));
+
+            let nextMonth = new Date(current.getFullYear(), current.getMonth() + 1, 1);
+            while (nextMonth < end) {
+              milestoneDates.push(new Date(nextMonth));
+              nextMonth = new Date(
+                nextMonth.getFullYear(),
+                nextMonth.getMonth() + 1,
+                1,
+              );
+            }
+
+            milestoneDates.push(new Date(end));
+
+            const totalTarget = Number(goal.target ?? 0);
+            const milestoneResults: { start_date: Date; end_date: Date; target: number; actual: number }[] = [];
+            const now = new Date();
+
+            // Fetch transactions for this goal's wallet
+            const walletTransactions = await this.transactionRepo.find({
+              where: { wallet: { id: goal.walletId as number } },
+            });
+
+            for (let i = 0; i < milestoneDates.length - 1; i++) {
+              const mStart = milestoneDates[i];
+              const mEnd = milestoneDates[i + 1];
+
+              const segmentDays = getDaysDiff(mEnd, mStart);
+              const targetPerMilestone = (segmentDays / totalDays) * totalTarget;
+
+              const isCurrentMilestone = now >= mStart && now < mEnd;
+              const isPastMilestone = mEnd <= now;
+
+              let actual: number;
+
+              if (isCurrentMilestone) {
+                actual = displaySavedAmount;
+              } else if (isPastMilestone) {
+                const mTransactions = walletTransactions.filter(
+                  (t) => t.transaction_date >= mStart && t.transaction_date < mEnd,
+                );
+                const income = mTransactions
+                  .filter((t) => t.type === 'income')
+                  .reduce((sum, t) => sum + Number(t.amount), 0);
+                const expense = mTransactions
+                  .filter((t) => t.type === 'expense')
+                  .reduce((sum, t) => sum + Number(t.amount), 0);
+                actual = income - expense;
+              } else {
+                actual = 0;
+              }
+
+              milestoneResults.push({
+                start_date: mStart,
+                end_date: mEnd,
+                target: Math.round(targetPerMilestone),
+                actual: Math.round(actual),
+              });
+            }
+
+            // Find current active milestone
+            const activeMilestone = milestoneResults.find(
+              (m) => now >= m.start_date && now < m.end_date,
+            );
+
+            if (activeMilestone) {
+              const milestoneRemaining = Math.max(0, activeMilestone.target - activeMilestone.actual);
+              perPersonMonthly = milestoneRemaining / 2;
+            } else {
+              // Fallback to simple monthly division if no active milestone found
+              const fromYear = now.getFullYear();
+              const fromMonth = now.getMonth() + 1;
+              let monthsRemaining = 1;
+              const endYear = goal.end_date.getFullYear();
+              const endMonth = goal.end_date.getMonth() + 1;
+              const months = (endYear - fromYear) * 12 + (endMonth - fromMonth);
+              monthsRemaining = months;
+              if (now.getDate() > goal.end_date.getDate()) {
+                monthsRemaining--;
+              }
+              if (monthsRemaining < 1) monthsRemaining = 1;
+
+              const monthlyRequired = remainingAmount / monthsRemaining;
+              perPersonMonthly = monthlyRequired / 2;
+            }
+          } else {
+            // Fallback if no end_date
+            perPersonMonthly = remainingAmount / 2;
+          }
+
+          if (projectedEndBalance < perPersonMonthly) {
+            impactsGoals = true;
+            const shortage =
+              perPersonMonthly - Math.max(0, projectedEndBalance);
+            goalImpactDetails.push(
+              ``,
+            );
+          }
+        }
+
+        const severity = impactsGoals ? 'high' : 'medium';
+        let message = `Dự kiến ${memberName} sẽ chi tiêu vượt ngân sách cá nhân khoảng ${Math.round(projectedOverspent).toLocaleString('vi-VN')} đ trong tháng này.`;
+        if (exceededCategories.length > 0) {
+          message += ` Các danh mục vượt ngân sách: ${exceededCategories.join(', ')}.`;
+        }
+        if (atRiskCategories.length > 0) {
+          message += ` Các danh mục có nguy cơ vượt ngân sách: ${atRiskCategories.join(', ')}.`;
+        }
+        if (personalAnomalies.length > 0) {
+          const sorted = [...personalAnomalies].sort((a, b) => Number(b.amount) - Number(a.amount));
+          const listStr = sorted.slice(0, 3).map(t => `${t.category?.name ?? 'Chi tiêu'}: ${Number(t.amount).toLocaleString('vi-VN')} đ`).join(', ');
+          message += ` Phát hiện giao dịch lớn bất thường: ${listStr}.`;
+        }
+        if (impactsGoals) {
+          message += ` Việc này gây ảnh hưởng đến khả năng đóng góp cho: ${goalImpactDetails.join(', ')}.`;
+        } else {
+          message += ``;
+        }
+
+        drafts.push({
+          coupleId,
+          alertKey: `personal-budget-risk:${member.userId}:${month}`,
+          type: 'personal_budget_risk',
+          severity,
+          title: `Cảnh báo ngân sách: ${memberName}`,
+          message,
+          amount: projectedOverspent,
+          transactionId: null,
+          categoryId: null,
+          details: {
+            exceededCategories,
+            atRiskCategories,
+            anomalies: personalAnomalies.map((t) => ({
+              id: t.id,
+              categoryName: t.category?.name ?? 'Chi tiêu',
+              amount: Number(t.amount),
+              date: t.transaction_date.toISOString(),
+              note: t.note || '',
+            })),
+            projectedSaving: Math.round(projectedEndBalance),
+            savingGoalImpacts: goalImpactDetails,
+            impactsGoals,
+          },
+        });
+      }
     }
 
     return drafts;
@@ -568,6 +1027,7 @@ export class CoupleReportsService {
       status: alert.status,
       feedback: alert.feedback,
       createdAt: alert.createdAt,
+      details: alert.details ?? null,
     };
   }
 

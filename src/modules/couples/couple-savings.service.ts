@@ -63,28 +63,32 @@ export class CoupleSavingsService {
   }
 
   private buildMemberContributions(
+    members: CoupleMember[],
     contributions: CoupleSavingGoalContribution[],
   ): MemberContribution[] {
-    const grouped = contributions.reduce(
+    const contribsByUser = contributions.reduce(
       (acc, curr) => {
-        const userId = curr.userId;
-        const fullName =
-          [curr.user?.profile?.first_name, curr.user?.profile?.last_name]
-            .filter(Boolean)
-            .join(' ') ||
-          curr.user?.email ||
-          `User ${userId}`;
-
-        if (!acc[userId]) {
-          acc[userId] = { userId, fullName, amount: 0 };
-        }
-        acc[userId].amount += Number(curr.amount);
+        acc[curr.userId] = (acc[curr.userId] || 0) + Number(curr.amount);
         return acc;
       },
-      {} as Record<number, MemberContribution>,
+      {} as Record<number, number>,
     );
 
-    return Object.values(grouped);
+    return members.map((member) => {
+      const userId = member.userId;
+      const fullName =
+        [member.user?.profile?.first_name, member.user?.profile?.last_name]
+          .filter(Boolean)
+          .join(' ') ||
+        member.user?.email ||
+        `User ${userId}`;
+
+      return {
+        userId,
+        fullName,
+        amount: contribsByUser[userId] || 0,
+      };
+    });
   }
 
   async create(
@@ -129,19 +133,33 @@ export class CoupleSavingsService {
       order: { createdAt: 'DESC' },
     });
 
+    const members = await this.coupleMemberRepo.find({
+      where: { coupleId },
+      relations: ['user', 'user.profile'],
+    });
+
     const result: any[] = [];
     for (const goal of goals) {
+      if (goal.wallet && !goal.wallet.is_active) {
+        goal.wallet = null;
+        goal.walletId = null;
+      }
       const contributions = await this.contributionRepo.find({
         where: { savingGoalId: goal.id },
         relations: ['user', 'user.profile'],
       });
 
-      const displaySavedAmount = goal.wallet ? Number(goal.wallet.balance) : Number(goal.saved_amount);
+      const displaySavedAmount = goal.wallet
+        ? Number(goal.wallet.balance)
+        : Number(goal.saved_amount);
 
       result.push({
         ...goal,
         saved_amount: displaySavedAmount,
-        memberContributions: this.buildMemberContributions(contributions),
+        memberContributions: this.buildMemberContributions(
+          members,
+          contributions,
+        ),
         contributions: contributions.map((contribution) => ({
           id: contribution.id,
           amount: Number(contribution.amount),
@@ -171,8 +189,17 @@ export class CoupleSavingsService {
     if (!goal) {
       throw new NotFoundException('Không tìm thấy mục tiêu tiết kiệm này.');
     }
+    if (goal.wallet && !goal.wallet.is_active) {
+      goal.wallet = null;
+      goal.walletId = null;
+    }
 
     await this.checkMembership(requestUserId, goal.coupleId);
+
+    const members = await this.coupleMemberRepo.find({
+      where: { coupleId: goal.coupleId },
+      relations: ['user', 'user.profile'],
+    });
 
     const contributions = await this.contributionRepo.find({
       where: { savingGoalId: id },
@@ -180,12 +207,17 @@ export class CoupleSavingsService {
       order: { createdAt: 'DESC' },
     });
 
-    const displaySavedAmount = goal.wallet ? Number(goal.wallet.balance) : Number(goal.saved_amount);
+    const displaySavedAmount = goal.wallet
+      ? Number(goal.wallet.balance)
+      : Number(goal.saved_amount);
 
     return ok({
       ...goal,
       saved_amount: displaySavedAmount,
-      memberContributions: this.buildMemberContributions(contributions),
+      memberContributions: this.buildMemberContributions(
+        members,
+        contributions,
+      ),
       contributions: contributions.map((contribution) => ({
         id: contribution.id,
         amount: Number(contribution.amount),
@@ -216,6 +248,10 @@ export class CoupleSavingsService {
     if (!goal) {
       throw new NotFoundException('Không tìm thấy mục tiêu tiết kiệm này.');
     }
+    if (goal.wallet && !goal.wallet.is_active) {
+      goal.wallet = null;
+      goal.walletId = null;
+    }
 
     await this.checkMembership(requestUserId, goal.coupleId);
 
@@ -235,7 +271,9 @@ export class CoupleSavingsService {
       }
 
       if (sourceWallet.user && sourceWallet.user.id !== requestUserId) {
-        throw new ForbiddenException('Bạn không có quyền truy cập ví cá nhân này.');
+        throw new ForbiddenException(
+          'Bạn không có quyền truy cập ví cá nhân này.',
+        );
       }
       if (sourceWallet.coupleId) {
         await this.checkMembership(requestUserId, sourceWallet.coupleId);
@@ -278,7 +316,9 @@ export class CoupleSavingsService {
         category: category,
         isTransfer: true,
         coupleId: sourceWallet.coupleId || null,
-        couple: sourceWallet.coupleId ? { id: sourceWallet.coupleId } as Couple : null,
+        couple: sourceWallet.coupleId
+          ? ({ id: sourceWallet.coupleId } as Couple)
+          : null,
       });
 
       let incoming: Transaction | null = null;
@@ -297,7 +337,9 @@ export class CoupleSavingsService {
         });
       }
 
-      await this.transactionRepo.save(incoming ? [outgoing, incoming] : [outgoing]);
+      await this.transactionRepo.save(
+        incoming ? [outgoing, incoming] : [outgoing],
+      );
     }
 
     const contribution = this.contributionRepo.create({
@@ -340,8 +382,30 @@ export class CoupleSavingsService {
     if (!goal) {
       throw new NotFoundException('Không tìm thấy mục tiêu tiết kiệm này.');
     }
+    if (goal.wallet && !goal.wallet.is_active) {
+      goal.wallet = null;
+      goal.walletId = null;
+    }
 
     await this.checkMembership(requestUserId, goal.coupleId);
+
+    const savedAmount = goal.wallet
+      ? Number(goal.wallet.balance)
+      : Number(goal.saved_amount);
+    const isCompleted =
+      goal.status === 'completed' ||
+      (goal.target && savedAmount >= goal.target);
+
+    if (
+      isCompleted &&
+      (dto.name !== undefined ||
+        dto.target !== undefined ||
+        dto.end_date !== undefined)
+    ) {
+      throw new BadRequestException(
+        'Không thể chỉnh sửa mục tiêu tiết kiệm đã hoàn thành.',
+      );
+    }
 
     if (dto.name) {
       goal.name = dto.name;
@@ -357,9 +421,19 @@ export class CoupleSavingsService {
       goal.end_date = dto.end_date ? new Date(dto.end_date) : null;
     }
 
-    const savedAmount = goal.wallet ? Number(goal.wallet.balance) : Number(goal.saved_amount);
-    goal.status =
-      goal.target && savedAmount >= goal.target ? 'completed' : 'active';
+    if (dto.status !== undefined) {
+      goal.status = dto.status;
+    } else {
+      const savedAmount = goal.wallet
+        ? Number(goal.wallet.balance)
+        : Number(goal.saved_amount);
+      goal.status =
+        goal.target && savedAmount >= goal.target ? 'completed' : 'active';
+    }
+
+    if (dto.completion_notified !== undefined) {
+      goal.completion_notified = dto.completion_notified;
+    }
 
     const saved = await this.savingGoalRepo.save(goal);
     return ok(saved);
@@ -414,7 +488,8 @@ export class CoupleSavingsService {
           await this.transactionRepo.save(transactions);
         }
 
-        defaultWallet.balance = Number(defaultWallet.balance) + balanceAdjustment;
+        defaultWallet.balance =
+          Number(defaultWallet.balance) + balanceAdjustment;
         await this.walletRepo.save(defaultWallet);
       }
     }

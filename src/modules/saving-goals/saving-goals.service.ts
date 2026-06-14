@@ -115,6 +115,22 @@ export class SavingGoalsService {
       );
     }
 
+    const isCompleted =
+      goal.is_completed ||
+      (goal.target &&
+        (goal.wallet?.balance || goal.saved_amount) >= goal.target);
+    if (
+      isCompleted &&
+      (dto.name !== undefined ||
+        dto.target !== undefined ||
+        dto.start_date !== undefined ||
+        dto.end_date !== undefined)
+    ) {
+      throw new BadRequestException(
+        'Không thể chỉnh sửa mục tiêu tiết kiệm đã hoàn thành.',
+      );
+    }
+
     if (dto.name) goal.name = dto.name;
     if (dto.is_selected !== undefined) goal.is_selected = dto.is_selected;
     if (dto.target !== undefined && dto.target !== null)

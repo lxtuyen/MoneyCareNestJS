@@ -5,6 +5,7 @@ import {
   IsOptional,
   IsDateString,
   Min,
+  IsBoolean,
 } from 'class-validator';
 
 export class CreateCoupleSavingGoalDto {
@@ -50,4 +51,12 @@ export class UpdateCoupleSavingGoalDto {
   @IsOptional()
   @IsDateString()
   end_date?: string;
+
+  @IsString()
+  @IsOptional()
+  status?: string;
+
+  @IsBoolean()
+  @IsOptional()
+  completion_notified?: boolean;
 }

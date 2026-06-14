@@ -20,6 +20,8 @@ import { CoupleReportsService } from './couple-reports.service';
 import { TransactionSplit } from '../transactions/entities/transaction-split.entity';
 
 import { Wallet } from '../wallets/entities/wallet.entity';
+import { SpendingPlansModule } from '../spending-plans/spending-plans.module';
+import { AiPredictionRun } from 'src/modules/analytics/entities/ai-prediction-run.entity';
 
 @Module({
   imports: [
@@ -34,7 +36,9 @@ import { Wallet } from '../wallets/entities/wallet.entity';
       CoupleSpendingAlert,
       TransactionSplit,
       Wallet,
+      AiPredictionRun,
     ]),
+    SpendingPlansModule,
   ],
   controllers: [
     CouplesController,
