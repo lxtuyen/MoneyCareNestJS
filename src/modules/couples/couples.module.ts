@@ -29,6 +29,7 @@ import { CoupleMessage } from './entities/couple-message.entity';
 import { CoupleChatService } from './couple-chat.service';
 import { CoupleChatController } from './couple-chat.controller';
 import { CoupleChatGateway } from './couple-chat.gateway';
+import { CloudinaryService } from './cloudinary.service';
 
 @Module({
   imports: [
@@ -70,6 +71,7 @@ import { CoupleChatGateway } from './couple-chat.gateway';
     CoupleReportsService,
     CoupleChatService,
     CoupleChatGateway,
+    CloudinaryService,
   ],
   exports: [
     CouplesService,
@@ -77,6 +79,7 @@ import { CoupleChatGateway } from './couple-chat.gateway';
     CoupleSettlementService,
     CoupleReportsService,
     CoupleChatService,
+    CloudinaryService,
   ],
 })
 export class CouplesModule {}

@@ -7,6 +7,9 @@ import {
   UseGuards,
   HttpCode,
   HttpStatus,
+  UseInterceptors,
+  UploadedFile,
+  BadRequestException,
 } from '@nestjs/common';
 import { CouplesService } from './couples.service';
 import { JoinCoupleDto } from './dto/join-couple.dto';
@@ -14,11 +17,32 @@ import { UpdateSettingsDto } from './dto/update-settings.dto';
 import { JwtAuthGuard } from 'src/modules/auth/jwt-auth.guard';
 import { User } from 'src/common/decorators/user.decorator';
 import { ok } from 'src/common/utils/response.util';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { CloudinaryService } from './cloudinary.service';
 
 @Controller('couples')
 @UseGuards(JwtAuthGuard)
 export class CouplesController {
-  constructor(private readonly couplesService: CouplesService) {}
+  constructor(
+    private readonly couplesService: CouplesService,
+    private readonly cloudinaryService: CloudinaryService,
+  ) {}
+
+  @Post('upload')
+  @UseInterceptors(FileInterceptor('file'))
+  async uploadFile(@UploadedFile() file: Express.Multer.File) {
+    if (!file) {
+      throw new BadRequestException('Không tìm thấy tệp tải lên');
+    }
+    try {
+      const result = await this.cloudinaryService.uploadFile(file);
+      return ok({ url: result.secure_url }, 'Tải ảnh lên thành công');
+    } catch (error: any) {
+      throw new BadRequestException(
+        `Không thể tải ảnh lên Cloudinary: ${error.message || error}`,
+      );
+    }
+  }
 
   @Post()
   async create(@User('sub') userId: number) {
