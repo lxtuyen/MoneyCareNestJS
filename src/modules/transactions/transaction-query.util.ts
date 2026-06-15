@@ -75,7 +75,12 @@ export function buildTransactionBaseQuery(
           );
         }),
       )
-      .andWhere('transaction.type = :type', { type });
+      .andWhere('transaction.type = :type', { type })
+      .andWhere(
+        new Brackets((qb) => {
+          qb.where('wallet.id IS NULL').orWhere('wallet.coupleId IS NULL');
+        }),
+      );
   }
 
   if (excludeTransfer) {

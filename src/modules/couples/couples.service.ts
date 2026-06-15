@@ -3,6 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { getTodayStringInTimeZone } from 'src/common/utils/date.util';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { Couple, CoupleStatus } from './entities/couple.entity';
@@ -54,6 +55,8 @@ export class CouplesService {
     dto.status = couple.status;
     dto.createdAt = couple.createdAt;
     dto.updatedAt = couple.updatedAt;
+    dto.currentStreak = couple.currentStreak ?? 0;
+    dto.lastActivityDate = couple.lastActivityDate;
     dto.members = (couple.members ?? []).map((m) => {
       const memberDto = new CoupleMemberResponseDto();
       memberDto.userId = m.userId;
@@ -352,5 +355,62 @@ export class CouplesService {
       where: { coupleId },
       relations: ['user', 'user.profile'],
     });
+  }
+
+  async updateStreak(
+    coupleId: number,
+  ): Promise<{ currentStreak: number; lastActivityDate: string | null } | null> {
+    const couple = await this.coupleRepo.findOne({ where: { id: coupleId } });
+    if (!couple || couple.status !== CoupleStatus.ACTIVE) return null;
+
+    const todayStr = getTodayStringInTimeZone();
+    const lastActivity = couple.lastActivityDate;
+
+    const newStreak = this.calculateNewStreak(
+      couple.currentStreak ?? 0,
+      lastActivity,
+      todayStr,
+    );
+
+    const isNewDay = !lastActivity || todayStr > lastActivity;
+
+    if (isNewDay) {
+      couple.currentStreak = newStreak;
+      couple.lastActivityDate = todayStr;
+      const saved = await this.coupleRepo.save(couple);
+      return {
+        currentStreak: saved.currentStreak,
+        lastActivityDate: saved.lastActivityDate,
+      };
+    }
+
+    return {
+      currentStreak: couple.currentStreak,
+      lastActivityDate: couple.lastActivityDate,
+    };
+  }
+
+  private calculateNewStreak(
+    currentStreak: number,
+    lastActivityDate: string | null,
+    todayStr: string,
+  ): number {
+    if (!lastActivityDate) {
+      return 1;
+    }
+
+    const last = new Date(lastActivityDate);
+    const current = new Date(todayStr);
+
+    const diffMs = current.getTime() - last.getTime();
+    const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
+
+    if (diffDays === 0) {
+      return currentStreak;
+    } else if (diffDays === 1) {
+      return currentStreak + 1;
+    } else {
+      return 1;
+    }
   }
 }

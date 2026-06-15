@@ -1,4 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { SavingGoal } from 'src/modules/saving-goals/entities/saving-goal.entity';
+import { SavingGoalsStatisticsService } from 'src/modules/saving-goals/saving-goals-statistics.service';
 import { norm } from 'src/common/utils/string.util';
 import { ApiResponse } from 'src/common/dto/api-response.dto';
 import { ok } from 'src/common/utils/response.util';
@@ -12,7 +16,12 @@ import {
 export class AiGoalAchievementChatService {
   private readonly logger = new Logger(AiGoalAchievementChatService.name);
 
-  constructor(private readonly analyticsService: AnalyticsService) {}
+  constructor(
+    private readonly analyticsService: AnalyticsService,
+    @InjectRepository(SavingGoal)
+    private readonly goalRepo: Repository<SavingGoal>,
+    private readonly savingGoalsStatisticsService: SavingGoalsStatisticsService,
+  ) {}
 
   isGoalAchievementRequest(message: string): boolean {
     const normalized = norm(message || '');
@@ -89,6 +98,33 @@ export class AiGoalAchievementChatService {
     const planId =
       analytics.aiBudgeting?.items?.find((item) => item.planId)?.planId ?? null;
 
+    let milestones: any[] = [];
+    let goalEndDate: string | null = null;
+
+    if (prediction.goalId) {
+      try {
+        const goal = await this.goalRepo.findOne({
+          where: { id: prediction.goalId, user: { id: userId } },
+          relations: ['wallet', 'user'],
+        });
+        if (goal) {
+          goalEndDate = goal.end_date ? goal.end_date.toISOString() : null;
+          const dbMilestones =
+            await this.savingGoalsStatisticsService.getMilestonesForGoal(goal);
+          milestones = dbMilestones.map((m) => ({
+            label: m.label,
+            start_date: m.start_date.toISOString(),
+            end_date: m.end_date.toISOString(),
+            target: m.target,
+            actual: m.actual,
+            is_completed: m.is_completed,
+          }));
+        }
+      } catch (err) {
+        this.logger.error(`Error loading milestones for goal: ${err.message}`);
+      }
+    }
+
     const summary = this.buildSummary(prediction);
     const payload = {
       summary,
@@ -96,6 +132,8 @@ export class AiGoalAchievementChatService {
       planId,
       canApplyBudget: budgetRecommendations.some((item) => item.canApply),
       confidence: prediction.confidence,
+      milestones,
+      goalEndDate,
       prediction: {
         goalId: prediction.goalId,
         name: prediction.name,
@@ -121,6 +159,7 @@ export class AiGoalAchievementChatService {
         reasonCodes: prediction.reasonCodes,
         recommendedActions: prediction.recommendedActions,
         supportingData: prediction.supportingData,
+        nextMonthPrediction: prediction.nextMonthPrediction,
       },
       budgetRecommendations,
       expectedSavingsAmount: analytics.aiBudgeting?.expectedSavingsAmount ?? 0,

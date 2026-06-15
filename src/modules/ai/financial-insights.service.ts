@@ -18,6 +18,7 @@ import {
   getPreviousRange,
   getVietnamMonthRange,
 } from 'src/common/utils/date.util';
+import { buildTransactionBaseQuery } from 'src/modules/transactions/transaction-query.util';
 
 type CategorySpendRow = {
   categoryName: string | null;
@@ -214,20 +215,33 @@ export class FinancialInsightsService {
     type: 'income' | 'expense',
     range: DateRange,
   ): Promise<number> {
-    const query = this.transactionRepo
-      .createQueryBuilder('transaction')
-      .leftJoin('transaction.user', 'user')
-      .leftJoin('transaction.category', 'category')
-      .leftJoin('transaction.wallet', 'wallet')
-      .where('user.id = :userId', { userId })
-      .andWhere('transaction.type = :type', { type })
-      .andWhere('transaction.transaction_date BETWEEN :start AND :end', {
-        start: range.start.toISOString(),
-        end: range.end.toISOString(),
-      });
+    const query = buildTransactionBaseQuery(
+      this.transactionRepo,
+      userId,
+      type,
+      {
+        startDate: range.start.toISOString(),
+        endDate: range.end.toISOString(),
+        excludeTransfer: true,
+      },
+    );
+
+    const amountFormula = `
+      CASE
+        WHEN transaction.coupleId IS NOT NULL THEN
+          CASE
+            WHEN transaction.splitMethod != 'none' THEN
+              COALESCE(splits.amount, 0)
+            ELSE
+              CASE WHEN transaction.payerId = :userId THEN transaction.amount ELSE 0 END
+          END
+        ELSE
+          transaction.amount
+      END
+    `;
 
     const raw = await query
-      .select('COALESCE(SUM(transaction.amount), 0)', 'total')
+      .select(`COALESCE(SUM(${amountFormula}), 0)`, 'total')
       .getRawOne<{ total: string }>();
 
     return Number(raw?.total ?? 0);
@@ -272,25 +286,39 @@ export class FinancialInsightsService {
     userId: number,
     range: DateRange,
   ): Promise<CategorySpendRow[]> {
-    const query = this.transactionRepo
-      .createQueryBuilder('transaction')
-      .leftJoin('transaction.user', 'user')
-      .leftJoin('transaction.category', 'category')
-      .leftJoin('transaction.wallet', 'wallet')
-      .where('user.id = :userId', { userId })
-      .andWhere('transaction.type = :type', { type: 'expense' })
-      .andWhere('transaction.transaction_date BETWEEN :start AND :end', {
-        start: range.start.toISOString(),
-        end: range.end.toISOString(),
-      });
+    const query = buildTransactionBaseQuery(
+      this.transactionRepo,
+      userId,
+      'expense',
+      {
+        startDate: range.start.toISOString(),
+        endDate: range.end.toISOString(),
+        excludeTransfer: true,
+      },
+    );
+
+    const amountFormula = `
+      CASE
+        WHEN transaction.coupleId IS NOT NULL THEN
+          CASE
+            WHEN transaction.splitMethod != 'none' THEN
+              COALESCE(splits.amount, 0)
+            ELSE
+              CASE WHEN transaction.payerId = :userId THEN transaction.amount ELSE 0 END
+          END
+        ELSE
+          transaction.amount
+      END
+    `;
 
     return query
       .select('COALESCE(category.name, :fallbackName)', 'categoryName')
       .addSelect('MAX(category.icon)', 'categoryIcon')
-      .addSelect('COALESCE(SUM(transaction.amount), 0)', 'total')
+      .addSelect(`COALESCE(SUM(${amountFormula}), 0)`, 'total')
       .setParameter('fallbackName', 'Khac')
       .groupBy('category.name')
-      .orderBy('SUM(transaction.amount)', 'DESC')
+      .addGroupBy('category.id')
+      .orderBy(`SUM(${amountFormula})`, 'DESC')
       .limit(5)
       .getRawMany<CategorySpendRow>();
   }

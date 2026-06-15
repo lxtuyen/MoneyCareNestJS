@@ -33,6 +33,12 @@ export class Couple {
   @OneToMany(() => CoupleMember, (member) => member.couple, { cascade: true })
   members!: CoupleMember[];
 
+  @Column({ default: 0 })
+  currentStreak!: number;
+
+  @Column({ type: 'date', nullable: true })
+  lastActivityDate!: string | null;
+
   @CreateDateColumn()
   createdAt!: Date;
 

@@ -292,6 +292,10 @@ export class TransactionService {
 
     const savedTransaction = await this.transactionRepo.save(transaction);
 
+    if (dto.coupleId) {
+      await this.couplesService.updateStreak(dto.coupleId);
+    }
+
     let affectedGoalIds: number[] = [];
     if (dto.walletId) {
       const goals = await this.goalRepo.find({

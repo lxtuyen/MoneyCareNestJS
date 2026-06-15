@@ -65,4 +65,52 @@ export class CoupleChatService {
       take: 100, // Limit to last 100 messages for now
     });
   }
+
+  async editMessage(
+    messageId: number,
+    userId: number,
+    content: string,
+  ): Promise<CoupleMessage> {
+    const message = await this.messageRepo.findOne({
+      where: { id: messageId },
+    });
+
+    if (!message) {
+      throw new NotFoundException('Không tìm thấy tin nhắn');
+    }
+
+    if (message.senderId !== userId) {
+      throw new ForbiddenException('Bạn không có quyền chỉnh sửa tin nhắn này');
+    }
+
+    message.content = content;
+    const saved = await this.messageRepo.save(message);
+
+    const result = await this.messageRepo.findOne({
+      where: { id: saved.id },
+      relations: ['sender', 'sender.profile'],
+    });
+
+    if (!result) {
+      throw new Error('Không thể tải lại tin nhắn sau khi chỉnh sửa');
+    }
+
+    return result;
+  }
+
+  async deleteMessage(messageId: number, userId: number): Promise<void> {
+    const message = await this.messageRepo.findOne({
+      where: { id: messageId },
+    });
+
+    if (!message) {
+      throw new NotFoundException('Không tìm thấy tin nhắn');
+    }
+
+    if (message.senderId !== userId) {
+      throw new ForbiddenException('Bạn không có quyền xóa tin nhắn này');
+    }
+
+    await this.messageRepo.remove(message);
+  }
 }

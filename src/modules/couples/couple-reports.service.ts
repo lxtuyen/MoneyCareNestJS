@@ -436,31 +436,60 @@ export class CoupleReportsService {
         where: { coupleId, alertKey: draft.alertKey },
       });
       if (existing) {
-        if (draft.type === 'personal_budget_risk') {
-          const hasChanges =
-            existing.message !== draft.message ||
-            existing.severity !== draft.severity ||
-            Number(existing.amount) !== Number(draft.amount) ||
-            JSON.stringify(existing.details) !== JSON.stringify(draft.details);
+        const hasChanges =
+          existing.message !== draft.message ||
+          existing.severity !== draft.severity ||
+          Number(existing.amount) !== Number(draft.amount) ||
+          JSON.stringify(existing.details) !== JSON.stringify(draft.details);
 
-          if (hasChanges) {
-            const shouldResetRead =
-              (existing.severity !== 'high' && draft.severity === 'high') ||
-              Number(draft.amount) > Number(existing.amount);
+        if (hasChanges) {
+          const shouldResetRead =
+            (existing.severity !== 'high' && draft.severity === 'high') ||
+            Number(draft.amount) > Number(existing.amount);
 
-            existing.message = draft.message;
-            existing.severity = draft.severity;
-            existing.amount = draft.amount;
-            existing.details = draft.details;
-            if (shouldResetRead) {
-              existing.isRead = false;
-            }
-            await this.alertRepo.save(existing);
+          existing.message = draft.message;
+          existing.severity = draft.severity;
+          existing.amount = draft.amount;
+          existing.details = draft.details;
+          if (shouldResetRead) {
+            existing.isRead = false;
           }
+          await this.alertRepo.save(existing);
         }
         continue;
       }
       await this.alertRepo.save(this.alertRepo.create(draft));
+    }
+
+    // Delete active-month alerts that are no longer active (not present in drafts)
+    const activeKeys = new Set(drafts.map((d) => d.alertKey));
+    const allDbAlerts = await this.alertRepo.find({
+      where: { coupleId },
+    });
+
+    const currentTxIds = new Set(transactions.map((t) => t.id));
+
+    for (const dbAlert of allDbAlerts) {
+      if (activeKeys.has(dbAlert.alertKey)) {
+        continue;
+      }
+
+      let belongsToCurrentMonth = false;
+
+      if (dbAlert.alertKey.includes(month)) {
+        belongsToCurrentMonth = true;
+      } else if (dbAlert.transactionId && currentTxIds.has(dbAlert.transactionId)) {
+        belongsToCurrentMonth = true;
+      } else if (dbAlert.alertKey.startsWith('small-repeat:')) {
+        const parts = dbAlert.alertKey.split(':');
+        if (parts[1] && parts[1].startsWith(month)) {
+          belongsToCurrentMonth = true;
+        }
+      }
+
+      if (belongsToCurrentMonth) {
+        await this.alertRepo.remove(dbAlert);
+      }
     }
 
     return this.alertRepo.find({

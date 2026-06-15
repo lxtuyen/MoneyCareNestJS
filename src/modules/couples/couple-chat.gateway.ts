@@ -115,10 +115,75 @@ export class CoupleChatGateway
         data.metadata,
       );
 
+      // Update Couple Streak
+      const streakInfo = await this.couplesService.updateStreak(coupleId);
+
       const roomName = `couple_${coupleId}`;
       this.server.to(roomName).emit('receiveMessage', savedMessage);
+
+      if (streakInfo) {
+        this.server.to(roomName).emit('streakUpdated', streakInfo);
+      }
     } catch (err) {
       this.logger.error(`Error saving/emitting chat message: ${err}`);
+    }
+  }
+
+  @SubscribeMessage('editMessage')
+  async handleEditMessage(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { id: number; content: string },
+  ) {
+    const userId = client.data?.userId;
+    const coupleId = client.data?.coupleId;
+
+    if (!userId || !coupleId) {
+      this.logger.warn(`editMessage rejected: socket client not authenticated.`);
+      return;
+    }
+
+    if (!data?.id || !data.content || data.content.trim() === '') {
+      return;
+    }
+
+    try {
+      const updatedMessage = await this.chatService.editMessage(
+        data.id,
+        userId,
+        data.content,
+      );
+
+      const roomName = `couple_${coupleId}`;
+      this.server.to(roomName).emit('messageUpdated', updatedMessage);
+    } catch (err) {
+      this.logger.error(`Error editing/emitting chat message: ${err}`);
+    }
+  }
+
+  @SubscribeMessage('deleteMessage')
+  async handleDeleteMessage(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { id: number },
+  ) {
+    const userId = client.data?.userId;
+    const coupleId = client.data?.coupleId;
+
+    if (!userId || !coupleId) {
+      this.logger.warn(`deleteMessage rejected: socket client not authenticated.`);
+      return;
+    }
+
+    if (!data?.id) {
+      return;
+    }
+
+    try {
+      await this.chatService.deleteMessage(data.id, userId);
+
+      const roomName = `couple_${coupleId}`;
+      this.server.to(roomName).emit('messageDeleted', { id: data.id });
+    } catch (err) {
+      this.logger.error(`Error deleting/emitting chat message: ${err}`);
     }
   }
 }

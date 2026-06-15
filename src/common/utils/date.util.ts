@@ -152,24 +152,15 @@ export function getPreviousRange(
   currentRange: DateRange,
 ): DateRange {
   if (period === 'this_month') {
-    const previousMonthEnd = new Date(
-      currentRange.start.getFullYear(),
-      currentRange.start.getMonth(),
-      0,
-      23,
-      59,
-      59,
-      999,
-    );
+    // Determine the calendar month and year in Vietnam timezone (GMT+7)
+    const startVN = new Date(currentRange.start.getTime() + 7 * 60 * 60 * 1000);
+    const currentMonth = startVN.getUTCMonth() + 1;
+    const currentYear = startVN.getUTCFullYear();
 
-    return {
-      start: new Date(
-        previousMonthEnd.getFullYear(),
-        previousMonthEnd.getMonth(),
-        1,
-      ),
-      end: previousMonthEnd,
-    };
+    const prevMonth = currentMonth === 1 ? 12 : currentMonth - 1;
+    const prevYear = currentMonth === 1 ? currentYear - 1 : currentYear;
+
+    return getVietnamMonthRange(prevMonth, prevYear);
   }
 
   const currentDurationMs =

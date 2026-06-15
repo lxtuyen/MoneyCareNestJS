@@ -16,5 +16,7 @@ export class CoupleResponseDto {
   status!: 'pending' | 'active' | 'cancelled' | 'left';
   createdAt!: Date;
   updatedAt!: Date;
+  currentStreak!: number;
+  lastActivityDate?: string | null;
   members!: CoupleMemberResponseDto[];
 }
