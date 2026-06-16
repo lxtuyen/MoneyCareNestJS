@@ -7,6 +7,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Between, LessThanOrEqual, Repository } from 'typeorm';
 import { getVietnamMonthRange, setStartOfDay, setEndOfDay, getDaysDiff } from 'src/common/utils/date.util';
 import { Transaction } from 'src/modules/transactions/entities/transaction.entity';
+import { Wallet } from 'src/modules/wallets/entities/wallet.entity';
 import { CoupleSavingGoal } from './entities/couple-saving-goal.entity';
 import { CoupleMember } from './entities/couple-member.entity';
 import { CoupleSpendingAlert } from './entities/couple-spending-alert.entity';
@@ -15,6 +16,8 @@ import { ApiResponse } from 'src/common/dto/api-response.dto';
 import { ok } from 'src/common/utils/response.util';
 import { SpendingPlanStatisticsService } from '../spending-plans/spending-plan-statistics.service';
 import { AiPredictionRun } from 'src/modules/analytics/entities/ai-prediction-run.entity';
+import { NotificationsService } from 'src/modules/notifications/notifications.service';
+import { NotificationType } from 'src/modules/notifications/entities/notification.entity';
 
 type AlertDraft = Pick<
   CoupleSpendingAlert,
@@ -35,6 +38,8 @@ export class CoupleReportsService {
   constructor(
     @InjectRepository(Transaction)
     private readonly transactionRepo: Repository<Transaction>,
+    @InjectRepository(Wallet)
+    private readonly walletRepo: Repository<Wallet>,
     @InjectRepository(CoupleSavingGoal)
     private readonly savingGoalRepo: Repository<CoupleSavingGoal>,
     @InjectRepository(CoupleMember)
@@ -44,6 +49,7 @@ export class CoupleReportsService {
     @InjectRepository(AiPredictionRun)
     private readonly predictionRunRepo: Repository<AiPredictionRun>,
     private readonly spendingPlanStatsService: SpendingPlanStatisticsService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   async getReport(
@@ -57,7 +63,7 @@ export class CoupleReportsService {
     const historyStart = new Date(start);
     historyStart.setMonth(historyStart.getMonth() - 6);
 
-    const [transactions, historyTransactions, savingGoals, members] =
+    const [transactions, historyTransactions, savingGoals, members, sharedWallets] =
       await Promise.all([
         this.transactionRepo.find({
           where: {
@@ -93,9 +99,14 @@ export class CoupleReportsService {
           where: { coupleId },
           relations: ['user', 'user.profile'],
         }),
+        this.walletRepo.find({
+          where: { coupleId, is_active: true },
+        }),
       ]);
 
     const budgets: any[] = [];
+
+    const summary = this.buildSummary(transactions, month);
 
     const alerts = await this.syncAlerts(
       coupleId,
@@ -105,9 +116,10 @@ export class CoupleReportsService {
       budgets,
       members,
       savingGoals,
+      sharedWallets,
+      summary,
     );
 
-    const summary = this.buildSummary(transactions, month);
     const topCategories = this.buildTopCategories(transactions);
     const memberContributions = this.buildMemberContributions(
       transactions,
@@ -420,6 +432,8 @@ export class CoupleReportsService {
     budgets: any[],
     members: CoupleMember[],
     savingGoals: CoupleSavingGoal[],
+    sharedWallets: Wallet[],
+    summary: { totalIncome: number; totalExpense: number; netBalance: number; month: string; transactionCount: number; expenseCount: number },
   ): Promise<CoupleSpendingAlert[]> {
     const drafts = await this.buildAlertDrafts(
       coupleId,
@@ -429,6 +443,8 @@ export class CoupleReportsService {
       budgets,
       members,
       savingGoals,
+      sharedWallets,
+      summary,
     );
 
     for (const draft of drafts) {
@@ -443,8 +459,10 @@ export class CoupleReportsService {
           JSON.stringify(existing.details) !== JSON.stringify(draft.details);
 
         if (hasChanges) {
+          const severityEscalated =
+            existing.severity !== 'high' && draft.severity === 'high';
           const shouldResetRead =
-            (existing.severity !== 'high' && draft.severity === 'high') ||
+            severityEscalated ||
             Number(draft.amount) > Number(existing.amount);
 
           existing.message = draft.message;
@@ -455,10 +473,20 @@ export class CoupleReportsService {
             existing.isRead = false;
           }
           await this.alertRepo.save(existing);
+
+          // Push only when severity escalates to high
+          if (severityEscalated) {
+            void this.pushAlertToMembers(members, draft.title, draft.message, draft.severity);
+          }
         }
         continue;
       }
+
+      // New alert – always push for high/medium severity
       await this.alertRepo.save(this.alertRepo.create(draft));
+      if (draft.severity === 'high' || draft.severity === 'medium') {
+        void this.pushAlertToMembers(members, draft.title, draft.message, draft.severity);
+      }
     }
 
     // Delete active-month alerts that are no longer active (not present in drafts)
@@ -511,6 +539,8 @@ export class CoupleReportsService {
     budgets: any[],
     members: CoupleMember[],
     savingGoals: CoupleSavingGoal[],
+    sharedWallets: Wallet[],
+    summary: { totalIncome: number; totalExpense: number; netBalance: number; month: string; transactionCount: number; expenseCount: number },
   ): Promise<AlertDraft[]> {
     const drafts: AlertDraft[] = [];
     const expenses = transactions.filter((item) => item.type === 'expense');
@@ -1008,6 +1038,53 @@ export class CoupleReportsService {
       }
     }
 
+    // ── Alert 5: Ví chung số dư thấp ──────────────────────────────────────
+    const LOW_BALANCE_CRIT  = 100_000;   // 🔴 dưới 100k → cảnh báo
+
+    for (const wallet of sharedWallets) {
+      const balance = Number(wallet.balance);
+      if (balance >= LOW_BALANCE_CRIT) continue;
+
+      // Bỏ qua ví chưa có giao dịch nào — tránh thông báo sai cho ví mới tạo hoặc ví chưa sử dụng
+      const txCount = await this.transactionRepo.count({
+        where: { wallet: { id: wallet.id } },
+      });
+      if (txCount === 0) continue;
+
+      const balanceFmt = balance.toLocaleString('vi-VN');
+      drafts.push({
+        coupleId,
+        alertKey: `low-wallet-balance:${wallet.id}:${month}`,
+        type: 'low_wallet_balance',
+        severity: 'high',
+        title: `Ví chung "${wallet.name}" sắp cạn`,
+        message: `Số dư ví chung "${wallet.name}" chỉ còn ${balanceFmt} đ. Hãy nạp thêm tiền để tránh gián đoạn chi tiêu chung.`,
+        transactionId: null,
+        categoryId: null,
+        amount: balance,
+        details: null,
+      });
+    }
+
+    // ── Alert 6: Chi chung vượt thu chung trong tháng ──────────────────────
+    const { totalIncome, totalExpense } = summary;
+    if (totalExpense > 0 && totalExpense > totalIncome) {
+      const overspend = totalExpense - totalIncome;
+      const severity = overspend / Math.max(totalIncome, 1) >= 0.3 ? 'high' : 'medium';
+      drafts.push({
+        coupleId,
+        alertKey: `shared-overspend:${month}`,
+        type: 'shared_overspend',
+        severity,
+        title: 'Chi chung vượt thu chung',
+        message: `Tháng ${month} hai bạn đã chi chung nhiều hơn thu chung ${overspend.toLocaleString('vi-VN')} đ. Hãy cùng rà soát và điều chỉnh chi tiêu.`,
+        transactionId: null,
+        categoryId: null,
+        amount: overspend,
+        details: null,
+      });
+    }
+
     return drafts;
   }
 
@@ -1075,5 +1152,20 @@ export class CoupleReportsService {
       (total, transaction) => total + Number(transaction.amount),
       0,
     );
+  }
+
+  /** Fire-and-forget: send push notification to all couple members for a spending alert. */
+  private pushAlertToMembers(
+    members: CoupleMember[],
+    title: string,
+    message: string,
+    severity: string,
+  ): Promise<void> {
+    const severityLabel = severity === 'high' ? '🔴 ' : '🟡 ';
+    const pushTitle = `${severityLabel}${title}`;
+    const userIds = members.map((m) => m.userId);
+    return this.notificationsService
+      .sendPushToUsers(userIds, pushTitle, message, { severity }, NotificationType.ALERT)
+      .catch(() => undefined); // never let push errors break the report sync
   }
 }

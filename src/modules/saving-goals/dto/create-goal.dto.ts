@@ -33,4 +33,6 @@ export class CreateSavingGoalDto {
   @IsOptional()
   @IsBoolean()
   create_new_wallet?: boolean;
+
+
 }

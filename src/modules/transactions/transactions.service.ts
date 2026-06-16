@@ -181,6 +181,8 @@ export class TransactionService {
     if (dto.walletId && !wallet) {
       throw new NotFoundException('Wallet not found');
     }
+
+
     const category = requestedCategory ?? subCategory?.category ?? null;
     if (
       requestedCategory &&
@@ -438,6 +440,8 @@ export class TransactionService {
     const newAmount = dto.amount !== undefined ? Number(dto.amount) : oldAmount;
     const newType = dto.type ?? oldType;
     const newWalletId = dto.walletId !== undefined ? dto.walletId : oldWalletId;
+
+
 
     if (
       newWalletId &&

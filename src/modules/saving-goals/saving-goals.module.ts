@@ -12,6 +12,7 @@ import { SpendingPlansModule } from 'src/modules/spending-plans/spending-plans.m
 import { PersonalizationModule } from 'src/modules/personalization/personalization.module';
 import { AnalyticsModule } from 'src/modules/analytics/analytics.module';
 import { GoalAchievementPredictionService } from './goal-achievement-prediction.service';
+import { NotificationsModule } from 'src/modules/notifications/notifications.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { GoalAchievementPredictionService } from './goal-achievement-prediction.
     SpendingPlansModule,
     PersonalizationModule,
     forwardRef(() => AnalyticsModule),
+    NotificationsModule,
   ],
   controllers: [SavingGoalsController],
   providers: [

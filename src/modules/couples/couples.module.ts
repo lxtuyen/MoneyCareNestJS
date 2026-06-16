@@ -30,6 +30,7 @@ import { CoupleChatService } from './couple-chat.service';
 import { CoupleChatController } from './couple-chat.controller';
 import { CoupleChatGateway } from './couple-chat.gateway';
 import { CloudinaryService } from './cloudinary.service';
+import { NotificationsModule } from 'src/modules/notifications/notifications.module';
 
 @Module({
   imports: [
@@ -48,6 +49,7 @@ import { CloudinaryService } from './cloudinary.service';
       CoupleMessage,
     ]),
     SpendingPlansModule,
+    NotificationsModule,
     ConfigModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],

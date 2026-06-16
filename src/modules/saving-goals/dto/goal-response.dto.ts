@@ -24,6 +24,8 @@ export class SavingGoalResponseDto {
   @Type(() => Wallet)
   wallet: Wallet;
 
+
+
   @Expose()
   created_at: Date;
 

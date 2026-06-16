@@ -204,6 +204,9 @@ export class WalletsService {
     const fromWallet = await this.findWalletOrThrow(fromWalletId, user);
     const toWallet = await this.findWalletOrThrow(toWalletId, user);
 
+
+
+
     let category: Category | null = null;
     if (categoryId) {
       category = await this.categoryRepository.findOne({

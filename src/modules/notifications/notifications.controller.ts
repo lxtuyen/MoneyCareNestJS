@@ -1,4 +1,5 @@
 import {
+  Body,
   Controller,
   Get,
   HttpStatus,
@@ -7,10 +8,16 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { IsString } from 'class-validator';
 import { ApiResponse } from 'src/common/dto/api-response.dto';
 import { User as CurrentUser } from 'src/common/decorators/user.decorator';
 import { NotificationsService } from './notifications.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+
+class RegisterFcmTokenDto {
+  @IsString()
+  token!: string;
+}
 
 @ApiTags('Notifications')
 @ApiBearerAuth()
@@ -42,6 +49,20 @@ export class NotificationsController {
       success: true,
       statusCode: HttpStatus.OK,
       data: result,
+    });
+  }
+
+  @ApiOperation({ summary: 'Register or update FCM device token' })
+  @Patch('notifications/fcm-token')
+  async registerFcmToken(
+    @CurrentUser('sub') userId: number,
+    @Body() dto: RegisterFcmTokenDto,
+  ) {
+    await this.notificationsService.saveFcmToken(userId, dto.token);
+    return new ApiResponse({
+      success: true,
+      statusCode: HttpStatus.OK,
+      message: 'FCM token đã được cập nhật',
     });
   }
 }

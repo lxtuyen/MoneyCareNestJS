@@ -27,6 +27,9 @@ export class UserProfile {
   @Column({ nullable: true })
   avatar!: string;
 
+  @Column({ nullable: true, type: 'text' })
+  fcmToken?: string | null;
+
   @CreateDateColumn()
   created_at!: Date;
 

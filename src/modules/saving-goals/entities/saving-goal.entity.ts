@@ -59,6 +59,8 @@ export class SavingGoal {
   @Column({ default: false })
   is_selected!: boolean;
 
+
+
   @ManyToOne(() => User, (user) => user.savingGoals, { onDelete: 'CASCADE' })
   user!: User;
 
