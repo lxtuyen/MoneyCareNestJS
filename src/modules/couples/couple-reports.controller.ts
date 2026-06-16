@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Patch,
@@ -42,5 +43,13 @@ export class CoupleReportsController {
     @Body() dto: UpdateCoupleAlertDto,
   ) {
     return this.reportsService.updateAlert(userId, id, dto);
+  }
+
+  @Delete('alerts/:id')
+  deleteAlert(
+    @User('sub') userId: number,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.reportsService.deleteAlert(userId, id);
   }
 }
