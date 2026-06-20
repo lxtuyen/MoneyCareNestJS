@@ -42,6 +42,12 @@ export const SYSTEM_CATEGORY_SEEDS: SystemCategorySeed[] = [
   { name: 'Lương', icon: '💵', type: CategoryType.INCOME, is_system: true },
   // Expense
   {
+    name: 'Tiết kiệm',
+    icon: '🐷',
+    type: CategoryType.EXPENSE,
+    is_system: true,
+  },
+  {
     name: 'Chợ, siêu thị',
     icon: '🥬',
     type: CategoryType.EXPENSE,

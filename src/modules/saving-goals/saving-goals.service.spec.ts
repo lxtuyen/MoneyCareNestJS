@@ -5,6 +5,9 @@ import { SavingGoal } from './entities/saving-goal.entity';
 import { User } from '../user/entities/user.entity';
 import { Wallet } from '../wallets/entities/wallet.entity';
 import { Transaction } from '../transactions/entities/transaction.entity';
+import { SpendingPlansService } from '../spending-plans/spending-plans.service';
+import { PersonalizationService } from '../personalization/personalization.service';
+import { Repository } from 'typeorm';
 
 describe('SavingGoalsService', () => {
   let service: SavingGoalsService;
@@ -46,6 +49,18 @@ describe('SavingGoalsService', () => {
           useValue: {
             find: jest.fn(),
             save: jest.fn(),
+          },
+        },
+        {
+          provide: SpendingPlansService,
+          useValue: {
+            syncSavingsBudget: jest.fn(),
+          },
+        },
+        {
+          provide: PersonalizationService,
+          useValue: {
+            getOrBuildProfile: jest.fn(),
           },
         },
       ],

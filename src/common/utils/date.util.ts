@@ -59,6 +59,33 @@ export function getVietnamMonthRange(month: number, year: number): DateRange {
   };
 }
 
+export function getVietnamCycleRange(
+  month: number,
+  year: number,
+  startDay = 1,
+): DateRange {
+  if (startDay === 1) {
+    return getVietnamMonthRange(month, year);
+  }
+
+  const clampDayToMonth = (y: number, m: number, d: number) => {
+    const lastDay = getDaysInMonth(m, y);
+    return d > lastDay ? lastDay : d;
+  };
+
+  const startDayClamped = clampDayToMonth(year, month, startDay);
+  const start = new Date(Date.UTC(year, month - 1, startDayClamped, -7, 0, 0, 0));
+
+  const nextMonth = month === 12 ? 1 : month + 1;
+  const nextYear = month === 12 ? year + 1 : year;
+  const nextStartDayClamped = clampDayToMonth(nextYear, nextMonth, startDay);
+  const nextCycleStartUtc = Date.UTC(nextYear, nextMonth - 1, nextStartDayClamped, -7, 0, 0, 0);
+
+  const end = new Date(nextCycleStartUtc - 1);
+
+  return { start, end };
+}
+
 export function getReportDay(
   period: MonthPeriod,
   now = getVietnamNow(),

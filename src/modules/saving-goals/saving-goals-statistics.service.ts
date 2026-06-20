@@ -258,8 +258,9 @@ export class SavingGoalsStatisticsService {
 
     milestoneDates.push(new Date(start));
 
+    const endStartOfDay = setStartOfDay(goal.end_date);
     let nextMonth = new Date(current.getFullYear(), current.getMonth() + 1, 1);
-    while (nextMonth < end) {
+    while (nextMonth < endStartOfDay) {
       milestoneDates.push(new Date(nextMonth));
       nextMonth = new Date(
         nextMonth.getFullYear(),
@@ -273,13 +274,21 @@ export class SavingGoalsStatisticsService {
     const totalTarget = Number(goal.target ?? 0);
     const results: SavingGoalMilestone[] = [];
     const now = new Date();
+    const totalSegments = milestoneDates.length - 1;
+    let accumulatedTarget = 0;
 
-    for (let i = 0; i < milestoneDates.length - 1; i++) {
+    for (let i = 0; i < totalSegments; i++) {
       const mStart = milestoneDates[i];
       const mEnd = milestoneDates[i + 1];
 
-      const segmentDays = getDaysDiff(mEnd, mStart);
-      const targetPerMilestone = (segmentDays / totalDays) * totalTarget;
+      let targetForThisMilestone: number;
+      if (i === totalSegments - 1) {
+        // Last segment: take the remaining target to avoid rounding issues
+        targetForThisMilestone = totalTarget - accumulatedTarget;
+      } else {
+        targetForThisMilestone = Math.round(totalTarget / totalSegments);
+        accumulatedTarget += targetForThisMilestone;
+      }
 
       // For the current active milestone, use the actual wallet balance
       // as it reflects the real accumulated savings so far
@@ -312,9 +321,9 @@ export class SavingGoalsStatisticsService {
         label: `Tháng ${mStart.getMonth() + 1}/${mStart.getFullYear()}`,
         start_date: mStart,
         end_date: mEnd,
-        target: Math.round(targetPerMilestone),
+        target: targetForThisMilestone,
         actual: Math.round(actual),
-        is_completed: actual >= targetPerMilestone,
+        is_completed: actual >= targetForThisMilestone,
       });
     }
 
@@ -331,11 +340,12 @@ export class SavingGoalsStatisticsService {
       .createQueryBuilder('t')
       .leftJoinAndSelect('t.category', 'category')
       .leftJoinAndSelect('t.wallet', 'wallet')
-      .where('t.userId = :userId', { userId })
-      .andWhere('t.isTransfer = :isTransfer', { isTransfer: false });
+      .where('t.userId = :userId', { userId });
 
     if (walletId) {
       query.andWhere('t.walletId = :walletId', { walletId });
+    } else {
+      query.andWhere('t.isTransfer = :isTransfer', { isTransfer: false });
     }
 
     if (startDate) {

@@ -15,7 +15,7 @@ import {
 } from './dto/wallet.dto';
 import { User } from 'src/modules/user/entities/user.entity';
 import { Transaction } from '../transactions/entities/transaction.entity';
-import { Category } from '../categories/entities/category.entity';
+import { Category, CategoryType } from '../categories/entities/category.entity';
 import { SavingGoal } from '../saving-goals/entities/saving-goal.entity';
 import { ApiResponse } from 'src/common/dto/api-response.dto';
 import { FinancialCacheInvalidationService } from 'src/common/cache/financial-cache-invalidation.service';
@@ -227,6 +227,30 @@ export class WalletsService {
 
     const now = new Date();
 
+    let isOutgoingTransfer = true;
+    let isIncomingTransfer = true;
+
+    const isToSavingGoal = (toWallet.savingGoals && toWallet.savingGoals.length > 0) || 
+      !!(await this.coupleGoalRepo.findOne({ where: { walletId: toWalletId } }));
+    
+    const isFromSavingGoal = (fromWallet.savingGoals && fromWallet.savingGoals.length > 0);
+
+    if (isToSavingGoal && !isFromSavingGoal) {
+      let savingCategory = await this.categoryRepository.findOne({
+        where: { name: 'Tiết kiệm', type: CategoryType.EXPENSE },
+      });
+      if (!savingCategory) {
+        savingCategory = this.categoryRepository.create({
+          name: 'Tiết kiệm',
+          icon: '🐷',
+          type: CategoryType.EXPENSE,
+          is_system: true,
+        });
+        savingCategory = await this.categoryRepository.save(savingCategory);
+      }
+      category = savingCategory;
+    }
+
     const outgoing = this.transactionRepository.create({
       amount: amount,
       type: 'expense',
@@ -235,7 +259,7 @@ export class WalletsService {
       user: user,
       wallet: fromWallet,
       category: category,
-      isTransfer: true,
+      isTransfer: isOutgoingTransfer,
     });
 
     const incoming = this.transactionRepository.create({
@@ -246,7 +270,7 @@ export class WalletsService {
       user: user,
       wallet: toWallet,
       category: category,
-      isTransfer: true,
+      isTransfer: isIncomingTransfer,
     });
 
     await this.transactionRepository.save([outgoing, incoming]);

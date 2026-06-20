@@ -43,5 +43,9 @@ export class UpdateSavingGoalDto {
   @IsDateString()
   end_date?: string;
 
+  @IsOptional()
+  @IsBoolean()
+  is_budget_enabled?: boolean;
+
 
 }

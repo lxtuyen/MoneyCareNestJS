@@ -96,6 +96,10 @@ export function mapAnalyticsResponse(
       message: insight.message,
       severity: insight.severity,
       evidence: insight.evidence,
+      insightType: insight.insight_type || insight.insightType,
+      priority: insight.priority,
+      action: insight.action,
+      reasonCodes: insight.reason_codes || insight.reasonCodes || [],
     })),
     forecasting: data.forecasting
       ? {
@@ -285,5 +289,36 @@ function mapMonthlyForecast(
             : point.predictedAmount,
       }),
     ),
+    topDrivers: (forecast.top_drivers || forecast.topDrivers || []).map(
+      (driver) => ({
+        categoryName: driver.category_name || driver.categoryName,
+        contributionAmount:
+          driver.contribution_amount !== undefined
+            ? driver.contribution_amount
+            : driver.contributionAmount,
+        contributionPct:
+          driver.contribution_pct !== undefined
+            ? driver.contribution_pct
+            : driver.contributionPct,
+        deltaVsBaseline:
+          driver.delta_vs_baseline !== undefined
+            ? driver.delta_vs_baseline
+            : driver.deltaVsBaseline,
+        trend: driver.trend || 'stable',
+        reasonCodes: driver.reason_codes || driver.reasonCodes || [],
+      }),
+    ),
+    deltaVsLastMonth:
+      forecast.delta_vs_last_month !== undefined
+        ? forecast.delta_vs_last_month
+        : forecast.deltaVsLastMonth,
+    deltaVsBaseline:
+      forecast.delta_vs_baseline !== undefined
+        ? forecast.delta_vs_baseline
+        : forecast.deltaVsBaseline,
+    confidenceFactors:
+      forecast.confidence_factors || forecast.confidenceFactors || [],
+    dataQualityWarnings:
+      forecast.data_quality_warnings || forecast.dataQualityWarnings || [],
   };
 }

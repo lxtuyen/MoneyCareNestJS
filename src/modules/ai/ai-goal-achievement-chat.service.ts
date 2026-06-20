@@ -3,6 +3,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { SavingGoal } from 'src/modules/saving-goals/entities/saving-goal.entity';
 import { SavingGoalsStatisticsService } from 'src/modules/saving-goals/saving-goals-statistics.service';
+import { SavingGoalStatus } from 'src/modules/saving-goals/enums/saving-goal-status.enum';
+import { PersonalizationService } from 'src/modules/personalization/personalization.service';
 import { norm } from 'src/common/utils/string.util';
 import { ApiResponse } from 'src/common/dto/api-response.dto';
 import { ok } from 'src/common/utils/response.util';
@@ -21,6 +23,7 @@ export class AiGoalAchievementChatService {
     @InjectRepository(SavingGoal)
     private readonly goalRepo: Repository<SavingGoal>,
     private readonly savingGoalsStatisticsService: SavingGoalsStatisticsService,
+    private readonly personalizationService: PersonalizationService,
   ) {}
 
   isGoalAchievementRequest(message: string): boolean {
@@ -70,6 +73,9 @@ export class AiGoalAchievementChatService {
 
   async handleGoalAchievementInsight(
     userId: number,
+    message?: string,
+    goalId?: number,
+    forecastedSaving?: number,
   ): Promise<ApiResponse<string>> {
     this.logger.log(`Handling goal achievement insight for user ${userId}`);
     const summaryRes = await this.analyticsService.getFinancialSummary(userId);
@@ -81,9 +87,29 @@ export class AiGoalAchievementChatService {
     }
 
     const analytics = summaryRes.data;
-    const prediction = resolvePrimaryGoalPrediction(
+    let prediction = resolvePrimaryGoalPrediction(
       analytics.goalAchievement ?? null,
     );
+
+    // Ưu tiên lookup bằng goalId nếu có, fallback NLP matching
+    if (goalId && goalId > 0 && analytics.goalAchievement?.predictions?.length) {
+      const matchById = analytics.goalAchievement.predictions.find(
+        (p) => p.goalId === goalId,
+      );
+      if (matchById) {
+        prediction = matchById;
+      }
+    } else if (message && analytics.goalAchievement?.predictions?.length) {
+      const sortedPredictions = [...analytics.goalAchievement.predictions].sort(
+        (a, b) => b.name.length - a.name.length,
+      );
+      const match = sortedPredictions.find((p) =>
+        message.toLowerCase().includes(p.name.toLowerCase()),
+      );
+      if (match) {
+        prediction = match;
+      }
+    }
 
     if (!prediction) {
       return ok(
@@ -100,6 +126,7 @@ export class AiGoalAchievementChatService {
 
     let milestones: any[] = [];
     let goalEndDate: string | null = null;
+    let reportTransactions: any[] = [];
 
     if (prediction.goalId) {
       try {
@@ -120,12 +147,118 @@ export class AiGoalAchievementChatService {
             is_completed: m.is_completed,
           }));
         }
+
+        const reportRes = await this.savingGoalsStatisticsService.getGoalReport(
+          prediction.goalId,
+          userId,
+        );
+        if (reportRes.success && (reportRes.data as any)?.transactions) {
+          reportTransactions = (reportRes.data as any).transactions
+            .filter((t: any) => t.type === 'income')
+            .map((t: any) => ({
+              id: t.id,
+              amount: Number(t.amount),
+              type: t.type,
+              note: t.note || 'Nạp tiền tiết kiệm',
+              transactionDate: t.transaction_date,
+            }));
+        }
       } catch (err) {
-        this.logger.error(`Error loading milestones for goal: ${err.message}`);
+        this.logger.error(`Error loading milestones or report: ${err.message}`);
       }
     }
 
-    const summary = this.buildSummary(prediction);
+    let otherGoalsRequiredMonthlyRate = 0;
+    try {
+      const activeGoals = await this.goalRepo.find({
+        where: { user: { id: userId }, status: SavingGoalStatus.ACTIVE },
+      });
+      for (const ag of activeGoals) {
+        if (ag.id === prediction.goalId) continue;
+        const target = Number(ag.target ?? 0);
+        if (target <= 0 || !ag.start_date || !ag.end_date) continue;
+        // Đếm số milestone (segments tháng) giống logic calculateMilestones
+        const start = new Date(ag.start_date);
+        const end = new Date(ag.end_date);
+        const milestoneDates: Date[] = [start];
+        let next = new Date(start.getFullYear(), start.getMonth() + 1, 1);
+        const endStartOfDay = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+        while (next < endStartOfDay) {
+          milestoneDates.push(new Date(next));
+          next = new Date(next.getFullYear(), next.getMonth() + 1, 1);
+        }
+        milestoneDates.push(end);
+        const totalSegments = Math.max(1, milestoneDates.length - 1);
+        otherGoalsRequiredMonthlyRate += target / totalSegments;
+      }
+    } catch (err) {
+      this.logger.error(`Error calculating other goals rate: ${err.message}`);
+    }
+
+    // Ưu tiên forecastedSaving từ FE, fallback analytics
+    const expectedSavingsAmount = forecastedSaving ?? analytics.aiBudgeting?.expectedSavingsAmount ?? 0;
+    const remainingSavingCapacity = Math.max(0, expectedSavingsAmount - otherGoalsRequiredMonthlyRate);
+
+    let daysSaved = 0;
+    const remainingTarget = prediction.remainingAmount || 0;
+    const currentVelocity = prediction.currentMonthlySavingRate || 0;
+
+    let currentMilestoneRemaining = prediction.remainingAmount || 0;
+    const now = new Date();
+    const activeMilestone = milestones.find((m) => {
+      const start = new Date(m.start_date);
+      const end = new Date(m.end_date);
+      return now >= start && now < end;
+    });
+    if (activeMilestone) {
+      currentMilestoneRemaining = Math.max(0, activeMilestone.target - activeMilestone.actual);
+    }
+
+    let shortfall = 0;
+    let daysDelayed = 0;
+
+    // So sánh remainingSavingCapacity (sau khi trừ mục tiêu khác) với còn thiếu giai đoạn
+    if (remainingSavingCapacity >= currentMilestoneRemaining) {
+      // Dư tiền → tính số ngày hoàn thành sớm hơn
+      const surplus = remainingSavingCapacity - currentMilestoneRemaining;
+      const dailyRate = prediction.requiredDailySavingRate || 0;
+      if (dailyRate > 0) {
+        daysSaved = Math.round(surplus / dailyRate);
+      }
+    } else {
+      // Thiếu tiền → tính shortfall và daysDelayed
+      shortfall = currentMilestoneRemaining - remainingSavingCapacity;
+      try {
+        const profile = await this.personalizationService.getOrBuildProfile(userId);
+        const avgSavings = profile?.averageMonthlySavings ?? 0;
+        // netMonthlySaving = tiết kiệm trung bình - số tiền cần cho mục tiêu khác
+        const netMonthlySaving = Math.max(0, avgSavings - otherGoalsRequiredMonthlyRate);
+        if (netMonthlySaving > 0) {
+          daysDelayed = Math.round((shortfall / netMonthlySaving) * 30);
+        } else if (remainingSavingCapacity > 0) {
+          daysDelayed = Math.round((shortfall / remainingSavingCapacity) * 30);
+        } else {
+          daysDelayed = 30; // fallback
+        }
+      } catch (err) {
+        this.logger.error(`Error loading personalization profile: ${err.message}`);
+        if (remainingSavingCapacity > 0) {
+          daysDelayed = Math.round((shortfall / remainingSavingCapacity) * 30);
+        } else {
+          daysDelayed = 30;
+        }
+      }
+    }
+
+    const summary = this.buildSummary(
+      prediction,
+      expectedSavingsAmount,
+      remainingSavingCapacity,
+      daysSaved,
+      currentMilestoneRemaining,
+      daysDelayed,
+      shortfall,
+    );
     const payload = {
       summary,
       goalId: prediction.goalId,
@@ -162,35 +295,47 @@ export class AiGoalAchievementChatService {
         nextMonthPrediction: prediction.nextMonthPrediction,
       },
       budgetRecommendations,
-      expectedSavingsAmount: analytics.aiBudgeting?.expectedSavingsAmount ?? 0,
-      recommendedTotalBudget:
-        analytics.aiBudgeting?.recommendedTotalBudget ?? 0,
+      expectedSavingsAmount,
+      otherGoalsRequiredRate: otherGoalsRequiredMonthlyRate,
+      remainingSavingCapacity,
+      daysSaved,
+      currentMilestoneRemaining,
+      shortfall,
+      daysDelayed,
+      contributionHistory: reportTransactions,
     };
 
     const responseText = `__GOAL_ACHIEVEMENT_INSIGHT__${JSON.stringify(payload)}`;
     return ok('', responseText);
   }
 
-  private buildSummary(prediction: {
-    name: string;
-    status: string;
-    daysDifference: number | null;
-    shortfallAmount: number;
-  }): string {
-    if (prediction.status === 'completed') {
-      return `Mục tiêu "${prediction.name}" đã hoàn thành.`;
+  private buildSummary(
+    prediction: any,
+    expectedSavingsAmount: number,
+    remainingSavingCapacity: number,
+    daysSaved: number,
+    currentMilestoneRemaining: number,
+    daysDelayed: number,
+    shortfall: number,
+  ): string {
+    const formattedExpected = Math.round(expectedSavingsAmount).toLocaleString('vi-VN');
+    const formattedCapacity = Math.round(remainingSavingCapacity).toLocaleString('vi-VN');
+    const formattedMilestoneRemaining = Math.round(currentMilestoneRemaining).toLocaleString('vi-VN');
+    
+    let summaryText = `Mục tiêu "${prediction.name}":\n`;
+    summaryText += `- Đã tiết kiệm: ${Math.round(prediction.savedAmount).toLocaleString('vi-VN')} VND\n`;
+    summaryText += `- Còn thiếu giai đoạn hiện tại: ${formattedMilestoneRemaining} VND\n`;
+    summaryText += `- Tiết kiệm dự kiến tháng này: ${formattedExpected} VND\n`;
+    
+    if (shortfall > 0) {
+      summaryText += `- Dự kiến tiết kiệm tháng này không đủ cho giai đoạn hiện tại (thiếu ${Math.round(shortfall).toLocaleString('vi-VN')} VND). Tiến độ sẽ bị chậm khoảng ${daysDelayed} ngày dựa trên mức tích lũy trung bình lịch sử.`;
+    } else {
+      if (daysSaved > 0) {
+        summaryText += `- Nếu sử dụng số dư tiết kiệm khả dụng còn lại (${formattedCapacity} VND) sau khi trừ các mục tiêu khác, bạn có thể hoàn thành sớm hơn ${daysSaved} ngày.`;
+      } else {
+        summaryText += `- Số dư tiết kiệm khả dụng sau khi trừ mục tiêu khác: ${formattedCapacity} VND.`;
+      }
     }
-    if (prediction.status === 'unlikely') {
-      return `Mục tiêu "${prediction.name}" hiện khó đạt với tốc độ tiết kiệm hiện tại.`;
-    }
-
-    const days = prediction.daysDifference;
-    if (days != null && days > 0) {
-      return `Mục tiêu "${prediction.name}" dự kiến trễ ${days} ngày. Cần tăng tiết kiệm thêm khoảng ${Math.round(prediction.shortfallAmount).toLocaleString('vi-VN')} VND/tháng.`;
-    }
-    if (days != null && days < 0) {
-      return `Mục tiêu "${prediction.name}" đang đi trước kế hoạch ${Math.abs(days)} ngày.`;
-    }
-    return `Mục tiêu "${prediction.name}" đang đi đúng tiến độ.`;
+    return summaryText;
   }
 }

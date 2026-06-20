@@ -16,6 +16,9 @@ import { created, ok } from 'src/common/utils/response.util';
 import { SavingGoalStatus } from './enums/saving-goal-status.enum';
 import { Wallet } from 'src/modules/wallets/entities/wallet.entity';
 import { Transaction } from 'src/modules/transactions/entities/transaction.entity';
+import { SpendingPlansService } from 'src/modules/spending-plans/spending-plans.service';
+import { PersonalizationService } from 'src/modules/personalization/personalization.service';
+import { BudgetSuggestionResponseDto } from './dto/budget-suggestion.dto';
 
 @Injectable()
 export class SavingGoalsService {
@@ -31,6 +34,9 @@ export class SavingGoalsService {
 
     @InjectRepository(Transaction)
     private readonly transactionRepo: Repository<Transaction>,
+
+    private readonly spendingPlansService: SpendingPlansService,
+    private readonly personalizationService: PersonalizationService,
   ) {}
 
   async create(
@@ -57,9 +63,22 @@ export class SavingGoalsService {
       start_date: dto.start_date ? new Date(dto.start_date) : new Date(),
       end_date: dto.end_date ? new Date(dto.end_date) : null,
       wallet: savedWallet,
+      is_budget_enabled: dto.is_budget_enabled ?? false,
+      status: SavingGoalStatus.PAUSED,
     } as Partial<SavingGoal>);
 
     const savedGoal = await this.goalRepo.save(goal);
+
+    await this.spendingPlansService.syncSavingsBudget(user.id, {
+      savingGoalId: savedGoal.id,
+      name: savedGoal.name,
+      target: savedGoal.target ?? 0,
+      startDate: savedGoal.start_date ?? new Date(),
+      endDate: savedGoal.end_date,
+      isBudgetEnabled: false,
+      status: savedGoal.status,
+    });
+
     const reloadedGoal = await this.goalRepo.findOne({
       where: { id: savedGoal.id },
       relations: ['wallet'],
@@ -105,7 +124,7 @@ export class SavingGoalsService {
   ): Promise<ApiResponse<SavingGoal>> {
     const goal = await this.goalRepo.findOne({
       where: userId ? { id, user: { id: userId } } : { id },
-      relations: ['wallet'],
+      relations: ['wallet', 'user'],
     });
     if (!goal) throw new NotFoundException('Saving goal not found');
 
@@ -140,6 +159,9 @@ export class SavingGoalsService {
 
     if (dto.start_date) goal.start_date = new Date(dto.start_date);
     if (dto.end_date) goal.end_date = new Date(dto.end_date);
+    if (dto.is_budget_enabled !== undefined) {
+      goal.is_budget_enabled = dto.is_budget_enabled;
+    }
     if (dto.is_completed !== undefined) {
       goal.is_completed = dto.is_completed;
       if (dto.is_completed) {
@@ -149,6 +171,17 @@ export class SavingGoalsService {
     }
 
     const updated = await this.goalRepo.save(goal);
+
+    await this.spendingPlansService.syncSavingsBudget(goal.user.id, {
+      savingGoalId: updated.id,
+      name: updated.name,
+      target: updated.target ?? 0,
+      startDate: updated.start_date ?? new Date(),
+      endDate: updated.end_date,
+      isBudgetEnabled: updated.status === SavingGoalStatus.ACTIVE ? updated.is_budget_enabled : false,
+      status: updated.status,
+    });
+
     return ok(updated);
   }
 
@@ -161,6 +194,17 @@ export class SavingGoalsService {
 
     const ownerId = userId ?? goal.user?.id;
     const goalWallet = goal.wallet;
+
+    if (ownerId) {
+      await this.spendingPlansService.syncSavingsBudget(ownerId, {
+        savingGoalId: goal.id,
+        name: goal.name,
+        target: 0,
+        startDate: new Date(),
+        endDate: null,
+        isBudgetEnabled: false,
+      });
+    }
 
     if (ownerId && goalWallet) {
       // Find default/main wallet "Ví 1"
@@ -269,8 +313,29 @@ export class SavingGoalsService {
   ): Promise<ApiResponse<SavingGoal>> {
     const goal = await this.goalRepo.findOne({
       where: userId ? { id, user: { id: userId } } : { id },
+      relations: ['user', 'wallet'],
     });
     if (!goal) throw new NotFoundException('Saving goal not found');
+
+    const ownerId = userId ?? goal.user?.id;
+    if (!ownerId) throw new BadRequestException('User owner not found');
+
+    if (goal.status !== SavingGoalStatus.ACTIVE) {
+      const activeGoals = await this.goalRepo.find({
+        where: {
+          user: { id: ownerId },
+          is_completed: false,
+          status: SavingGoalStatus.ACTIVE,
+        },
+        select: ['id', 'name'],
+      });
+      if (activeGoals.length >= 2) {
+        throw new BadRequestException({
+          message: 'Đã đạt giới hạn tối đa 2 mục tiêu hoạt động đồng thời.',
+          activeGoals: activeGoals.map((g) => ({ id: g.id, name: g.name })),
+        });
+      }
+    }
 
     goal.end_date = new_end_date;
     if (new_start_date) goal.start_date = new_start_date;
@@ -278,8 +343,188 @@ export class SavingGoalsService {
     goal.completion_notified = false;
 
     const updated = await this.goalRepo.save(goal);
+
+    await this.spendingPlansService.syncSavingsBudget(ownerId, {
+      savingGoalId: updated.id,
+      name: updated.name,
+      target: updated.target ?? 0,
+      startDate: updated.start_date ?? new Date(),
+      endDate: updated.end_date,
+      isBudgetEnabled: updated.is_budget_enabled,
+      status: updated.status,
+    });
+
     return ok(updated);
   }
 
+  async getActiveGoalCount(userId: number): Promise<number> {
+    return this.goalRepo.count({
+      where: {
+        user: { id: userId },
+        is_completed: false,
+        status: SavingGoalStatus.ACTIVE,
+      },
+    });
+  }
 
+  async activateGoal(
+    userId: number,
+    goalId: number,
+  ): Promise<ApiResponse<SavingGoal>> {
+    const goal = await this.goalRepo.findOne({
+      where: { id: goalId, user: { id: userId } },
+      relations: ['wallet', 'user'],
+    });
+    if (!goal) throw new NotFoundException('Saving goal not found');
+
+    if (goal.is_completed) {
+      throw new BadRequestException('Không thể kích hoạt mục tiêu đã hoàn thành.');
+    }
+
+    if (goal.status === SavingGoalStatus.ACTIVE) {
+      return ok(goal);
+    }
+
+    const activeGoals = await this.goalRepo.find({
+      where: {
+        user: { id: userId },
+        is_completed: false,
+        status: SavingGoalStatus.ACTIVE,
+      },
+      select: ['id', 'name'],
+    });
+
+    if (activeGoals.length >= 2) {
+      throw new BadRequestException({
+        message: 'Đã đạt giới hạn tối đa 2 mục tiêu hoạt động đồng thời.',
+        activeGoals: activeGoals.map((g) => ({ id: g.id, name: g.name })),
+      });
+    }
+
+    goal.status = SavingGoalStatus.ACTIVE;
+    const updated = await this.goalRepo.save(goal);
+
+    await this.spendingPlansService.syncSavingsBudget(userId, {
+      savingGoalId: updated.id,
+      name: updated.name,
+      target: updated.target ?? 0,
+      startDate: updated.start_date ?? new Date(),
+      endDate: updated.end_date,
+      isBudgetEnabled: updated.is_budget_enabled,
+      status: updated.status,
+    });
+
+    return ok(updated);
+  }
+
+  async pauseGoal(
+    userId: number,
+    goalId: number,
+  ): Promise<ApiResponse<SavingGoal>> {
+    const goal = await this.goalRepo.findOne({
+      where: { id: goalId, user: { id: userId } },
+      relations: ['wallet', 'user'],
+    });
+    if (!goal) throw new NotFoundException('Saving goal not found');
+
+    if (goal.is_completed) {
+      throw new BadRequestException('Không thể tạm dừng mục tiêu đã hoàn thành.');
+    }
+
+    if (goal.status === SavingGoalStatus.PAUSED) {
+      return ok(goal);
+    }
+
+    goal.status = SavingGoalStatus.PAUSED;
+    const updated = await this.goalRepo.save(goal);
+
+    await this.spendingPlansService.syncSavingsBudget(userId, {
+      savingGoalId: updated.id,
+      name: updated.name,
+      target: updated.target ?? 0,
+      startDate: updated.start_date ?? new Date(),
+      endDate: updated.end_date,
+      isBudgetEnabled: false,
+      status: updated.status,
+    });
+
+    return ok(updated);
+  }
+
+  async getBudgetSuggestion(
+    userId: number,
+    target?: number,
+    startDate?: string,
+    endDate?: string,
+  ): Promise<ApiResponse<BudgetSuggestionResponseDto>> {
+    const profile = await this.personalizationService.getOrBuildProfile(userId);
+    const averageMonthlySavings = profile?.averageMonthlySavings ? Number(profile.averageMonthlySavings) : 0;
+    const confidenceScore = profile?.confidenceScore ? Number(profile.confidenceScore) : 0;
+
+    const existingGoals = await this.goalRepo.find({
+      where: {
+        user: { id: userId },
+        is_completed: false,
+        is_budget_enabled: true,
+        status: SavingGoalStatus.ACTIVE,
+      },
+    });
+
+    const existingGoalsWithBudget = existingGoals.map((goal) => {
+      let monthlyBudget = 0;
+      const start = goal.start_date ? new Date(goal.start_date) : new Date();
+      const end = goal.end_date ? new Date(goal.end_date) : null;
+      if (end && goal.target) {
+        let months =
+          (end.getFullYear() - start.getFullYear()) * 12 +
+          end.getMonth() -
+          start.getMonth() +
+          1;
+        if (months <= 0) months = 1;
+        monthlyBudget = goal.target / months;
+      }
+      return {
+        id: goal.id,
+        name: goal.name,
+        monthlyBudget: Math.ceil(monthlyBudget),
+      };
+    });
+
+    const totalExistingBudget = existingGoalsWithBudget.reduce(
+      (sum, g) => sum + g.monthlyBudget,
+      0,
+    );
+
+    const availableSavings = averageMonthlySavings - totalExistingBudget;
+
+    let requiredMonthly = 0;
+    if (target && startDate && endDate) {
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      let months =
+        (end.getFullYear() - start.getFullYear()) * 12 +
+        end.getMonth() -
+        start.getMonth() +
+        1;
+      if (months <= 0) months = 1;
+      requiredMonthly = target / months;
+    }
+    requiredMonthly = Math.ceil(requiredMonthly);
+
+    const isSufficient = availableSavings >= requiredMonthly;
+    const deficit = isSufficient ? 0 : Math.round(requiredMonthly - availableSavings);
+
+    const suggestion: BudgetSuggestionResponseDto = {
+      averageMonthlySavings: Math.round(averageMonthlySavings),
+      totalExistingBudget: Math.round(totalExistingBudget),
+      availableSavings: Math.round(availableSavings),
+      requiredMonthly,
+      isSufficient,
+      deficit,
+      existingGoals: existingGoalsWithBudget,
+      confidenceScore,
+    };
+
+    return ok(suggestion);
+  }
 }

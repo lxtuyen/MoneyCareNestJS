@@ -31,6 +31,8 @@ export class AiController {
       dto.userId,
       dto.ocrText,
       dto.ocrLines,
+      dto.goalId,
+      dto.forecastedSaving,
     );
   }
 

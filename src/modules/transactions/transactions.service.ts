@@ -26,6 +26,7 @@ import {
 } from './transaction-split.util';
 import { CouplesService } from '../couples/couples.service';
 import { Couple } from '../couples/entities/couple.entity';
+import { AnalyticsPredictionService } from '../analytics/analytics-prediction.service';
 
 @Injectable()
 export class TransactionService {
@@ -46,6 +47,7 @@ export class TransactionService {
     private walletRepo: Repository<Wallet>,
     private financialCacheInvalidationService: FinancialCacheInvalidationService,
     private couplesService: CouplesService,
+    private analyticsPredictionService: AnalyticsPredictionService,
   ) {}
 
   private getUserDisplayName(user?: User | null): string | null {
@@ -123,6 +125,7 @@ export class TransactionService {
         : null,
       creatorId: creator?.id ?? null,
       creatorName: this.getUserDisplayName(creator),
+      isTransfer: transaction.isTransfer,
       splitMethod: transaction.splitMethod ?? 'none',
       settlementStatus: transaction.settlementStatus ?? null,
       splits: transaction.splits
@@ -309,6 +312,9 @@ export class TransactionService {
       user.id,
       affectedGoalIds,
     );
+
+    // Invalidate AI prediction cache — kết quả AI cũ không còn chính xác khi có giao dịch mới
+    void this.analyticsPredictionService.invalidateUserCache(user.id).catch(() => undefined);
 
     return new ApiResponse({
       success: true,
@@ -623,6 +629,9 @@ export class TransactionService {
       [...oldGoalIds, ...newGoalIds],
     );
 
+    // Invalidate AI prediction cache
+    void this.analyticsPredictionService.invalidateUserCache(transaction.user.id).catch(() => undefined);
+
     return new ApiResponse({
       success: true,
       statusCode: HttpStatus.OK,
@@ -780,6 +789,10 @@ export class TransactionService {
       transaction.user.id,
       affectedGoalIds,
     );
+
+    // Invalidate AI prediction cache
+    void this.analyticsPredictionService.invalidateUserCache(transaction.user.id).catch(() => undefined);
+
     return new ApiResponse({
       success: true,
       statusCode: HttpStatus.OK,

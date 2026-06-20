@@ -16,6 +16,8 @@ import { Wallet } from '../wallets/entities/wallet.entity';
 import { Transaction } from '../transactions/entities/transaction.entity';
 import { CreateSavingGoalDto } from './dto/create-goal.dto';
 import { UpdateSavingGoalDto } from './dto/update-goal.dto';
+import { SpendingPlansService } from '../spending-plans/spending-plans.service';
+import { PersonalizationService } from '../personalization/personalization.service';
 
 // ─── Test Utilities ──────────────────────────────────────────────────────────
 
@@ -57,6 +59,14 @@ describe('Preservation 1 — Create fund with name, dates (MUST PASS)', () => {
         {
           provide: getRepositoryToken(Transaction),
           useValue: createMockRepository<Transaction>(),
+        },
+        {
+          provide: SpendingPlansService,
+          useValue: { syncSavingsBudget: jest.fn() },
+        },
+        {
+          provide: PersonalizationService,
+          useValue: { getOrBuildProfile: jest.fn() },
         },
       ],
     }).compile();
@@ -133,6 +143,14 @@ describe('Preservation 2 — Update fund works correctly (MUST PASS)', () => {
           provide: getRepositoryToken(Transaction),
           useValue: createMockRepository<Transaction>(),
         },
+        {
+          provide: SpendingPlansService,
+          useValue: { syncSavingsBudget: jest.fn() },
+        },
+        {
+          provide: PersonalizationService,
+          useValue: { getOrBuildProfile: jest.fn() },
+        },
       ],
     }).compile();
 
@@ -146,6 +164,7 @@ describe('Preservation 2 — Update fund works correctly (MUST PASS)', () => {
       name: 'Old Name',
       target: 100000,
       wallet: { id: 2, balance: 0 },
+      user: { id: 1 },
     } as any as SavingGoal;
 
     fundRepo.findOne.mockResolvedValue(mockSavingGoal);
@@ -189,6 +208,14 @@ describe('Preservation 3 — Delete fund works correctly (MUST PASS)', () => {
         {
           provide: getRepositoryToken(Transaction),
           useValue: createMockRepository<Transaction>(),
+        },
+        {
+          provide: SpendingPlansService,
+          useValue: { syncSavingsBudget: jest.fn() },
+        },
+        {
+          provide: PersonalizationService,
+          useValue: { getOrBuildProfile: jest.fn() },
         },
       ],
     }).compile();
@@ -239,6 +266,14 @@ describe('Preservation 4 — Select fund works correctly (MUST PASS)', () => {
         {
           provide: getRepositoryToken(Transaction),
           useValue: createMockRepository<Transaction>(),
+        },
+        {
+          provide: SpendingPlansService,
+          useValue: { syncSavingsBudget: jest.fn() },
+        },
+        {
+          provide: PersonalizationService,
+          useValue: { getOrBuildProfile: jest.fn() },
         },
       ],
     }).compile();
@@ -306,6 +341,14 @@ describe('PBT Preservation — Create fund with random valid data', () => {
         {
           provide: getRepositoryToken(Transaction),
           useValue: createMockRepository<Transaction>(),
+        },
+        {
+          provide: SpendingPlansService,
+          useValue: { syncSavingsBudget: jest.fn() },
+        },
+        {
+          provide: PersonalizationService,
+          useValue: { getOrBuildProfile: jest.fn() },
         },
       ],
     }).compile();

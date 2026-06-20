@@ -16,6 +16,7 @@ import {
   getDaysLeftInMonthPeriod,
   getReportDay,
   getVietnamMonthRange,
+  getVietnamCycleRange,
   getVietnamNow,
 } from 'src/common/utils/date.util';
 import { roundMoney } from 'src/common/utils/money.util';
@@ -33,14 +34,14 @@ export class SpendingPlanStatisticsService {
     private readonly calculator: SpendingPlanCalculatorService,
   ) {}
 
-  async getActiveStatistics(userId: number, month?: number, year?: number) {
+  async getActiveStatistics(userId: number, month?: number, year?: number, startDay = 1) {
     const plan = await this.findActivePlanEntity(userId, month, year);
     if (!plan) {
       return ok(null);
     }
 
     const period = this.getCurrentPeriod(month, year);
-    const context = await this.buildExpenseContext(plan, userId, period);
+    const context = await this.buildExpenseContext(plan, userId, period, startDay);
     const currentDay = getReportDay(period);
     const dailySeries = this.buildDailySeries(
       plan,
@@ -91,8 +92,9 @@ export class SpendingPlanStatisticsService {
     plan: SpendingPlan,
     userId: number,
     period = this.getCurrentPeriod(),
+    startDay = 1,
   ) {
-    const { start, end } = getVietnamMonthRange(period.month, period.year);
+    const { start, end } = getVietnamCycleRange(period.month, period.year, startDay);
     const allExpenses = await this.transactionRepo
       .createQueryBuilder('transaction')
       .leftJoin('transaction.user', 'user')

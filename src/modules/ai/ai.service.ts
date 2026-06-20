@@ -36,13 +36,15 @@ export class AiService {
     userIdRaw: unknown,
     ocrText?: string,
     ocrLines?: string,
+    goalId?: number,
+    forecastedSaving?: number,
   ): Promise<ApiResponse<string>> {
     const userId = Number(userIdRaw);
     if (!Number.isFinite(userId)) {
       throw new BadRequestException('userId must be a number');
     }
 
-    return this.chatRouterService.handle(message, userId, ocrText, ocrLines);
+    return this.chatRouterService.handle(message, userId, ocrText, ocrLines, goalId, forecastedSaving);
   }
 
   async scanReceipt(

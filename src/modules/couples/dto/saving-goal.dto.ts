@@ -25,6 +25,10 @@ export class CreateCoupleSavingGoalDto {
   @IsNumber()
   @IsNotEmpty()
   coupleId!: number;
+
+  @IsOptional()
+  @IsBoolean()
+  is_budget_enabled?: boolean;
 }
 
 export class AddContributionDto {
@@ -59,4 +63,8 @@ export class UpdateCoupleSavingGoalDto {
   @IsBoolean()
   @IsOptional()
   completion_notified?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  is_budget_enabled?: boolean;
 }

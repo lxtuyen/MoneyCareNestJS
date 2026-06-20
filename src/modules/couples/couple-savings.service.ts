@@ -12,16 +12,12 @@ import { CoupleMember } from './entities/couple-member.entity';
 import { User } from 'src/modules/user/entities/user.entity';
 import { Wallet } from 'src/modules/wallets/entities/wallet.entity';
 import { Transaction } from 'src/modules/transactions/entities/transaction.entity';
-import { Category } from 'src/modules/categories/entities/category.entity';
-import { CategoryType } from 'src/modules/categories/entities/category-type.enum';
+import { Category, CategoryType } from 'src/modules/categories/entities/category.entity';
 import { Couple } from './entities/couple.entity';
-import {
-  CreateCoupleSavingGoalDto,
-  AddContributionDto,
-  UpdateCoupleSavingGoalDto,
-} from './dto/saving-goal.dto';
+import { CreateCoupleSavingGoalDto, AddContributionDto, UpdateCoupleSavingGoalDto } from './dto/saving-goal.dto';
 import { ApiResponse } from 'src/common/dto/api-response.dto';
 import { ok, created } from 'src/common/utils/response.util';
+import { SpendingPlansService } from '../spending-plans/spending-plans.service';
 
 type MemberContribution = { userId: number; fullName: string; amount: number };
 
@@ -48,6 +44,8 @@ export class CoupleSavingsService {
 
     @InjectRepository(Category)
     private readonly categoryRepo: Repository<Category>,
+
+    private readonly spendingPlansService: SpendingPlansService,
   ) {}
 
   private async checkMembership(
@@ -115,9 +113,21 @@ export class CoupleSavingsService {
       status: 'active',
       wallet: savedWallet,
       walletId: savedWallet.id,
+      is_budget_enabled: dto.is_budget_enabled ?? false,
     });
 
     const saved = await this.savingGoalRepo.save(goal);
+
+    await this.spendingPlansService.syncSavingsBudget(requestUserId, {
+      coupleSavingGoalId: saved.id,
+      name: saved.name,
+      target: Number(saved.target ?? 0),
+      startDate: saved.createdAt ?? new Date(),
+      endDate: saved.end_date,
+      isBudgetEnabled: saved.is_budget_enabled,
+      status: saved.status,
+    });
+
     return created(saved);
   }
 
@@ -314,7 +324,7 @@ export class CoupleSavingsService {
         user: user,
         wallet: sourceWallet,
         category: category,
-        isTransfer: true,
+        isTransfer: false,
         coupleId: sourceWallet.coupleId || null,
         couple: sourceWallet.coupleId
           ? ({ id: sourceWallet.coupleId } as Couple)
@@ -420,6 +430,9 @@ export class CoupleSavingsService {
     if (dto.end_date !== undefined) {
       goal.end_date = dto.end_date ? new Date(dto.end_date) : null;
     }
+    if (dto.is_budget_enabled !== undefined) {
+      goal.is_budget_enabled = dto.is_budget_enabled;
+    }
 
     if (dto.status !== undefined) {
       goal.status = dto.status;
@@ -436,6 +449,17 @@ export class CoupleSavingsService {
     }
 
     const saved = await this.savingGoalRepo.save(goal);
+
+    await this.spendingPlansService.syncSavingsBudget(requestUserId, {
+      coupleSavingGoalId: saved.id,
+      name: saved.name,
+      target: Number(saved.target ?? 0),
+      startDate: saved.createdAt ?? new Date(),
+      endDate: saved.end_date,
+      isBudgetEnabled: saved.is_budget_enabled,
+      status: saved.status,
+    });
+
     return ok(saved);
   }
 
@@ -452,6 +476,15 @@ export class CoupleSavingsService {
     }
 
     await this.checkMembership(requestUserId, goal.coupleId);
+
+    await this.spendingPlansService.syncSavingsBudget(requestUserId, {
+      coupleSavingGoalId: goal.id,
+      name: goal.name,
+      target: 0,
+      startDate: new Date(),
+      endDate: null,
+      isBudgetEnabled: false,
+    });
 
     const goalWallet = goal.wallet;
     if (goalWallet) {

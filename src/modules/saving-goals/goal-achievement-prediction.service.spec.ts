@@ -6,6 +6,7 @@ import { SpendingPlansService } from 'src/modules/spending-plans/spending-plans.
 import { SavingGoal } from './entities/saving-goal.entity';
 import { AnalyticsService } from '../analytics/analytics.service';
 import { GoalAchievementPredictionService } from './goal-achievement-prediction.service';
+import { SavingGoalsStatisticsService } from './saving-goals-statistics.service';
 
 describe('GoalAchievementPredictionService', () => {
   let service: GoalAchievementPredictionService;
@@ -34,6 +35,11 @@ describe('GoalAchievementPredictionService', () => {
           provide: getRepositoryToken(Transaction),
           useValue: {
             createQueryBuilder: jest.fn(),
+            manager: {
+              getRepository: jest.fn().mockReturnValue({
+                find: jest.fn().mockResolvedValue([]),
+              }),
+            },
           },
         },
         {
@@ -53,6 +59,12 @@ describe('GoalAchievementPredictionService', () => {
           provide: AnalyticsService,
           useValue: {
             fetchAiBudgetingSnapshot: jest.fn(),
+          },
+        },
+        {
+          provide: SavingGoalsStatisticsService,
+          useValue: {
+            getMilestonesForGoal: jest.fn().mockResolvedValue([]),
           },
         },
       ],

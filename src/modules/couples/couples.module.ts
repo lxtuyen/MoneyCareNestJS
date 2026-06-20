@@ -24,6 +24,7 @@ import { TransactionSplit } from '../transactions/entities/transaction-split.ent
 import { Wallet } from '../wallets/entities/wallet.entity';
 import { SpendingPlansModule } from '../spending-plans/spending-plans.module';
 import { AiPredictionRun } from 'src/modules/analytics/entities/ai-prediction-run.entity';
+import { AnalyticsModule } from 'src/modules/analytics/analytics.module';
 
 import { CoupleMessage } from './entities/couple-message.entity';
 import { CoupleChatService } from './couple-chat.service';
@@ -50,6 +51,7 @@ import { NotificationsModule } from 'src/modules/notifications/notifications.mod
     ]),
     SpendingPlansModule,
     NotificationsModule,
+    AnalyticsModule,
     ConfigModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],

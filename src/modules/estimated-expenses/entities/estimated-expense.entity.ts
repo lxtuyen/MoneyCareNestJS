@@ -77,6 +77,12 @@ export class EstimatedExpense {
   @Column({ type: 'int', default: 1 })
   frequencyValue!: number;
 
+  @Column({ type: 'int', nullable: true })
+  savingGoalId!: number | null;
+
+  @Column({ type: 'int', nullable: true })
+  coupleSavingGoalId!: number | null;
+
   @CreateDateColumn()
   createdAt!: Date;
 

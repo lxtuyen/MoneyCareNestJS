@@ -34,5 +34,9 @@ export class CreateSavingGoalDto {
   @IsBoolean()
   create_new_wallet?: boolean;
 
+  @IsOptional()
+  @IsBoolean()
+  is_budget_enabled?: boolean;
+
 
 }

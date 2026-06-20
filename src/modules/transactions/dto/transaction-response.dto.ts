@@ -50,7 +50,10 @@ export class TransactionResponseDto {
   creatorName?: string | null;
 
   @Expose()
-  created_at: Date;
+  isTransfer!: boolean;
+
+  @Expose()
+  created_at!: Date;
 
   @Expose()
   updated_at: Date;

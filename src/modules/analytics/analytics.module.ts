@@ -44,6 +44,6 @@ import { AnalyticsServiceClient } from './analytics-service-client.service';
     AnalyticsPayloadBuilderService,
     AnalyticsServiceClient,
   ],
-  exports: [AnalyticsService],
+  exports: [AnalyticsService, AnalyticsPredictionService],
 })
 export class AnalyticsModule {}

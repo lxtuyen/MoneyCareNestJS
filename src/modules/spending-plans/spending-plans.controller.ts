@@ -40,15 +40,19 @@ export class SpendingPlansController {
     @User('sub') userId: number,
     @Query('month') month?: string,
     @Query('year') year?: string,
+    @Query('startDay') startDay?: string,
   ) {
     const numericMonth =
       month && !isNaN(parseInt(month, 10)) ? parseInt(month, 10) : undefined;
     const numericYear =
       year && !isNaN(parseInt(year, 10)) ? parseInt(year, 10) : undefined;
+    const numericStartDay =
+      startDay && !isNaN(parseInt(startDay, 10)) ? parseInt(startDay, 10) : undefined;
     return this.spendingPlansService.getActiveStatistics(
       userId,
       numericMonth,
       numericYear,
+      numericStartDay,
     );
   }
 

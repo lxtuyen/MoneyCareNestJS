@@ -9,6 +9,7 @@ import {
   Delete,
   UseGuards,
   ParseIntPipe,
+  Query,
 } from '@nestjs/common';
 import { SavingGoalsService } from './saving-goals.service';
 import { SavingGoalsStatisticsService } from './saving-goals-statistics.service';
@@ -21,6 +22,7 @@ import { JwtAuthGuard } from 'src/modules/auth/jwt-auth.guard';
 import { User } from 'src/common/decorators/user.decorator';
 import { GoalAchievementPredictionService } from './goal-achievement-prediction.service';
 import { ok } from 'src/common/utils/response.util';
+import { BudgetSuggestionResponseDto } from './dto/budget-suggestion.dto';
 
 @Controller('saving-goals')
 @UseGuards(JwtAuthGuard)
@@ -48,6 +50,22 @@ export class SavingGoalsController {
     const data =
       await this.goalAchievementPredictionService.predictAllGoals(userId);
     return ok(data, 'Lấy dự báo các mục tiêu tiết kiệm thành công');
+  }
+
+  @Get('budget-suggestion')
+  @SwaggerApiResponse({ type: BudgetSuggestionResponseDto })
+  async getBudgetSuggestion(
+    @User('sub') userId: number,
+    @Query('target') target?: number,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    return this.savingGoalsService.getBudgetSuggestion(
+      userId,
+      target ? Number(target) : undefined,
+      startDate,
+      endDate,
+    );
   }
 
   @Get(':id')
@@ -111,7 +129,23 @@ export class SavingGoalsController {
     );
   }
 
+  @Patch(':id/activate')
+  @SwaggerApiResponse({ type: SavingGoalResponseDto })
+  async activateGoal(
+    @Param('id', ParseIntPipe) id: number,
+    @User('sub') userId: number,
+  ) {
+    return this.savingGoalsService.activateGoal(userId, id);
+  }
 
+  @Patch(':id/pause')
+  @SwaggerApiResponse({ type: SavingGoalResponseDto })
+  async pauseGoal(
+    @Param('id', ParseIntPipe) id: number,
+    @User('sub') userId: number,
+  ) {
+    return this.savingGoalsService.pauseGoal(userId, id);
+  }
 
   @Get(':id/report')
   async getGoalReport(

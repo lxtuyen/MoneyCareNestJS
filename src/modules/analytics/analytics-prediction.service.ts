@@ -262,4 +262,48 @@ export class AnalyticsPredictionService {
   async markSkipped(runId: number): Promise<void> {
     await this.runRepo.update(runId, { status: 'skipped' });
   }
+
+  /**
+   * Xóa cache AiPredictionRun của ngày hôm nay cho user.
+   * Gọi khi user tạo/sửa/xóa giao dịch để cache không bị stale.
+   */
+  async invalidateUserCache(userId: number): Promise<void> {
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const todayEnd = new Date();
+    todayEnd.setHours(23, 59, 59, 999);
+
+    await this.runRepo.delete({
+      userId,
+      createdAt: Between(todayStart, todayEnd),
+    });
+
+    this.logger.log(`Invalidated AiPredictionRun cache for user ${userId}`);
+  }
+
+  /**
+   * Lấy prediction run mới nhất của user cho tháng chỉ định.
+   * Trả về null nếu không có cache hoặc cache không phải hôm nay.
+   */
+  async getLatestRunForMonth(
+    userId: number,
+    modelType: 'forecasting' | 'budgeting',
+    targetMonth: number,
+    targetYear: number,
+  ): Promise<AiPredictionRun | null> {
+    const { start, end } = getVietnamMonthRange(targetMonth, targetYear);
+
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
+    return this.runRepo.findOne({
+      where: {
+        userId,
+        modelType,
+        predictionTargetStart: Between(start, end),
+        createdAt: Between(todayStart, new Date()),
+      },
+      order: { createdAt: 'DESC' },
+    });
+  }
 }

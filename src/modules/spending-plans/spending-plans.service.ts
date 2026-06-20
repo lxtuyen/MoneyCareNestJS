@@ -12,10 +12,10 @@ import { UpdateSpendingPlanDto } from './dto/update-spending-plan.dto';
 import { CreateEstimatedExpenseDto } from 'src/modules/estimated-expenses/dto/create-estimated-expense.dto';
 import { EstimatedExpense } from 'src/modules/estimated-expenses/entities/estimated-expense.entity';
 import { SpendingPlan } from './entities/spending-plan.entity';
-import { SpendingPlanStatus } from './interfaces/spending-plan.enums';
+import { SpendingPlanStatus, SpendingPlanExpenseFrequency } from './interfaces/spending-plan.enums';
 import { SpendingPlanCalculatorService } from './spending-plan-calculator.service';
 import { SpendingPlanStatisticsService } from './spending-plan-statistics.service';
-import { Category } from 'src/modules/categories/entities/category.entity';
+import { Category, CategoryType } from 'src/modules/categories/entities/category.entity';
 import { SubCategory } from 'src/modules/categories/entities/sub-category.entity';
 import { getVietnamNow } from 'src/common/utils/date.util';
 import { SpendingPlanFilters } from './interfaces/spending-plan.interface';
@@ -199,8 +199,8 @@ export class SpendingPlansService {
     return ok({ id });
   }
 
-  async getActiveStatistics(userId: number, month?: number, year?: number) {
-    return this.statisticsService.getActiveStatistics(userId, month, year);
+  async getActiveStatistics(userId: number, month?: number, year?: number, startDay?: number) {
+    return this.statisticsService.getActiveStatistics(userId, month, year, startDay);
   }
 
   async buildExpenseContext(
@@ -301,6 +301,111 @@ export class SpendingPlansService {
 
   async getMonthlySavingCapacity(userId: number) {
     return this.statisticsService.getMonthlySavingCapacity(userId);
+  }
+
+  async syncSavingsBudget(
+    userId: number,
+    options: {
+      savingGoalId?: number;
+      coupleSavingGoalId?: number;
+      name: string;
+      target: number;
+      startDate: Date;
+      endDate: Date | null;
+      isBudgetEnabled: boolean;
+      status?: string;
+    },
+  ): Promise<void> {
+    const isGoalCompleted = options.status === 'completed' || options.status === 'completed_early';
+    const shouldAddBudget = options.isBudgetEnabled && !isGoalCompleted && options.target > 0 && options.endDate;
+
+    const whereClause: any = {};
+    if (options.savingGoalId) {
+      whereClause.savingGoalId = options.savingGoalId;
+    } else if (options.coupleSavingGoalId) {
+      whereClause.coupleSavingGoalId = options.coupleSavingGoalId;
+    } else {
+      return;
+    }
+
+    const existingExpense = await this.estimatedExpenseRepo.findOne({
+      where: whereClause,
+      relations: ['spendingPlan'],
+    });
+
+    if (!shouldAddBudget) {
+      if (existingExpense) {
+        const planId = existingExpense.spendingPlan.id;
+        await this.estimatedExpenseRepo.remove(existingExpense);
+        await this.recalculateAndReload(planId, userId);
+      }
+      return;
+    }
+
+    const activePlan = await this.planRepo.findOne({
+      where: { user: { id: userId }, status: SpendingPlanStatus.ACTIVE },
+      relations: ['estimatedExpenses'],
+    });
+
+    if (!activePlan) {
+      if (existingExpense) {
+        const planId = existingExpense.spendingPlan.id;
+        await this.estimatedExpenseRepo.remove(existingExpense);
+        await this.recalculateAndReload(planId, userId);
+      }
+      return;
+    }
+
+    const start = options.startDate ? new Date(options.startDate) : new Date();
+    const end = options.endDate ? new Date(options.endDate) : new Date();
+    let months =
+      (end.getFullYear() - start.getFullYear()) * 12 +
+      end.getMonth() -
+      start.getMonth() +
+      1;
+    if (months <= 0) months = 1;
+    const monthlyAmount = Math.ceil(options.target / months);
+
+    let savingCategory = await this.categoryRepo.findOne({
+      where: { name: 'Tiết kiệm', type: CategoryType.EXPENSE },
+    });
+    if (!savingCategory) {
+      savingCategory = this.categoryRepo.create({
+        name: 'Tiết kiệm',
+        icon: '🐷',
+        type: CategoryType.EXPENSE,
+        is_system: true,
+      });
+      savingCategory = await this.categoryRepo.save(savingCategory);
+    }
+
+    if (existingExpense) {
+      const oldPlanId = existingExpense.spendingPlan.id;
+      existingExpense.spendingPlan = activePlan;
+      existingExpense.amount = monthlyAmount;
+      existingExpense.monthlyLimit = monthlyAmount;
+      existingExpense.category = savingCategory;
+      await this.estimatedExpenseRepo.save(existingExpense);
+
+      if (oldPlanId !== activePlan.id) {
+        await this.recalculateAndReload(oldPlanId, userId);
+      }
+      await this.recalculateAndReload(activePlan.id, userId);
+    } else {
+      const newExpense = this.estimatedExpenseRepo.create({
+        spendingPlan: activePlan,
+        user: { id: userId } as User,
+        category: savingCategory,
+        amount: monthlyAmount,
+        monthlyLimit: monthlyAmount,
+        frequencyType: SpendingPlanExpenseFrequency.MONTHLY,
+        frequencyValue: 1,
+        savingGoalId: options.savingGoalId || null,
+        coupleSavingGoalId: options.coupleSavingGoalId || null,
+      });
+      await this.estimatedExpenseRepo.save(newExpense);
+      await this.recalculateAndReload(activePlan.id, userId);
+    }
   }
 
   private async createEstimatedExpenseEntity(

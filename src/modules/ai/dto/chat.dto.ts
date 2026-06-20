@@ -15,4 +15,12 @@ export class ChatDto {
   @IsOptional()
   @IsString()
   ocrLines?: string;
+
+  @IsOptional()
+  @IsNumber()
+  goalId?: number;
+
+  @IsOptional()
+  @IsNumber()
+  forecastedSaving?: number;
 }

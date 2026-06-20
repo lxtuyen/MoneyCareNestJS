@@ -6,6 +6,13 @@ export interface AnalyticsServiceAnomalyResponse {
   date: string;
   category_name: string;
   reason: string;
+  anomaly_type?: string;
+  severity?: string;
+  expected_min_amount?: number;
+  expected_max_amount?: number;
+  deviation_pct?: number;
+  reason_codes?: string[];
+  reasonCodes?: string[];
 }
 
 export interface AnalyticsServiceBudgetRiskItemResponse {
@@ -36,6 +43,38 @@ export interface AnalyticsServiceInsightResponse {
   message: string;
   severity: string;
   evidence: string;
+  insight_type?: string;
+  insightType?: string;
+  priority?: number;
+  action?: string;
+  reason_codes?: string[];
+  reasonCodes?: string[];
+}
+
+export interface ForecastDriverResponse {
+  category_name?: string;
+  categoryName?: string;
+  contribution_amount?: number;
+  contributionAmount?: number;
+  contribution_pct?: number;
+  contributionPct?: number;
+  delta_vs_baseline?: number;
+  deltaVsBaseline?: number;
+  trend?: string;
+  reason_codes?: string[];
+  reasonCodes?: string[];
+}
+
+export interface ForecastConfidenceFactorResponse {
+  code: string;
+  impact: string;
+  message: string;
+}
+
+export interface DataQualityWarningResponse {
+  code: string;
+  severity: string;
+  message: string;
 }
 
 export interface AnalyticsServiceForecastPointResponse {
@@ -133,6 +172,16 @@ export interface AnalyticsServiceMonthlyForecastResponse {
   categoryForecasts?: AnalyticsServiceCategoryForecastResponse[];
   risk_windows?: AnalyticsServiceRiskWindowResponse[];
   riskWindows?: AnalyticsServiceRiskWindowResponse[];
+  top_drivers?: ForecastDriverResponse[];
+  topDrivers?: ForecastDriverResponse[];
+  delta_vs_last_month?: number;
+  deltaVsLastMonth?: number;
+  delta_vs_baseline?: number;
+  deltaVsBaseline?: number;
+  confidence_factors?: ForecastConfidenceFactorResponse[];
+  confidenceFactors?: ForecastConfidenceFactorResponse[];
+  data_quality_warnings?: DataQualityWarningResponse[];
+  dataQualityWarnings?: DataQualityWarningResponse[];
 }
 
 export interface AnalyticsServiceForecastingResponse {
@@ -265,6 +314,10 @@ export interface AnalyticsMappedResponse {
     message: string;
     severity: string;
     evidence: string;
+    insightType?: string;
+    priority?: number;
+    action?: string;
+    reasonCodes?: string[];
   }>;
   forecasting: {
     currentMonthProjection: AnalyticsMappedMonthlyForecast | null;
@@ -322,6 +375,26 @@ export interface AnalyticsMappedMonthlyForecast {
   dailyPoints: Array<{
     date: string;
     predictedAmount?: number;
+  }>;
+  topDrivers?: Array<{
+    categoryName?: string;
+    contributionAmount?: number;
+    contributionPct?: number;
+    deltaVsBaseline?: number;
+    trend?: string;
+    reasonCodes: string[];
+  }>;
+  deltaVsLastMonth?: number;
+  deltaVsBaseline?: number;
+  confidenceFactors?: Array<{
+    code: string;
+    impact: string;
+    message: string;
+  }>;
+  dataQualityWarnings?: Array<{
+    code: string;
+    severity: string;
+    message: string;
   }>;
 }
 

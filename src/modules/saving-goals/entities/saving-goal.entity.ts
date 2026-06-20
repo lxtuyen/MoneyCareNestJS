@@ -49,7 +49,7 @@ export class SavingGoal {
   @Column({
     type: 'enum',
     enum: SavingGoalStatus,
-    default: SavingGoalStatus.ACTIVE,
+    default: SavingGoalStatus.PAUSED,
   })
   status!: SavingGoalStatus;
 
@@ -58,6 +58,9 @@ export class SavingGoal {
 
   @Column({ default: false })
   is_selected!: boolean;
+
+  @Column({ default: false, name: 'is_budget_enabled' })
+  is_budget_enabled!: boolean;
 
 
 

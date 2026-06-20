@@ -25,6 +25,8 @@ export class AiChatRouterService {
     userId: number,
     ocrText?: string,
     ocrLines?: string,
+    goalId?: number,
+    forecastedSaving?: number,
   ): Promise<ApiResponse<string>> {
     if (message && message.startsWith('/confirm_saving_goal')) {
       return this.savingGoalChatService.handleConfirmSavingGoal(
@@ -53,7 +55,7 @@ export class AiChatRouterService {
       );
     }
 
-    const goalId =
+    const selectedGoalId =
       (await this.financialInsightsService.getSelectedGoalId(userId)) ?? 0;
 
     if (
@@ -70,7 +72,19 @@ export class AiChatRouterService {
       return this.scenarioWhatIfChatService.handleWhatIf(
         message ?? '',
         userId,
+        selectedGoalId,
+      );
+    }
+
+    if (
+      (goalId && goalId > 0) ||
+      this.goalAchievementChatService.isGoalAchievementRequest(message ?? '')
+    ) {
+      return this.goalAchievementChatService.handleGoalAchievementInsight(
+        userId,
+        message ?? '',
         goalId,
+        forecastedSaving,
       );
     }
 
@@ -78,15 +92,7 @@ export class AiChatRouterService {
       return this.analysisChatService.handleAnalysis(
         message ?? '',
         userId,
-        goalId,
-      );
-    }
-
-    if (
-      this.goalAchievementChatService.isGoalAchievementRequest(message ?? '')
-    ) {
-      return this.goalAchievementChatService.handleGoalAchievementInsight(
-        userId,
+        selectedGoalId,
       );
     }
 
@@ -107,7 +113,7 @@ export class AiChatRouterService {
     return this.transactionChatService.handleRecordOrChat(
       message ?? '',
       userId,
-      goalId,
+      selectedGoalId,
     );
   }
 }

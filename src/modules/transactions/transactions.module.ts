@@ -16,6 +16,7 @@ import { TransactionStatisticsService } from './transactions-statistics.service'
 import { CouplesModule } from '../couples/couples.module';
 import { TransactionPrivacyService } from './transaction-privacy.service';
 import { TransactionSplit } from './entities/transaction-split.entity';
+import { AnalyticsModule } from '../analytics/analytics.module';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { TransactionSplit } from './entities/transaction-split.entity';
     MailModule,
     SavingGoalsModule,
     CouplesModule,
+    forwardRef(() => AnalyticsModule),
   ],
   controllers: [TransactionController],
   providers: [
