@@ -71,6 +71,7 @@ export class AnalyticsPayloadBuilderService {
         where: {
           user: { id: userId },
           transaction_date: Between(startDate, endDate),
+          isTransfer: false,
         },
         relations: ['category'],
         order: { transaction_date: 'DESC' },

@@ -8,6 +8,7 @@ import { Wallet } from 'src/modules/wallets/entities/wallet.entity';
 import { GamificationEntity } from 'src/modules/gamification/entities/gamification.entity';
 import { UserCategoryPreference } from 'src/modules/categories/entities/user-category-preference.entity';
 import { CoupleMember } from 'src/modules/couples/entities/couple-member.entity';
+import { Subscription } from 'src/modules/payments/entities/subscription.entity';
 import {
   Entity,
   PrimaryGeneratedColumn,
@@ -71,4 +72,7 @@ export class User {
 
   @OneToMany(() => CoupleMember, (member) => member.user)
   coupleMembers!: CoupleMember[];
+
+  @OneToMany(() => Subscription, (sub) => sub.user)
+  subscriptions!: Subscription[];
 }

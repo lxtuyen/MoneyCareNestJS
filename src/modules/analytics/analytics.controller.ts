@@ -14,6 +14,7 @@ import { AnalyticsEvaluationService } from './analytics-evaluation.service';
 import { AnalyticsModelTrainingService } from './analytics-model-training.service';
 import { ok } from 'src/common/utils/response.util';
 import { RunModelEvaluationDto } from './dto/run-model-evaluation.dto';
+import { SnapshotCronService } from './snapshot-cron.service';
 
 @Controller('analytics')
 @UseGuards(JwtAuthGuard)
@@ -24,6 +25,7 @@ export class AnalyticsController {
     private readonly analyticsService: AnalyticsService,
     private readonly evaluationService: AnalyticsEvaluationService,
     private readonly modelTrainingService: AnalyticsModelTrainingService,
+    private readonly snapshotCronService: SnapshotCronService,
   ) {}
 
   @Get('financial-summary')
@@ -36,6 +38,20 @@ export class AnalyticsController {
       targetMonth: targetMonth ? Number(targetMonth) : undefined,
       targetYear: targetYear ? Number(targetYear) : undefined,
     });
+  }
+
+  @Post('snapshots/migrate')
+  async migrateSnapshots() {
+    this.logger.log('Starting snapshot migration for all users...');
+    const result = await this.snapshotCronService.migrateAllUsers();
+    return ok(result, 'Migration hoàn thành');
+  }
+
+  @Post('snapshots/close-month')
+  async closeMonth() {
+    this.logger.log('Manually triggering month close...');
+    await this.snapshotCronService.handleMonthClose();
+    return ok(null, 'Đóng tháng hoàn thành');
   }
 
   @Get('model-evaluation')

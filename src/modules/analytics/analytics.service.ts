@@ -11,6 +11,7 @@ import {
 } from 'src/common/utils/date.util';
 import { mapAnalyticsResponse } from './mappers/analytics-response.mapper';
 import {
+  AnalyticsMappedAiBudgeting,
   AnalyticsMappedResponse,
   AnalyticsServiceResponse,
 } from './types/analytics-service-response.type';
@@ -18,6 +19,8 @@ import { AnalyticsSpendingPlanPayload } from './types/analytics-payload.type';
 import { AnalyticsPredictionService } from './analytics-prediction.service';
 import { AnalyticsPayloadBuilderService } from './analytics-payload-builder.service';
 import { AnalyticsServiceClient } from './analytics-service-client.service';
+import { SnapshotService } from './snapshot.service';
+import { MonthlyAnalyticsSnapshot } from './entities/monthly-analytics-snapshot.entity';
 
 export interface FinancialSummaryOptions {
   targetMonth?: number;
@@ -32,6 +35,7 @@ export class AnalyticsService {
     private readonly payloadBuilder: AnalyticsPayloadBuilderService,
     private readonly serviceClient: AnalyticsServiceClient,
     private readonly predictionService: AnalyticsPredictionService,
+    private readonly snapshotService: SnapshotService,
   ) {}
 
   async getFinancialSummary(
@@ -40,6 +44,22 @@ export class AnalyticsService {
   ): Promise<ApiResponse<AnalyticsMappedResponse>> {
     const targetPeriod = this.resolveTargetPeriod(options);
 
+    // Ưu tiên đọc từ snapshot nếu tháng đã completed
+    const snapshot = await this.snapshotService.getOrCreateSnapshot(
+      userId,
+      targetPeriod.month,
+      targetPeriod.year,
+    );
+
+    if (snapshot.isCompleted && snapshot.healthScore !== null) {
+      this.logger.log(
+        `Returning cached snapshot for user ${userId}: ${targetPeriod.month}/${targetPeriod.year}`,
+      );
+      const mapped = this.buildFromSnapshot(snapshot);
+      return ok(mapped, 'Lấy kết quả phân tích tài chính thành công (cached)');
+    }
+
+    // Không có snapshot → full analysis (fallback cho tháng hiện tại hoặc chưa có AI data)
     const {
       requestData,
       spendingPlanPayload,
@@ -410,6 +430,72 @@ export class AnalyticsService {
           'Chưa có kết quả AI Budgeting nâng cao, hệ thống tạm dùng dữ liệu dự phòng.',
       },
       goalAchievement,
+    };
+  }
+
+  // ─── Build mapped response from snapshot ───────────────────────
+
+  private buildFromSnapshot(
+    snapshot: MonthlyAnalyticsSnapshot,
+  ): AnalyticsMappedResponse {
+    const totalIncome = Number(snapshot.totalIncome);
+    const totalExpense = Number(snapshot.totalExpense);
+    const netBalance = totalIncome - totalExpense;
+
+    const { start: periodStartDate, end: periodEndDate } = getVietnamMonthRange(
+      snapshot.month,
+      snapshot.year,
+    );
+
+    return {
+      financialHealthScore: snapshot.healthScore ?? 70,
+      cashFlowTrend: snapshot.cashFlowTrend ?? (netBalance >= 0 ? 'stable' : 'worsening'),
+      monthlyForecast: totalExpense,
+      anomalies: snapshot.anomalies ?? [],
+      budgetRisk: {
+        riskLevel: 'low',
+        message: 'Dữ liệu từ snapshot tháng đã hoàn thành.',
+        items: [],
+      },
+      savingGoalProjections: [],
+      insights: snapshot.insights ?? [
+        {
+          title: 'Tổng quan tháng',
+          message: `Thu: ${totalIncome.toLocaleString('vi-VN')}đ | Chi: ${totalExpense.toLocaleString('vi-VN')}đ`,
+          severity: 'info',
+          evidence: `${snapshot.transactionCount} giao dịch`,
+        },
+      ],
+      forecasting: snapshot.forecastData
+        ? {
+            currentMonthProjection: snapshot.forecastData.currentMonthProjection ?? null,
+            nextMonthForecast: snapshot.forecastData.nextMonthForecast ?? null,
+          }
+        : {
+            currentMonthProjection: {
+              method: 'snapshot_cached',
+              modelVersion: 'v2',
+              periodType: 'month',
+              forecastMode: 'current_month_projection',
+              targetMonth: snapshot.month,
+              targetYear: snapshot.year,
+              periodStart: periodStartDate.toISOString().split('T')[0],
+              periodEnd: periodEndDate.toISOString().split('T')[0],
+              actualAmount: totalExpense,
+              predictedRemainingAmount: 0,
+              totalForecast: totalExpense,
+              confidence: 1.0,
+              riskLevel: 'low',
+              modelNotes: 'Tháng đã hoàn thành - dữ liệu thực tế.',
+              weeklyForecasts: [],
+              categoryForecasts: [],
+              riskWindows: [],
+              dailyPoints: [],
+            },
+            nextMonthForecast: null,
+          },
+      aiBudgeting: (snapshot.budgetingData as AnalyticsMappedAiBudgeting) ?? null,
+      goalAchievement: null,
     };
   }
 }

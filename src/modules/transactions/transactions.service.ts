@@ -27,6 +27,7 @@ import {
 import { CouplesService } from '../couples/couples.service';
 import { Couple } from '../couples/entities/couple.entity';
 import { AnalyticsPredictionService } from '../analytics/analytics-prediction.service';
+import { SnapshotService } from '../analytics/snapshot.service';
 
 @Injectable()
 export class TransactionService {
@@ -48,6 +49,7 @@ export class TransactionService {
     private financialCacheInvalidationService: FinancialCacheInvalidationService,
     private couplesService: CouplesService,
     private analyticsPredictionService: AnalyticsPredictionService,
+    private snapshotService: SnapshotService,
   ) {}
 
   private getUserDisplayName(user?: User | null): string | null {
@@ -315,6 +317,23 @@ export class TransactionService {
 
     // Invalidate AI prediction cache — kết quả AI cũ không còn chính xác khi có giao dịch mới
     void this.analyticsPredictionService.invalidateUserCache(user.id).catch(() => undefined);
+
+    // Delta update snapshot (bỏ qua transfer)
+    if (!transaction.isTransfer && category) {
+      const txDate = new Date(transaction.transaction_date);
+      void this.snapshotService.applyDelta(
+        user.id,
+        txDate.getMonth() + 1,
+        txDate.getFullYear(),
+        {
+          incomeChange: dto.type === 'income' ? Number(dto.amount) : 0,
+          expenseChange: dto.type === 'expense' ? Number(dto.amount) : 0,
+          category: category.name,
+          type: dto.type,
+          countChange: 1,
+        },
+      ).catch(() => undefined);
+    }
 
     return new ApiResponse({
       success: true,
@@ -632,6 +651,42 @@ export class TransactionService {
     // Invalidate AI prediction cache
     void this.analyticsPredictionService.invalidateUserCache(transaction.user.id).catch(() => undefined);
 
+    // Delta update snapshot (reverse old + apply new)
+    if (!transaction.isTransfer) {
+      const oldDate = new Date(transaction.transaction_date);
+      const oldCatName = transaction.category?.name || 'Khác';
+      const newCatName = savedTransaction.category?.name || oldCatName;
+      const newDate = savedTransaction.transaction_date ? new Date(savedTransaction.transaction_date) : oldDate;
+
+      // Reverse old
+      void this.snapshotService.applyDelta(
+        transaction.user.id,
+        oldDate.getMonth() + 1,
+        oldDate.getFullYear(),
+        {
+          incomeChange: oldType === 'income' ? -oldAmount : 0,
+          expenseChange: oldType === 'expense' ? -oldAmount : 0,
+          category: oldCatName,
+          type: oldType,
+          countChange: -1,
+        },
+      ).catch(() => undefined);
+
+      // Apply new
+      void this.snapshotService.applyDelta(
+        transaction.user.id,
+        newDate.getMonth() + 1,
+        newDate.getFullYear(),
+        {
+          incomeChange: newType === 'income' ? newAmount : 0,
+          expenseChange: newType === 'expense' ? newAmount : 0,
+          category: newCatName,
+          type: newType,
+          countChange: 1,
+        },
+      ).catch(() => undefined);
+    }
+
     return new ApiResponse({
       success: true,
       statusCode: HttpStatus.OK,
@@ -792,6 +847,23 @@ export class TransactionService {
 
     // Invalidate AI prediction cache
     void this.analyticsPredictionService.invalidateUserCache(transaction.user.id).catch(() => undefined);
+
+    // Delta update snapshot (reverse deleted transaction)
+    if (!transaction.isTransfer && transaction.category) {
+      const txDate = new Date(transaction.transaction_date);
+      void this.snapshotService.applyDelta(
+        transaction.user.id,
+        txDate.getMonth() + 1,
+        txDate.getFullYear(),
+        {
+          incomeChange: transaction.type === 'income' ? -Number(transaction.amount) : 0,
+          expenseChange: transaction.type === 'expense' ? -Number(transaction.amount) : 0,
+          category: transaction.category.name,
+          type: transaction.type,
+          countChange: -1,
+        },
+      ).catch(() => undefined);
+    }
 
     return new ApiResponse({
       success: true,

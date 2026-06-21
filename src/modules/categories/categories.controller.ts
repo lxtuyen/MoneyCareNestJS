@@ -18,6 +18,7 @@ import {
   UpdateSubCategoryDto,
 } from './dto/sub-category.dto';
 import { JwtAuthGuard } from 'src/modules/auth/jwt-auth.guard';
+import { AdminGuard } from 'src/common/guards/admin.guard';
 import { User as CurrentUser } from 'src/common/decorators/user.decorator';
 
 @UseGuards(JwtAuthGuard)
@@ -60,7 +61,7 @@ export class CategoriesController {
   }
 }
 
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, AdminGuard)
 @Controller('admin')
 export class AdminCategoriesController {
   constructor(private readonly categoriesService: CategoriesService) {}

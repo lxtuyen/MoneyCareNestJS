@@ -19,6 +19,9 @@ import { AnalyticsEvaluationScheduler } from './analytics-evaluation.scheduler';
 import { AnalyticsModelTrainingService } from './analytics-model-training.service';
 import { AnalyticsPayloadBuilderService } from './analytics-payload-builder.service';
 import { AnalyticsServiceClient } from './analytics-service-client.service';
+import { MonthlyAnalyticsSnapshot } from './entities/monthly-analytics-snapshot.entity';
+import { SnapshotService } from './snapshot.service';
+import { SnapshotCronService } from './snapshot-cron.service';
 
 @Module({
   imports: [
@@ -29,6 +32,7 @@ import { AnalyticsServiceClient } from './analytics-service-client.service';
       SpendingPlan,
       AiPredictionRun,
       AiPredictionEvaluation,
+      MonthlyAnalyticsSnapshot,
     ]),
     SpendingPlansModule,
     PersonalizationModule,
@@ -45,7 +49,9 @@ import { AnalyticsServiceClient } from './analytics-service-client.service';
     AnalyticsModelTrainingService,
     AnalyticsPayloadBuilderService,
     AnalyticsServiceClient,
+    SnapshotService,
+    SnapshotCronService,
   ],
-  exports: [AnalyticsService, AnalyticsPredictionService],
+  exports: [AnalyticsService, AnalyticsPredictionService, SnapshotService],
 })
 export class AnalyticsModule {}

@@ -548,20 +548,17 @@ export class CoupleReportsService {
         continue;
       }
 
-      // New alert – collect for batched push
       await this.alertRepo.save(this.alertRepo.create(draft));
       if (draft.severity === 'high' || draft.severity === 'medium') {
         pendingPushAlerts.push({ title: draft.title, severity: draft.severity });
       }
     }
 
-    // Send ONE consolidated push notification for all new/escalated alerts
     if (pendingPushAlerts.length > 0) {
       const hasHigh = pendingPushAlerts.some((a) => a.severity === 'high');
       const severity = hasHigh ? 'high' : 'medium';
 
       if (pendingPushAlerts.length === 1) {
-        // Single alert — send as-is
         void this.pushAlertToMembers(
           members,
           pendingPushAlerts[0].title,
@@ -569,7 +566,6 @@ export class CoupleReportsService {
           pendingPushAlerts[0].severity,
         );
       } else {
-        // Multiple alerts — send summary
         const titles = pendingPushAlerts
           .slice(0, 3)
           .map((a) => a.title)
@@ -587,7 +583,6 @@ export class CoupleReportsService {
       }
     }
 
-    // Delete active-month alerts that are no longer active (not present in drafts)
     const activeKeys = new Set(drafts.map((d) => d.alertKey));
     const allDbAlerts = await this.alertRepo.find({
       where: { coupleId },
