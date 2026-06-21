@@ -475,13 +475,8 @@ export class SavingGoalsService {
       const start = goal.start_date ? new Date(goal.start_date) : new Date();
       const end = goal.end_date ? new Date(goal.end_date) : null;
       if (end && goal.target) {
-        let months =
-          (end.getFullYear() - start.getFullYear()) * 12 +
-          end.getMonth() -
-          start.getMonth() +
-          1;
-        if (months <= 0) months = 1;
-        monthlyBudget = goal.target / months;
+        const segments = this.countMilestoneSegments(start, end);
+        monthlyBudget = goal.target / segments;
       }
       return {
         id: goal.id,
@@ -501,13 +496,8 @@ export class SavingGoalsService {
     if (target && startDate && endDate) {
       const start = new Date(startDate);
       const end = new Date(endDate);
-      let months =
-        (end.getFullYear() - start.getFullYear()) * 12 +
-        end.getMonth() -
-        start.getMonth() +
-        1;
-      if (months <= 0) months = 1;
-      requiredMonthly = target / months;
+      const segments = this.countMilestoneSegments(start, end);
+      requiredMonthly = target / segments;
     }
     requiredMonthly = Math.ceil(requiredMonthly);
 
@@ -526,5 +516,26 @@ export class SavingGoalsService {
     };
 
     return ok(suggestion);
+  }
+
+  /**
+   * Đếm số milestone segments giữa start và end.
+   * Mỗi đầu tháng là 1 boundary → segments = boundaries - 1.
+   * Giống logic calculateMilestones trong AiGoalAchievementChatService.
+   */
+  private countMilestoneSegments(start: Date, end: Date): number {
+    const milestoneDates: Date[] = [start];
+    let next = new Date(start.getFullYear(), start.getMonth() + 1, 1);
+    const endStartOfDay = new Date(
+      end.getFullYear(),
+      end.getMonth(),
+      end.getDate(),
+    );
+    while (next < endStartOfDay) {
+      milestoneDates.push(new Date(next));
+      next = new Date(next.getFullYear(), next.getMonth() + 1, 1);
+    }
+    milestoneDates.push(end);
+    return Math.max(1, milestoneDates.length - 1);
   }
 }

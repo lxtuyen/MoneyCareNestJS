@@ -79,4 +79,23 @@ export class AnalyticsController {
     );
     return ok(data, 'Yêu cầu huấn luyện mô hình dự báo thành công');
   }
+
+  @Post('model-training/couple-forecasting')
+  async trainCoupleForecastingModel(
+    @User('sub') userId: number,
+    @Body('coupleId') coupleId: number,
+  ) {
+    this.logger.log(
+      `Received couple forecasting training request: userId=${userId}, coupleId=${coupleId}`,
+    );
+    const data =
+      await this.modelTrainingService.trainCoupleForecastingModel(coupleId);
+    this.logger.log(
+      `Couple forecasting training finished: coupleId=${coupleId}, status=${data.status}, artifactSaved=${data.artifactSaved}`,
+    );
+    return ok(
+      data,
+      'Yêu cầu huấn luyện mô hình dự báo couple thành công',
+    );
+  }
 }

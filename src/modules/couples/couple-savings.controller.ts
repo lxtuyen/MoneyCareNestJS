@@ -73,4 +73,20 @@ export class CoupleSavingsController {
   ) {
     return this.coupleSavingsService.remove(id, userId);
   }
+
+  @Patch(':id/activate')
+  async activate(
+    @User('sub') userId: number,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.coupleSavingsService.activateGoal(id, userId);
+  }
+
+  @Patch(':id/pause')
+  async pause(
+    @User('sub') userId: number,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.coupleSavingsService.pauseGoal(id, userId);
+  }
 }

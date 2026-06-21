@@ -40,6 +40,16 @@ export class AiBudgetRecommendationChatService {
     }
 
     const aiBudgeting = summaryRes.data.aiBudgeting;
+    this.logger.log(
+      `[DEBUG] aiBudgeting items: ${JSON.stringify(
+        aiBudgeting?.items?.map((i) => ({
+          cat: i.categoryName,
+          predicted: i.predictedSpendAmount,
+          recommended: i.recommendedLimitAmount,
+          current: i.currentLimitAmount,
+        })),
+      )}`,
+    );
     if (!aiBudgeting || !aiBudgeting.items || aiBudgeting.items.length === 0) {
       return ok(
         '',

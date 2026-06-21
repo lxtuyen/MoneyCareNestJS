@@ -398,4 +398,22 @@ export class TransactionStatisticsService {
       },
     });
   }
+
+  async getFirstTransactionDate(
+    userId: number,
+  ): Promise<ApiResponse<{ firstTransactionDate: string | null }>> {
+    const result = await this.transactionRepo
+      .createQueryBuilder('transaction')
+      .select("MIN(transaction.transaction_date)", 'minDate')
+      .where('transaction.userId = :userId', { userId })
+      .getRawOne<{ minDate: string | null }>();
+
+    return new ApiResponse({
+      success: true,
+      statusCode: HttpStatus.OK,
+      data: {
+        firstTransactionDate: result?.minDate ?? null,
+      },
+    });
+  }
 }

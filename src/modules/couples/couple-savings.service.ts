@@ -110,7 +110,7 @@ export class CoupleSavingsService {
       target: dto.target,
       saved_amount: 0,
       end_date: dto.end_date ? new Date(dto.end_date) : null,
-      status: 'active',
+      status: 'paused',
       wallet: savedWallet,
       walletId: savedWallet.id,
       is_budget_enabled: dto.is_budget_enabled ?? false,
@@ -461,6 +461,100 @@ export class CoupleSavingsService {
     });
 
     return ok(saved);
+  }
+
+  async activateGoal(
+    goalId: number,
+    requestUserId: number,
+  ): Promise<ApiResponse<CoupleSavingGoal>> {
+    const goal = await this.savingGoalRepo.findOne({
+      where: { id: goalId },
+      relations: ['wallet'],
+    });
+    if (!goal) {
+      throw new NotFoundException('Không tìm thấy mục tiêu tiết kiệm này.');
+    }
+
+    await this.checkMembership(requestUserId, goal.coupleId);
+
+    if (goal.status === 'completed') {
+      throw new BadRequestException(
+        'Không thể kích hoạt mục tiêu đã hoàn thành.',
+      );
+    }
+
+    if (goal.status === 'active') {
+      return ok(goal);
+    }
+
+    // Enforce max 1 active goal per couple
+    const activeGoals = await this.savingGoalRepo.find({
+      where: { coupleId: goal.coupleId, status: 'active' },
+      select: ['id', 'name'],
+    });
+
+    if (activeGoals.length >= 1) {
+      throw new BadRequestException({
+        message:
+          'Chỉ được tối đa 1 mục tiêu tiết kiệm hoạt động cùng lúc. Hãy tạm dừng mục tiêu đang hoạt động trước.',
+        activeGoals: activeGoals.map((g) => ({ id: g.id, name: g.name })),
+      });
+    }
+
+    goal.status = 'active';
+    const updated = await this.savingGoalRepo.save(goal);
+
+    await this.spendingPlansService.syncSavingsBudget(requestUserId, {
+      coupleSavingGoalId: updated.id,
+      name: updated.name,
+      target: Number(updated.target ?? 0),
+      startDate: updated.createdAt ?? new Date(),
+      endDate: updated.end_date,
+      isBudgetEnabled: updated.is_budget_enabled,
+      status: updated.status,
+    });
+
+    return ok(updated);
+  }
+
+  async pauseGoal(
+    goalId: number,
+    requestUserId: number,
+  ): Promise<ApiResponse<CoupleSavingGoal>> {
+    const goal = await this.savingGoalRepo.findOne({
+      where: { id: goalId },
+      relations: ['wallet'],
+    });
+    if (!goal) {
+      throw new NotFoundException('Không tìm thấy mục tiêu tiết kiệm này.');
+    }
+
+    await this.checkMembership(requestUserId, goal.coupleId);
+
+    if (goal.status === 'completed') {
+      throw new BadRequestException(
+        'Không thể tạm dừng mục tiêu đã hoàn thành.',
+      );
+    }
+
+    if (goal.status === 'paused') {
+      return ok(goal);
+    }
+
+    goal.status = 'paused';
+    const updated = await this.savingGoalRepo.save(goal);
+
+    await this.spendingPlansService.syncSavingsBudget(requestUserId, {
+      coupleSavingGoalId: updated.id,
+      name: updated.name,
+      target: Number(updated.target ?? 0),
+      startDate: updated.createdAt ?? new Date(),
+      endDate: updated.end_date,
+      isBudgetEnabled: false,
+      status: updated.status,
+    });
+
+    return ok(updated);
   }
 
   async remove(

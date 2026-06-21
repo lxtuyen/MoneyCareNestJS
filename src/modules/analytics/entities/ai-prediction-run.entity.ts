@@ -14,6 +14,7 @@ import {
 @Index(['userId', 'modelType', 'modelName', 'createdAt'])
 @Index(['status'])
 @Index(['predictionTargetEnd'])
+@Index(['coupleId', 'modelType', 'createdAt'])
 export class AiPredictionRun {
   @PrimaryGeneratedColumn()
   id!: number;
@@ -25,11 +26,14 @@ export class AiPredictionRun {
   @Column()
   userId!: number;
 
+  @Column({ type: 'int', nullable: true })
+  coupleId!: number | null;
+
   @Column({
     type: 'enum',
-    enum: ['forecasting', 'budgeting', 'categorization'],
+    enum: ['forecasting', 'budgeting', 'categorization', 'couple_forecasting'],
   })
-  modelType!: 'forecasting' | 'budgeting' | 'categorization';
+  modelType!: 'forecasting' | 'budgeting' | 'categorization' | 'couple_forecasting';
 
   @Column({ type: 'varchar', length: 100 })
   modelName!: string;

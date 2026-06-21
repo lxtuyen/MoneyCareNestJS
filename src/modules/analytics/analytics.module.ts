@@ -2,6 +2,7 @@ import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule } from '@nestjs/config';
 import { Transaction } from '../transactions/entities/transaction.entity';
+import { Couple } from '../couples/entities/couple.entity';
 import { SavingGoal } from '../saving-goals/entities/saving-goal.entity';
 import { SpendingPlan } from '../spending-plans/entities/spending-plan.entity';
 import { SpendingPlansModule } from '../spending-plans/spending-plans.module';
@@ -23,6 +24,7 @@ import { AnalyticsServiceClient } from './analytics-service-client.service';
   imports: [
     TypeOrmModule.forFeature([
       Transaction,
+      Couple,
       SavingGoal,
       SpendingPlan,
       AiPredictionRun,

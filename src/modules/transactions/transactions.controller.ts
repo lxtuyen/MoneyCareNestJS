@@ -125,6 +125,18 @@ export class TransactionController {
     return this.transactionStatisticsService.getStatisticsSummary(userId);
   }
 
+  @Get(':userId/first-transaction-date')
+  async getFirstTransactionDate(
+    @Param('userId', ParseIntPipe) userId: number,
+    @User('sub') requestUserId: number,
+  ) {
+    await this.transactionPrivacyService.ensureCanAccessPersonalTransactions(
+      requestUserId,
+      userId,
+    );
+    return this.transactionStatisticsService.getFirstTransactionDate(userId);
+  }
+
   @Get(':userId/filter')
   async findAllByFilter(
     @Param('userId', ParseIntPipe) userId: number,

@@ -45,4 +45,24 @@ export class AnalyticsEvaluationScheduler {
       this.logger.error(`Weekly retraining failed: ${error.message}`);
     }
   }
+
+  /**
+   * Chạy lúc 3h30 sáng mỗi Chủ nhật.
+   * Re-train forecasting model cho tất cả couple đủ điều kiện.
+   */
+  @Cron('30 3 * * 0')
+  async retrainCoupleForecastingModels(): Promise<void> {
+    this.logger.log('Starting weekly couple forecasting model retraining...');
+    try {
+      const result =
+        await this.modelTrainingService.retrainAllEligibleCouples();
+      this.logger.log(
+        `Weekly couple retraining completed: trained=${result.trained}, skipped=${result.skipped}, failed=${result.failed}`,
+      );
+    } catch (error) {
+      this.logger.error(
+        `Weekly couple retraining failed: ${error.message}`,
+      );
+    }
+  }
 }

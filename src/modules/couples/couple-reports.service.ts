@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Between, LessThanOrEqual, Repository } from 'typeorm';
-import { getVietnamMonthRange, getVietnamNow } from 'src/common/utils/date.util';
+import { getVietnamMonthRange, getVietnamNow, formatDateInTimeZone } from 'src/common/utils/date.util';
 import { Transaction } from 'src/modules/transactions/entities/transaction.entity';
 import { Wallet } from 'src/modules/wallets/entities/wallet.entity';
 import { CoupleSavingGoal } from './entities/couple-saving-goal.entity';
@@ -129,23 +129,32 @@ export class CoupleReportsService {
       members,
     );
     const budgetProgress = this.buildBudgetProgress(transactions, budgets);
-    const savingProgress = savingGoals.map((goal) => {
-      const displaySavedAmount = goal.wallet
-        ? Number(goal.wallet.balance)
-        : Number(goal.saved_amount ?? 0);
-      return {
-        id: goal.id,
-        name: goal.name,
-        target: Number(goal.target ?? 0),
-        savedAmount: displaySavedAmount,
-        progress:
-          Number(goal.target ?? 0) > 0
-            ? Math.min(100, (displaySavedAmount / Number(goal.target)) * 100)
-            : 0,
-        status: goal.status,
-        endDate: goal.end_date,
-      };
-    });
+    const savingProgress = await Promise.all(
+      savingGoals.map(async (goal) => {
+        const displaySavedAmount = goal.wallet
+          ? Number(goal.wallet.balance)
+          : Number(goal.saved_amount ?? 0);
+        const targetAmount = Number(goal.target ?? 0);
+        const prediction = await this.predictCoupleSavingGoal(
+          goal,
+          displaySavedAmount,
+        );
+        return {
+          id: goal.id,
+          name: goal.name,
+          target: targetAmount,
+          savedAmount: displaySavedAmount,
+          progress:
+            targetAmount > 0
+              ? Math.min(100, (displaySavedAmount / targetAmount) * 100)
+              : 0,
+          status: goal.status,
+          endDate: goal.end_date,
+          startDate: goal.start_date,
+          prediction,
+        };
+      }),
+    );
     const weeklyTrend = this.buildWeeklyTrend(transactions, start);
     const insights = this.buildInsights({
       summary,
@@ -154,6 +163,47 @@ export class CoupleReportsService {
       savingProgress,
       alerts,
     });
+
+    // ── Couple AI Analytics ──────────────────────────────────────────
+    let coupleProfile = null;
+    let coupleForecast = null;
+    try {
+      const [year, monthNum] = month.split('-').map(Number);
+      const memberIds = members.map((m) => m.userId);
+
+      // Fetch all couple transactions (including income) for analytics
+      const allCoupleTransactions = await this.transactionRepo.find({
+        where: {
+          coupleId,
+          transaction_date: Between(historyStart, end),
+          isTransfer: false,
+        },
+        relations: ['category'],
+        order: { transaction_date: 'DESC' },
+      });
+
+      const coupleAnalytics = await this.analyticsService.getCoupleAnalytics(
+        coupleId,
+        memberIds,
+        allCoupleTransactions.map((t) => ({
+          id: t.id,
+          amount: Number(t.amount),
+          transaction_date: t.transaction_date.toISOString(),
+          type: t.type,
+          category: t.category ? { name: t.category.name } : null,
+          is_transfer: t.isTransfer ?? false,
+          payer_id: t.payerId ?? null,
+        })),
+        { targetMonth: monthNum, targetYear: year },
+      );
+
+      if (coupleAnalytics) {
+        coupleProfile = coupleAnalytics.coupleProfile;
+        coupleForecast = coupleAnalytics.forecast;
+      }
+    } catch (err) {
+      this.logger.warn(`Couple analytics failed: ${(err as Error).message}`);
+    }
 
     return ok({
       month,
@@ -166,6 +216,8 @@ export class CoupleReportsService {
       insights,
       alerts: alerts.map((alert) => this.mapAlert(alert)),
       unreadAlertCount: alerts.filter((alert) => !alert.isRead).length,
+      coupleProfile,
+      coupleForecast,
     });
   }
 
@@ -459,6 +511,8 @@ export class CoupleReportsService {
       summary,
     );
 
+    const pendingPushAlerts: Array<{ title: string; severity: string }> = [];
+
     for (const draft of drafts) {
       const existing = await this.alertRepo.findOne({
         where: { coupleId, alertKey: draft.alertKey },
@@ -486,18 +540,50 @@ export class CoupleReportsService {
           }
           await this.alertRepo.save(existing);
 
-          // Push only when severity escalates to high
+          // Collect escalated alerts for batched push
           if (severityEscalated) {
-            void this.pushAlertToMembers(members, draft.title, draft.message, draft.severity);
+            pendingPushAlerts.push({ title: draft.title, severity: draft.severity });
           }
         }
         continue;
       }
 
-      // New alert – always push for high/medium severity
+      // New alert – collect for batched push
       await this.alertRepo.save(this.alertRepo.create(draft));
       if (draft.severity === 'high' || draft.severity === 'medium') {
-        void this.pushAlertToMembers(members, draft.title, draft.message, draft.severity);
+        pendingPushAlerts.push({ title: draft.title, severity: draft.severity });
+      }
+    }
+
+    // Send ONE consolidated push notification for all new/escalated alerts
+    if (pendingPushAlerts.length > 0) {
+      const hasHigh = pendingPushAlerts.some((a) => a.severity === 'high');
+      const severity = hasHigh ? 'high' : 'medium';
+
+      if (pendingPushAlerts.length === 1) {
+        // Single alert — send as-is
+        void this.pushAlertToMembers(
+          members,
+          pendingPushAlerts[0].title,
+          pendingPushAlerts[0].title,
+          pendingPushAlerts[0].severity,
+        );
+      } else {
+        // Multiple alerts — send summary
+        const titles = pendingPushAlerts
+          .slice(0, 3)
+          .map((a) => a.title)
+          .join(', ');
+        const suffix = pendingPushAlerts.length > 3
+          ? ` và ${pendingPushAlerts.length - 3} cảnh báo khác`
+          : '';
+
+        void this.pushAlertToMembers(
+          members,
+          `${pendingPushAlerts.length} cảnh báo mới`,
+          `${titles}${suffix}`,
+          severity,
+        );
       }
     }
 
@@ -574,7 +660,7 @@ export class CoupleReportsService {
           type: 'large_transaction',
           severity:
             Number(transaction.amount) > threshold * 1.5 ? 'high' : 'medium',
-          title: 'Giao dịch chung lớn bất thường',
+          title: 'Giao dịch chung bất thường',
           message: `${transaction.category?.name ?? 'Danh mục'} cao hơn mức thường thấy của cặp đôi.`,
           transactionId: transaction.id,
           categoryId: transaction.category?.id ?? null,
@@ -633,10 +719,6 @@ export class CoupleReportsService {
       });
     }
 
-    // ── Alert 4 & 5: AI-powered — đọc AiPredictionRun của từng member ──────
-    const [year, monthNum] = month.split('-').map(Number);
-    const aiDrafts = await this.buildAiAlertDrafts(coupleId, members, monthNum, year);
-    drafts.push(...aiDrafts);
 
     // ── Alert 6: Ví chung số dư thấp (rule-based) ─────────────────────────
     const LOW_BALANCE_CRIT = 100_000;
@@ -684,173 +766,106 @@ export class CoupleReportsService {
       });
     }
 
-    return drafts;
-  }
+    // ── Alert 8: AI dự báo chi chung vượt thu (couple_forecast_overspend) ──
+    try {
+      const [yearNum, monthNumVal] = month.split('-').map(Number);
+      const memberIds = members.map((m) => m.userId);
+      const { start: alertMonthStart, end: alertMonthEnd } = getVietnamMonthRange(monthNumVal, yearNum);
+      const histStart = new Date(alertMonthStart);
+      histStart.setMonth(histStart.getMonth() - 6);
 
-  /**
-   * Tạo alert AI từ AiPredictionRun của từng member.
-   * Đọc cache DB trước — nếu có run hôm nay thì dùng luôn.
-   * Nếu không có, gọi AnalyticsService để lấy kết quả mới và lưu lại.
-   */
-  private async buildAiAlertDrafts(
-    coupleId: number,
-    members: CoupleMember[],
-    monthNum: number,
-    year: number,
-  ): Promise<AlertDraft[]> {
-    const drafts: AlertDraft[] = [];
-    const month = `${year}-${String(monthNum).padStart(2, '0')}`;
-    const vnNow = getVietnamNow();
-    const isCurrentMonth = vnNow.getMonth() + 1 === monthNum && vnNow.getFullYear() === year;
+      const allTx = await this.transactionRepo.find({
+        where: {
+          coupleId,
+          transaction_date: Between(histStart, alertMonthEnd),
+          isTransfer: false,
+        },
+        relations: ['category'],
+      });
+      const coupleAnalytics = await this.analyticsService.getCoupleAnalytics(
+        coupleId,
+        memberIds,
+        allTx.map((t) => ({
+          id: t.id,
+          amount: Number(t.amount),
+          transaction_date: t.transaction_date.toISOString(),
+          type: t.type,
+          category: t.category ? { name: t.category.name } : null,
+          is_transfer: t.isTransfer ?? false,
+          payer_id: t.payerId ?? null,
+        })),
+        { targetMonth: monthNumVal, targetYear: yearNum },
+      );
 
-    // Chỉ tạo AI alert cho tháng hiện tại — tháng quá khứ không dự đoán được
-    if (!isCurrentMonth) return drafts;
+      if (coupleAnalytics?.forecast) {
+        const {
+          total_projected_expense: projExpense,
+          total_projected_income: projIncome,
+          category_forecasts: catForecasts,
+        } = coupleAnalytics.forecast;
 
-    const { start: monthStart, end: monthEnd } = getVietnamMonthRange(monthNum, year);
-
-    for (const member of members) {
-      const memberName = this.getUserName(member);
-
-      // 1. Kiểm tra cache hôm nay
-      const todayStart = new Date();
-      todayStart.setHours(0, 0, 0, 0);
-
-      const [cachedForecasting, cachedBudgeting] = await Promise.all([
-        this.predictionRunRepo.findOne({
-          where: {
-            userId: member.userId,
-            modelType: 'forecasting',
-            predictionTargetStart: Between(monthStart, monthEnd),
-            createdAt: Between(todayStart, new Date()),
-          },
-          order: { createdAt: 'DESC' },
-        }),
-        this.predictionRunRepo.findOne({
-          where: {
-            userId: member.userId,
-            modelType: 'budgeting',
-            predictionTargetStart: Between(monthStart, monthEnd),
-            createdAt: Between(todayStart, new Date()),
-          },
-          order: { createdAt: 'DESC' },
-        }),
-      ]);
-
-      let forecastPayload = cachedForecasting?.predictionPayload ?? null;
-      let budgetingPayload = cachedBudgeting?.predictionPayload ?? null;
-
-      // 2. Nếu chưa có cache hôm nay → gọi analytics-service (fire, kết quả tự lưu vào AiPredictionRun)
-      if (!forecastPayload || !budgetingPayload) {
-        try {
-          await this.analyticsService.getFinancialSummary(member.userId, {
-            targetMonth: monthNum,
-            targetYear: year,
-          });
-
-          // Đọc lại sau khi gọi xong
-          const [freshForecasting, freshBudgeting] = await Promise.all([
-            this.predictionRunRepo.findOne({
-              where: {
-                userId: member.userId,
-                modelType: 'forecasting',
-                predictionTargetStart: Between(monthStart, monthEnd),
-                createdAt: Between(todayStart, new Date()),
-              },
-              order: { createdAt: 'DESC' },
-            }),
-            this.predictionRunRepo.findOne({
-              where: {
-                userId: member.userId,
-                modelType: 'budgeting',
-                predictionTargetStart: Between(monthStart, monthEnd),
-                createdAt: Between(todayStart, new Date()),
-              },
-              order: { createdAt: 'DESC' },
-            }),
-          ]);
-
-          forecastPayload = freshForecasting?.predictionPayload ?? forecastPayload;
-          budgetingPayload = freshBudgeting?.predictionPayload ?? budgetingPayload;
-        } catch (err) {
-          this.logger.warn(
-            `Cannot fetch AI snapshot for member ${member.userId}: ${(err as Error).message}`,
-          );
-          // Không block — tiếp tục với các rule-based alerts
-        }
-      }
-
-      // 3. Alert: anomaly cá nhân ảnh hưởng couple
-      if (forecastPayload) {
-        const categoryForecasts: any[] = forecastPayload.categoryForecasts ?? [];
-        const highRiskCategories = categoryForecasts.filter(
-          (c) =>
-            (c.riskLevel === 'high') &&
-            (Number(c.remainingForecastAmount ?? c.remaining_forecast_amount ?? 0) > 0),
-        );
-
-        if (highRiskCategories.length > 0) {
-          const topCategory = highRiskCategories.sort((a, b) => {
-            const aAmt = Number(a.remainingForecastAmount ?? a.remaining_forecast_amount ?? 0);
-            const bAmt = Number(b.remainingForecastAmount ?? b.remaining_forecast_amount ?? 0);
-            return bAmt - aAmt;
-          })[0];
-
-          const catName = topCategory.categoryName ?? topCategory.category_name ?? 'Chi tiêu';
-          const remaining = Number(
-            topCategory.remainingForecastAmount ?? topCategory.remaining_forecast_amount ?? 0,
-          );
-
+        if (
+          projExpense > 0 &&
+          projIncome > 0 &&
+          projExpense > projIncome
+        ) {
+          const overspendAmt = projExpense - projIncome;
+          const overspendPct = overspendAmt / projIncome;
           drafts.push({
             coupleId,
-            alertKey: `ai-anomaly:${member.userId}:${month}`,
-            type: 'ai_spending_anomaly',
-            severity: 'medium',
-            title: `Chi tiêu bất thường: ${memberName}`,
-            message: `AI phát hiện ${memberName} có xu hướng chi tiêu bất thường ở danh mục "${catName}" — dự kiến còn ${remaining.toLocaleString('vi-VN')} đ trong tháng.`,
+            alertKey: `couple-forecast-overspend:${month}`,
+            type: 'couple_forecast_overspend',
+            severity: overspendPct >= 0.3 ? 'high' : 'medium',
+            title: 'AI dự báo chi chung vượt thu',
+            message: `AI dự báo chi chung tháng ${month} sẽ vượt thu chung khoảng ${overspendAmt.toLocaleString('vi-VN')} đ. Hãy cùng rà soát chi tiêu.`,
             transactionId: null,
             categoryId: null,
-            amount: remaining,
+            amount: overspendAmt,
             details: null,
           });
         }
-      }
 
-      // 4. Alert: dự báo tổng chi cá nhân vượt ngưỡng an toàn
-      if (budgetingPayload) {
-        const predictions: any[] = budgetingPayload.budgetExceedPredictions ?? [];
-        const willExceedList = predictions.filter(
-          (p) =>
-            (p.willExceed === true || p.will_exceed === true) &&
-            Number(p.exceedProbability ?? p.exceed_probability ?? 0) >= 0.65,
-        );
+        // ── Alert 9: Danh mục tăng đột biến (couple_category_surge) ──────
+        if (
+          coupleAnalytics.coupleProfile &&
+          Array.isArray(catForecasts)
+        ) {
+          const topCats =
+            coupleAnalytics.coupleProfile.top_expense_categories ?? [];
 
-        if (willExceedList.length > 0) {
-          const totalExceed = willExceedList.reduce(
-            (sum, p) => sum + Number(p.exceedAmount ?? p.exceed_amount ?? 0),
-            0,
-          );
-          const categoryNames = willExceedList
-            .map((p) => p.categoryName ?? p.category_name ?? '')
-            .filter(Boolean)
-            .slice(0, 3)
-            .join(', ');
+          for (const catForecast of catForecasts) {
+            const catName =
+              catForecast.category_name ?? catForecast.categoryName ?? '';
+            const predictedAmt =
+              Number(catForecast.predicted_amount ?? catForecast.predictedAmount ?? 0);
+            const baselineAmt =
+              Number(catForecast.baseline_amount ?? catForecast.baselineAmount ?? 0);
 
-          const severity = totalExceed > 500_000 ? 'high' : 'medium';
+            if (baselineAmt <= 0 || predictedAmt <= baselineAmt * 1.5) continue;
 
-          drafts.push({
-            coupleId,
-            alertKey: `ai-forecast-exceed:${member.userId}:${month}`,
-            type: 'ai_forecast_exceed',
-            severity,
-            title: `Dự báo vượt ngân sách: ${memberName}`,
-            message: `AI dự báo ${memberName} sẽ vượt ngân sách cá nhân khoảng ${totalExceed.toLocaleString('vi-VN')} đ${categoryNames ? ` ở danh mục: ${categoryNames}` : ''}. Điều này có thể ảnh hưởng đến chi tiêu chung.`,
-            transactionId: null,
-            categoryId: null,
-            amount: totalExceed,
-            details: null,
-          });
+            const surgePct = Math.round(
+              ((predictedAmt - baselineAmt) / baselineAmt) * 100,
+            );
+
+            drafts.push({
+              coupleId,
+              alertKey: `couple-category-surge:${month}:${catName}`,
+              type: 'couple_category_surge',
+              severity: surgePct >= 100 ? 'high' : 'medium',
+              title: `Danh mục "${catName}" tăng đột biến`,
+              message: `AI dự báo "${catName}" sẽ tăng khoảng ${surgePct}% so với trung bình. Hãy cùng kiểm tra.`,
+              transactionId: null,
+              categoryId: null,
+              amount: predictedAmt - baselineAmt,
+              details: null,
+            });
+          }
         }
       }
+    } catch (err) {
+      this.logger.warn(
+        `Cannot build couple forecast alerts: ${(err as Error).message}`,
+      );
     }
 
     return drafts;
@@ -935,5 +950,167 @@ export class CoupleReportsService {
     return this.notificationsService
       .sendPushToUsers(userIds, pushTitle, message, { severity }, NotificationType.ALERT)
       .catch(() => undefined); // never let push errors break the report sync
+  }
+
+  // ── Couple Saving Goal Prediction ────────────────────────────────
+
+  private async predictCoupleSavingGoal(
+    goal: CoupleSavingGoal,
+    currentSavedAmount: number,
+  ): Promise<{
+    predictedCompletionDate: string | null;
+    daysRemaining: number | null;
+    monthlyContributionRate: number;
+    requiredMonthlyRate: number;
+    status: string;
+    riskLevel: string;
+    shortfallAmount: number;
+    recommendedAction: string | null;
+    confidence: number;
+  }> {
+    const targetAmount = Number(goal.target ?? 0);
+    const remaining = targetAmount - currentSavedAmount;
+
+    // Already completed
+    if (remaining <= 0 || goal.status === 'completed') {
+      return {
+        predictedCompletionDate: null,
+        daysRemaining: null,
+        monthlyContributionRate: 0,
+        requiredMonthlyRate: 0,
+        status: 'completed',
+        riskLevel: 'low',
+        shortfallAmount: 0,
+        recommendedAction: null,
+        confidence: 1,
+      };
+    }
+
+    // Calculate average monthly contribution rate from history
+    const contributions = await this.savingGoalRepo
+      .createQueryBuilder('goal')
+      .leftJoinAndSelect('goal.contributions', 'contrib')
+      .where('goal.id = :goalId', { goalId: goal.id })
+      .getOne();
+
+    const contribs = contributions?.contributions ?? [];
+    let monthlyRate = 0;
+    let activeMonths = 0;
+    let confidence = 0.3;
+
+    if (contribs.length > 0) {
+      const sorted = contribs
+        .map((c) => ({ amount: Number(c.amount), date: new Date(c.createdAt) }))
+        .sort((a, b) => a.date.getTime() - b.date.getTime());
+
+      const firstDate = sorted[0].date;
+      const lastDate = sorted[sorted.length - 1].date;
+      const totalContributed = sorted.reduce((s, c) => s + c.amount, 0);
+      const daySpan = Math.max(
+        1,
+        (lastDate.getTime() - firstDate.getTime()) / (1000 * 60 * 60 * 24),
+      );
+      activeMonths = Math.max(1, Math.round(daySpan / 30));
+      monthlyRate = totalContributed / activeMonths;
+
+      // Higher confidence with more data
+      confidence = Math.min(0.95, 0.3 + activeMonths * 0.1);
+    } else {
+      // No contributions yet — use creation date age
+      const daysSinceCreation = Math.max(
+        1,
+        (Date.now() - new Date(goal.createdAt).getTime()) / (1000 * 60 * 60 * 24),
+      );
+      if (daysSinceCreation > 30 && currentSavedAmount > 0) {
+        const months = daysSinceCreation / 30;
+        monthlyRate = currentSavedAmount / months;
+        confidence = 0.4;
+      }
+    }
+
+    const vnNow = getVietnamNow();
+
+    // Required monthly rate if deadline exists
+    let requiredMonthlyRate = 0;
+    let daysRemaining: number | null = null;
+    if (goal.end_date) {
+      const endDate = new Date(goal.end_date);
+      daysRemaining = Math.max(
+        0,
+        Math.ceil((endDate.getTime() - vnNow.getTime()) / (1000 * 60 * 60 * 24)),
+      );
+      const monthsRemaining = Math.max(0.1, daysRemaining / 30);
+      requiredMonthlyRate = remaining / monthsRemaining;
+    }
+
+    // Predicted completion date
+    let predictedCompletionDate: string | null = null;
+    if (monthlyRate > 0) {
+      const monthsToComplete = remaining / monthlyRate;
+      const completionDate = new Date(vnNow);
+      completionDate.setDate(completionDate.getDate() + Math.round(monthsToComplete * 30));
+      predictedCompletionDate = formatDateInTimeZone(completionDate);
+    }
+
+    // Status & risk
+    let status = 'tracking';
+    let riskLevel = 'medium';
+    let shortfallAmount = 0;
+    let recommendedAction: string | null = null;
+
+    if (goal.end_date) {
+      const endDate = new Date(goal.end_date);
+
+      if (monthlyRate <= 0) {
+        status = 'at_risk';
+        riskLevel = 'high';
+        shortfallAmount = remaining;
+        recommendedAction = `Can gop it nhat ${Math.ceil(requiredMonthlyRate).toLocaleString('vi-VN')} d/thang de dat muc tieu.`;
+      } else if (predictedCompletionDate) {
+        const predicted = new Date(predictedCompletionDate);
+        const daysDiff = Math.ceil(
+          (predicted.getTime() - endDate.getTime()) / (1000 * 60 * 60 * 24),
+        );
+
+        if (daysDiff <= 0) {
+          status = 'on_track';
+          riskLevel = 'low';
+        } else if (daysDiff <= 30) {
+          status = 'slightly_at_risk';
+          riskLevel = 'medium';
+          shortfallAmount = (requiredMonthlyRate - monthlyRate) * (daysRemaining! / 30);
+          recommendedAction = `Tang them ${Math.ceil(requiredMonthlyRate - monthlyRate).toLocaleString('vi-VN')} d/thang de dat dung han.`;
+        } else {
+          status = 'off_track';
+          riskLevel = 'high';
+          shortfallAmount = remaining - monthlyRate * (daysRemaining! / 30);
+          recommendedAction = `Toc do gop hien tai cham hon yeu cau. Can tang len ${Math.ceil(requiredMonthlyRate).toLocaleString('vi-VN')} d/thang.`;
+        }
+      }
+
+      // Overdue check
+      if (daysRemaining !== null && daysRemaining <= 0 && remaining > 0) {
+        status = 'overdue';
+        riskLevel = 'high';
+        shortfallAmount = remaining;
+        recommendedAction = 'Muc tieu da qua han. Hay xem xet gia han hoac dieu chinh muc tieu.';
+      }
+    } else {
+      // No deadline
+      status = monthlyRate > 0 ? 'on_track' : 'tracking';
+      riskLevel = monthlyRate > 0 ? 'low' : 'medium';
+    }
+
+    return {
+      predictedCompletionDate,
+      daysRemaining,
+      monthlyContributionRate: Math.round(monthlyRate),
+      requiredMonthlyRate: Math.round(requiredMonthlyRate),
+      status,
+      riskLevel,
+      shortfallAmount: Math.max(0, Math.round(shortfallAmount)),
+      recommendedAction,
+      confidence: Math.round(confidence * 100) / 100,
+    };
   }
 }

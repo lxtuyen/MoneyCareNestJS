@@ -54,6 +54,9 @@ export class CoupleSavingGoal {
   saved_amount!: number;
 
   @Column({ type: 'timestamp with time zone', nullable: true })
+  start_date!: Date | null;
+
+  @Column({ type: 'timestamp with time zone', nullable: true })
   end_date!: Date | null;
 
   @Column({

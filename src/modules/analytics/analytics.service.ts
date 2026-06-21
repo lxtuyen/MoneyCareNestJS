@@ -129,6 +129,47 @@ export class AnalyticsService {
     }
   }
 
+  /**
+   * Gọi analytics-service để lấy couple profile + forecast.
+   */
+  async getCoupleAnalytics(
+    coupleId: number,
+    memberIds: number[],
+    transactions: { id: number; amount: number; transaction_date: string; type: string; category?: { name: string } | null; is_transfer?: boolean; payer_id?: number | null }[],
+    options?: { targetMonth?: number; targetYear?: number },
+  ): Promise<{ coupleProfile: any; forecast: any } | null> {
+    try {
+      const requestData = {
+        couple_id: coupleId,
+        transactions: transactions.map((t) => ({
+          id: t.id,
+          amount: Number(t.amount),
+          transaction_date:
+            typeof t.transaction_date === 'string'
+              ? t.transaction_date
+              : new Date(t.transaction_date).toISOString(),
+          type: t.type,
+          category: t.category ? { name: t.category.name } : null,
+          is_transfer: t.is_transfer ?? false,
+          payer_id: t.payer_id ?? null,
+        })),
+        target_month: options?.targetMonth,
+        target_year: options?.targetYear,
+        member_ids: memberIds,
+      };
+
+      const data = await this.serviceClient.analyzeCoupleFinancial(requestData);
+
+      return {
+        coupleProfile: data?.couple_profile ?? null,
+        forecast: data?.forecast ?? null,
+      };
+    } catch (error) {
+      this.logger.warn(`Cannot fetch couple analytics: ${error.message}`);
+      return null;
+    }
+  }
+
   // ─── Private ───────────────────────────────────────────────────────
 
   private resolveTargetPeriod(options: FinancialSummaryOptions): {
