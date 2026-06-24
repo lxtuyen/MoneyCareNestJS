@@ -17,6 +17,7 @@ import { CouplesModule } from '../couples/couples.module';
 import { TransactionPrivacyService } from './transaction-privacy.service';
 import { TransactionSplit } from './entities/transaction-split.entity';
 import { AnalyticsModule } from '../analytics/analytics.module';
+import { SubCategoryAssignmentService } from './sub-category-assignment.service';
 
 @Module({
   imports: [
@@ -41,6 +42,7 @@ import { AnalyticsModule } from '../analytics/analytics.module';
     TransactionExportService,
     TransactionStatisticsService,
     TransactionPrivacyService,
+    SubCategoryAssignmentService,
   ],
   exports: [
     TypeOrmModule,
@@ -48,6 +50,7 @@ import { AnalyticsModule } from '../analytics/analytics.module';
     TransactionExportService,
     TransactionStatisticsService,
     TransactionPrivacyService,
+    SubCategoryAssignmentService,
   ],
 })
 export class TransactionsModule {}

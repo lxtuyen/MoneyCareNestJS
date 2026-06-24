@@ -55,6 +55,40 @@ export class AiAnalysisChatService {
     );
   }
 
+  isCategoryBreakdownRequest(message: string): boolean {
+    const lowerMessage = norm(message || '');
+    return (
+      lowerMessage.includes('chi tiet danh muc') ||
+      lowerMessage.includes('chi tiet tung danh muc') ||
+      lowerMessage.includes('breakdown') ||
+      lowerMessage.includes('phan tich chi tiet') ||
+      lowerMessage.includes('xem chi tiet danh muc')
+    );
+  }
+
+  async handleCategoryBreakdown(
+    userId: number,
+  ): Promise<ApiResponse<string>> {
+    const cacheKey = `v1:category_breakdown:${userId}`;
+    const cached = await this.cacheService.get<string>(cacheKey);
+    if (cached !== null) {
+      return ok('', cached);
+    }
+
+    try {
+      const result = await this.analyticsService.getCategoryBreakdown(userId);
+      const data = result.data;
+
+      const resultString = `${AiMessagePrefix.CATEGORY_BREAKDOWN}${JSON.stringify(data)}`;
+
+      await this.cacheService.set(cacheKey, resultString, AI_ANALYSIS_TTL_SECONDS);
+      return ok('', resultString);
+    } catch (error) {
+      this.logger.error(`Category breakdown failed: ${error.message}`);
+      return ok('', 'Xin lỗi, tôi không thể phân tích chi tiết danh mục lúc này. Hãy thử lại sau.');
+    }
+  }
+
   private buildChatCacheKey(message: string): string {
     return `v1:ai_chat:${buildIntentHash(message)}`;
   }

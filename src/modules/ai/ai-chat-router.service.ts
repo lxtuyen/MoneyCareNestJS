@@ -88,6 +88,10 @@ export class AiChatRouterService {
       );
     }
 
+    if (this.analysisChatService.isCategoryBreakdownRequest(message ?? '')) {
+      return this.analysisChatService.handleCategoryBreakdown(userId);
+    }
+
     if (this.analysisChatService.isAnalysisRequest(message ?? '')) {
       return this.analysisChatService.handleAnalysis(
         message ?? '',

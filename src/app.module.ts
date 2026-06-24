@@ -25,6 +25,7 @@ import { AiFeedbackModule } from './modules/ai-feedback/ai-feedback.module';
 import { ScenarioPlanningModule } from './modules/scenario-planning/scenario-planning.module';
 import { CouplesModule } from './modules/couples/couples.module';
 import { PaymentsModule } from './modules/payments/payments.module';
+import { SpendingInsightsModule } from './modules/spending-insights/spending-insights.module';
 
 @Module({
   imports: [
@@ -85,6 +86,7 @@ import { PaymentsModule } from './modules/payments/payments.module';
     ScenarioPlanningModule,
     CouplesModule,
     PaymentsModule,
+    SpendingInsightsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

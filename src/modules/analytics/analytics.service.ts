@@ -190,6 +190,40 @@ export class AnalyticsService {
     }
   }
 
+  /**
+   * Phân tích chi tiết chi tiêu bên trong từng danh mục.
+   */
+  async getCategoryBreakdown(
+    userId: number,
+    options: FinancialSummaryOptions = {},
+  ): Promise<ApiResponse<any>> {
+    const targetPeriod = this.resolveTargetPeriod(options);
+
+    const { requestData } = await this.payloadBuilder.buildAnalyzePayload(
+      userId,
+      targetPeriod,
+    );
+
+    try {
+      const data = await this.serviceClient.getCategoryBreakdown({
+        user_id: userId,
+        transactions: requestData.transactions,
+        target_month: targetPeriod.month,
+        target_year: targetPeriod.year,
+      });
+
+      return ok(data, 'Phân tích chi tiết danh mục thành công');
+    } catch (error) {
+      this.logger.error(
+        `Error getting category breakdown: ${error.message}`,
+      );
+      return ok(
+        { target_month: targetPeriod.month, target_year: targetPeriod.year, categories: [] },
+        'Không thể phân tích chi tiết danh mục',
+      );
+    }
+  }
+
   // ─── Private ───────────────────────────────────────────────────────
 
   private resolveTargetPeriod(options: FinancialSummaryOptions): {
@@ -293,7 +327,8 @@ export class AnalyticsService {
             spentAmount: item.spent_amount,
             riskScore: Math.min(100, ratio * 100),
             status:
-              ratio >= 1.0 ? 'danger' : ratio >= 0.85 ? 'warning' : 'normal',
+              ratio > 1.0 ? 'danger' : ratio >= 0.85 ? 'warning' : 'normal',
+            forecastAmount: null,
           };
         })
       : [];
@@ -430,6 +465,8 @@ export class AnalyticsService {
           'Chưa có kết quả AI Budgeting nâng cao, hệ thống tạm dùng dữ liệu dự phòng.',
       },
       goalAchievement,
+      unpaidRecurring: [],
+      habitSuggestions: [],
     };
   }
 
@@ -496,6 +533,8 @@ export class AnalyticsService {
           },
       aiBudgeting: (snapshot.budgetingData as AnalyticsMappedAiBudgeting) ?? null,
       goalAchievement: null,
+      unpaidRecurring: [],
+      habitSuggestions: [],
     };
   }
 }

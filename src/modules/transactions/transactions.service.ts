@@ -28,6 +28,8 @@ import { CouplesService } from '../couples/couples.service';
 import { Couple } from '../couples/entities/couple.entity';
 import { AnalyticsPredictionService } from '../analytics/analytics-prediction.service';
 import { SnapshotService } from '../analytics/snapshot.service';
+import { RecurringCacheService } from 'src/common/cache/recurring-cache.service';
+import { SubCategoryAssignmentService } from './sub-category-assignment.service';
 
 @Injectable()
 export class TransactionService {
@@ -50,6 +52,8 @@ export class TransactionService {
     private couplesService: CouplesService,
     private analyticsPredictionService: AnalyticsPredictionService,
     private snapshotService: SnapshotService,
+    private recurringCacheService: RecurringCacheService,
+    private subCategoryAssignment: SubCategoryAssignmentService,
   ) {}
 
   private getUserDisplayName(user?: User | null): string | null {
@@ -299,6 +303,13 @@ export class TransactionService {
 
     const savedTransaction = await this.transactionRepo.save(transaction);
 
+    // Auto-assign subCategory từ note (nếu chưa có)
+    if (!savedTransaction.subCategory && savedTransaction.note) {
+      void this.subCategoryAssignment
+        .assignFromNote(savedTransaction)
+        .catch(() => undefined);
+    }
+
     if (dto.coupleId) {
       await this.couplesService.updateStreak(dto.coupleId);
     }
@@ -317,6 +328,11 @@ export class TransactionService {
 
     // Invalidate AI prediction cache — kết quả AI cũ không còn chính xác khi có giao dịch mới
     void this.analyticsPredictionService.invalidateUserCache(user.id).catch(() => undefined);
+
+    // Invalidate recurring cache nếu là expense & không phải transfer
+    if (dto.type === 'expense' && !transaction.isTransfer) {
+      void this.recurringCacheService.invalidate(user.id).catch(() => undefined);
+    }
 
     // Delta update snapshot (bỏ qua transfer)
     if (!transaction.isTransfer && category) {
@@ -651,6 +667,11 @@ export class TransactionService {
     // Invalidate AI prediction cache
     void this.analyticsPredictionService.invalidateUserCache(transaction.user.id).catch(() => undefined);
 
+    // Invalidate recurring cache nếu expense liên quan
+    if (oldType === 'expense' || newType === 'expense') {
+      void this.recurringCacheService.invalidate(transaction.user.id).catch(() => undefined);
+    }
+
     // Delta update snapshot (reverse old + apply new)
     if (!transaction.isTransfer) {
       const oldDate = new Date(transaction.transaction_date);
@@ -847,6 +868,11 @@ export class TransactionService {
 
     // Invalidate AI prediction cache
     void this.analyticsPredictionService.invalidateUserCache(transaction.user.id).catch(() => undefined);
+
+    // Invalidate recurring cache nếu là expense & không phải transfer
+    if (transaction.type === 'expense' && !transaction.isTransfer) {
+      void this.recurringCacheService.invalidate(transaction.user.id).catch(() => undefined);
+    }
 
     // Delta update snapshot (reverse deleted transaction)
     if (!transaction.isTransfer && transaction.category) {

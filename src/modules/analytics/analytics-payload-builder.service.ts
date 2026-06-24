@@ -9,6 +9,7 @@ import { PersonalizationService } from '../personalization/personalization.servi
 import { AiFeedbackService } from '../ai-feedback/ai-feedback.service';
 import { AnalyticsEvaluationService } from './analytics-evaluation.service';
 import { GoalAchievementPredictionService } from '../saving-goals/goal-achievement-prediction.service';
+import { SpendingInsightsService } from '../spending-insights/spending-insights.service';
 import { GoalAchievementPredictionSummaryDto } from '../saving-goals/dto/goal-achievement-prediction.dto';
 import { getVietnamMonthRange } from 'src/common/utils/date.util';
 import {
@@ -45,6 +46,7 @@ export class AnalyticsPayloadBuilderService {
     private readonly evaluationService: AnalyticsEvaluationService,
     @Inject(forwardRef(() => GoalAchievementPredictionService))
     private readonly goalAchievementPredictionService: GoalAchievementPredictionService,
+    private readonly spendingInsightsService: SpendingInsightsService,
   ) {}
 
   /**
@@ -73,7 +75,7 @@ export class AnalyticsPayloadBuilderService {
           transaction_date: Between(startDate, endDate),
           isTransfer: false,
         },
-        relations: ['category'],
+        relations: ['category', 'subCategory'],
         order: { transaction_date: 'DESC' },
       }),
       this.goalRepo.find({
@@ -128,6 +130,7 @@ export class AnalyticsPayloadBuilderService {
           : { name: 'Khác' },
         note: t.note || '',
         is_transfer: t.isTransfer || false,
+        sub_category: t.subCategory?.name ?? null,
       }),
     );
 
@@ -160,7 +163,23 @@ export class AnalyticsPayloadBuilderService {
       essential_categories: essentialCategories,
       target_month: targetPeriod.month,
       target_year: targetPeriod.year,
+      confirmed_recurring: [],
     };
+
+    // Enrich with confirmed recurring data
+    try {
+      const confirmed = await this.spendingInsightsService.getConfirmedRecurring(userId);
+      requestData.confirmed_recurring = confirmed.map((r) => ({
+        category_name: r.categoryName || '',
+        average_amount: Number(r.averageAmount),
+        frequency: r.frequency || 'monthly',
+        expected_day: r.expectedDay || null,
+        monthly_estimate: Number(r.monthlyEstimate),
+        description: r.description || '',
+      }));
+    } catch (error) {
+      this.logger.warn(`Cannot load confirmed recurring: ${error.message}`);
+    }
 
     return {
       requestData,

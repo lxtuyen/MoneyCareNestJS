@@ -269,6 +269,26 @@ export interface AnalyticsServiceResponse {
   insights: AnalyticsServiceInsightResponse[];
   forecasting?: AnalyticsServiceForecastingResponse | null;
   ai_budgeting?: AnalyticsServiceAiBudgetingResponse | null;
+  unpaid_recurring?: Array<{
+    category_name: string;
+    description: string;
+    expected_day?: number | null;
+    expected_amount: number;
+    status: string;
+  }>;
+  habit_suggestions?: Array<{
+    habit_name: string;
+    category_name: string;
+    current_month_count: number;
+    current_month_total: number;
+    avg_per_transaction: number;
+    projected_month_count: number;
+    projected_month_total: number;
+    suggested_count: number;
+    potential_savings: number;
+    suggestion_text: string;
+    is_early_estimate?: boolean;
+  }>;
 }
 
 export interface AnalyticsMappedAnomaly {
@@ -325,6 +345,26 @@ export interface AnalyticsMappedResponse {
   } | null;
   aiBudgeting: AnalyticsMappedAiBudgeting | null;
   goalAchievement: GoalAchievementPredictionSummaryDto | null;
+  unpaidRecurring: Array<{
+    categoryName: string;
+    description: string;
+    expectedDay: number | null;
+    expectedAmount: number;
+    status: string;
+  }>;
+  habitSuggestions: Array<{
+    habitName: string;
+    categoryName: string;
+    currentMonthCount: number;
+    currentMonthTotal: number;
+    avgPerTransaction: number;
+    projectedMonthCount: number;
+    projectedMonthTotal: number;
+    suggestedCount: number;
+    potentialSavings: number;
+    suggestionText: string;
+    isEarlyEstimate: boolean;
+  }>;
 }
 
 export interface AnalyticsMappedMonthlyForecast {

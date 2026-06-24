@@ -9,6 +9,7 @@ import { SpendingPlansModule } from '../spending-plans/spending-plans.module';
 import { PersonalizationModule } from '../personalization/personalization.module';
 import { AiFeedbackModule } from '../ai-feedback/ai-feedback.module';
 import { SavingGoalsModule } from '../saving-goals/saving-goals.module';
+import { SpendingInsightsModule } from '../spending-insights/spending-insights.module';
 import { AiPredictionRun } from './entities/ai-prediction-run.entity';
 import { AiPredictionEvaluation } from './entities/ai-prediction-evaluation.entity';
 import { AnalyticsController } from './analytics.controller';
@@ -38,6 +39,7 @@ import { SnapshotCronService } from './snapshot-cron.service';
     PersonalizationModule,
     AiFeedbackModule,
     forwardRef(() => SavingGoalsModule),
+    SpendingInsightsModule,
     ConfigModule,
   ],
   controllers: [AnalyticsController],

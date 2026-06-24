@@ -73,13 +73,33 @@ export function mapAnalyticsResponse(
     budgetRisk: {
       riskLevel: data.budget_risk.risk_level,
       message: data.budget_risk.message,
-      items: (data.budget_risk.items || []).map((item) => ({
-        categoryName: item.category_name,
-        limitAmount: item.limit_amount,
-        spentAmount: item.spent_amount,
-        riskScore: item.risk_score,
-        status: item.status,
-      })),
+      items: (data.budget_risk.items || []).map((item) => {
+        // Match forecast by category name
+        const catForecasts =
+          data.forecasting?.current_month_projection?.category_forecasts ||
+          data.forecasting?.currentMonthProjection?.categoryForecasts ||
+          [];
+        const matched = catForecasts.find(
+          (cf) =>
+            (cf.category_name || cf.categoryName || '')
+              .trim()
+              .toLowerCase() === item.category_name.trim().toLowerCase(),
+        );
+        const forecastAmount =
+          matched?.predicted_amount ?? matched?.predictedAmount ?? null;
+
+        return {
+          categoryName: item.category_name,
+          limitAmount: item.limit_amount,
+          spentAmount: item.spent_amount,
+          riskScore: item.risk_score,
+          status: item.status,
+          forecastAmount:
+            forecastAmount !== null && forecastAmount !== undefined
+              ? Math.round(forecastAmount)
+              : null,
+        };
+      }),
     },
     savingGoalProjections: (data.saving_goal_projections || []).map(
       (projection) => ({
@@ -186,6 +206,26 @@ export function mapAnalyticsResponse(
         }
       : null,
     goalAchievement,
+    unpaidRecurring: (data.unpaid_recurring || []).map((item) => ({
+      categoryName: item.category_name,
+      description: item.description,
+      expectedDay: item.expected_day ?? null,
+      expectedAmount: item.expected_amount,
+      status: item.status,
+    })),
+    habitSuggestions: (data.habit_suggestions || []).map((item) => ({
+      habitName: item.habit_name,
+      categoryName: item.category_name,
+      currentMonthCount: item.current_month_count,
+      currentMonthTotal: item.current_month_total,
+      avgPerTransaction: item.avg_per_transaction,
+      projectedMonthCount: item.projected_month_count,
+      projectedMonthTotal: item.projected_month_total,
+      suggestedCount: item.suggested_count,
+      potentialSavings: item.potential_savings,
+      suggestionText: item.suggestion_text,
+      isEarlyEstimate: item.is_early_estimate ?? false,
+    })),
   };
 }
 

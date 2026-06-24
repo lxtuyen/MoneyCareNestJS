@@ -28,6 +28,7 @@ export interface AnalyticsTransactionPayload {
   };
   note: string;
   is_transfer: boolean;
+  sub_category?: string | null;
 }
 
 export interface AnalyticsSavingGoalPayload {
@@ -73,4 +74,12 @@ export interface AnalyticsAnalyzeRequestPayload {
   essential_categories: string[];
   target_month: number;
   target_year: number;
+  confirmed_recurring: {
+    category_name: string;
+    average_amount: number;
+    frequency: string;
+    expected_day: number | null;
+    monthly_estimate: number;
+    description: string;
+  }[];
 }
