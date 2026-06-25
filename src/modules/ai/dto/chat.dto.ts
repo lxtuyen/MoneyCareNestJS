@@ -23,4 +23,8 @@ export class ChatDto {
   @IsOptional()
   @IsNumber()
   forecastedSaving?: number;
+
+  @IsOptional()
+  @IsString()
+  imagePath?: string;
 }

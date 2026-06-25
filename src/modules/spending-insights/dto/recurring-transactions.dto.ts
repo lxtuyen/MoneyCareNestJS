@@ -12,6 +12,7 @@ export class RecurringTransactionDto {
   totalSpent: number;
   monthlyEstimate: number;
   amountTrend: 'stable' | 'increasing' | 'decreasing';
+  expectedDay?: number | null;
   recentTransactions: {
     id: number;
     amount: number;

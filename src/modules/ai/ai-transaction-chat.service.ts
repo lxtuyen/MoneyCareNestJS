@@ -536,6 +536,7 @@ export class AiTransactionChatService {
     userId: number,
     ocrText: string,
     ocrLines?: string,
+    imagePath?: string,
   ): Promise<ApiResponse<string>> {
     try {
       const goalId =
@@ -593,88 +594,95 @@ export class AiTransactionChatService {
           ? new Date(data.date).toISOString()
           : new Date().toISOString();
 
-      // Check if we extracted receipt items
+      // Merge all items into a single transaction
       if (data.items && data.items.length > 0) {
-        const savedTransactions: any[] = [];
-
+        // Sum up total amount from items
+        let mergedAmount = 0;
         for (const item of data.items) {
-          let itemCategory = this.pickCategoryByName(
-            categories,
-            item.category_name,
-            'expense',
+          mergedAmount += item.amount || item.price * item.quantity;
+        }
+
+        // Use total_amount from receipt if available and larger
+        if (data.total_amount > 0 && data.total_amount >= mergedAmount) {
+          mergedAmount = data.total_amount;
+        }
+
+        // Build note: "Merchant - Item1 (xQty), Item2 (xQty), ..."
+        const isMerchantPlaceholder =
+          !data.merchant_name ||
+          ['cua hang', 'cửa hàng', 'placeholder'].includes(
+            data.merchant_name.trim().toLowerCase(),
           );
 
-          if (item.category_name) {
-            const aiMatch = categories.find(
-              (c) =>
-                norm(c.name).includes(norm(item.category_name)) ||
-                norm(item.category_name).includes(norm(c.name)),
-            );
-            if (aiMatch) itemCategory = aiMatch;
-          }
+        const maxItemsInNote = 3;
+        const itemDescriptions = data.items.map(
+          (item) => `${item.name} (x${item.quantity})`,
+        );
+        const displayItems = itemDescriptions.slice(0, maxItemsInNote);
+        if (data.items.length > maxItemsInNote) {
+          displayItems.push('v.v');
+        }
+        const itemsSummary = displayItems.join(', ');
+        const mergedNote = isMerchantPlaceholder
+          ? itemsSummary
+          : `${data.merchant_name} - ${itemsSummary}`;
 
-          if (!itemCategory) {
-            const fallback = await this.getFallbackCategoryFromDB(
-              userId,
-              'expense',
-            );
-            if (fallback) itemCategory = fallback;
-          }
+        // Use category from first item
+        const firstItem = data.items[0];
+        let mergedCategory = this.pickCategoryByName(
+          categories,
+          firstItem.category_name,
+          'expense',
+        );
 
-          const itemAmount = item.amount || item.price * item.quantity;
+        if (firstItem.category_name) {
+          const aiMatch = categories.find(
+            (c) =>
+              norm(c.name).includes(norm(firstItem.category_name)) ||
+              norm(firstItem.category_name).includes(norm(c.name)),
+          );
+          if (aiMatch) mergedCategory = aiMatch;
+        }
 
-          const isMerchantPlaceholder =
-            !data.merchant_name ||
-            ['cua hang', 'cửa hàng', 'placeholder'].includes(
-              data.merchant_name.trim().toLowerCase(),
-            );
-
-          const dto: CreateTransactionDto = {
+        if (!mergedCategory) {
+          const fallback = await this.getFallbackCategoryFromDB(
             userId,
-            type: 'expense',
-            amount: itemAmount,
-            note: isMerchantPlaceholder
-              ? `${item.name} (x${item.quantity})`
-              : `${data.merchant_name} - ${item.name} (x${item.quantity})`,
-            transactionDate: transactionDateStr,
-            categoryId: itemCategory?.id,
-            walletId: walletId,
-          };
+            'expense',
+          );
+          if (fallback) mergedCategory = fallback;
+        }
 
-          const createdResult = await this.transactionService.create(dto);
-          const createdTransaction = createdResult.data;
+        const dto: CreateTransactionDto = {
+          userId,
+          type: 'expense',
+          amount: mergedAmount,
+          note: mergedNote,
+          transactionDate: transactionDateStr,
+          categoryId: mergedCategory?.id,
+          walletId: walletId,
+          pictureURL: imagePath,
+        };
 
-          const mapped = {
+        const createdResult = await this.transactionService.create(dto);
+        const createdTransaction = createdResult.data;
+
+        return ok(
+          '',
+          `${AiMessagePrefix.TRANSACTION_SAVED}${JSON.stringify({
             ...this.mapToAiTransaction({
               ...dto,
               id: createdTransaction?.id,
               category: {
-                id: itemCategory?.id,
-                name: itemCategory?.name,
-                icon: itemCategory?.icon,
+                id: mergedCategory?.id,
+                name: mergedCategory?.name,
+                icon: mergedCategory?.icon,
               },
             }),
             walletName: selectedWallet?.name,
             note: dto.note,
             isAutoFromReceipt: true,
-          };
-          savedTransactions.push(mapped);
-        }
-
-        if (savedTransactions.length > 0) {
-          return ok(
-            '',
-            `${AiMessagePrefix.TRANSACTION_LIST}${JSON.stringify({
-              query: {
-                type: 'expense',
-                startDate: data.date,
-                endDate: data.date,
-              },
-              transactions: savedTransactions,
-              total: savedTransactions.length,
-            })}`,
-          );
-        }
+          })}`,
+        );
       }
 
       // Fallback to saving a single transaction if no items were extracted or saved
@@ -722,16 +730,25 @@ export class AiTransactionChatService {
         if (fallback) pickedCategory = fallback;
       }
 
+      const isMerchantPlaceholder =
+        !data.merchant_name ||
+        ['cua hang', 'cửa hàng', 'placeholder'].includes(
+          data.merchant_name.trim().toLowerCase(),
+        );
+
       const dto: CreateTransactionDto = {
         userId,
         type: 'expense',
         amount,
         note:
           data.suggested_note ||
-          `Hóa đơn tại ${data.merchant_name || 'Cửa hàng'}`,
+          (isMerchantPlaceholder
+            ? 'Hóa đơn mua hàng'
+            : `Hóa đơn tại ${data.merchant_name}`),
         transactionDate: transactionDateStr,
         categoryId: pickedCategory?.id,
         walletId: walletId,
+        pictureURL: imagePath,
       };
 
       const createdResult = await this.transactionService.create(dto);

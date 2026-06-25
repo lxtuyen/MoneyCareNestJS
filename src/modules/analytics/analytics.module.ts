@@ -5,6 +5,7 @@ import { Transaction } from '../transactions/entities/transaction.entity';
 import { Couple } from '../couples/entities/couple.entity';
 import { SavingGoal } from '../saving-goals/entities/saving-goal.entity';
 import { SpendingPlan } from '../spending-plans/entities/spending-plan.entity';
+import { Subscription } from '../payments/entities/subscription.entity';
 import { SpendingPlansModule } from '../spending-plans/spending-plans.module';
 import { PersonalizationModule } from '../personalization/personalization.module';
 import { AiFeedbackModule } from '../ai-feedback/ai-feedback.module';
@@ -32,6 +33,7 @@ import { HabitCommitment } from '../habit-commitments/entities/habit-commitment.
       Couple,
       SavingGoal,
       SpendingPlan,
+      Subscription,
       AiPredictionRun,
       AiPredictionEvaluation,
       MonthlyAnalyticsSnapshot,

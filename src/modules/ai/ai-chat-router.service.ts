@@ -27,6 +27,7 @@ export class AiChatRouterService {
     ocrLines?: string,
     goalId?: number,
     forecastedSaving?: number,
+    imagePath?: string,
   ): Promise<ApiResponse<string>> {
     if (message && message.startsWith('/confirm_saving_goal')) {
       return this.savingGoalChatService.handleConfirmSavingGoal(
@@ -52,6 +53,7 @@ export class AiChatRouterService {
         userId,
         ocrText,
         ocrLines,
+        imagePath,
       );
     }
 

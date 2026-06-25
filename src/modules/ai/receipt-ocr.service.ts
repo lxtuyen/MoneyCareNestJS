@@ -133,7 +133,9 @@ export class ReceiptOcrService {
 
     return {
       rawText: rawText || coerceString(raw.rawText),
-      merchantName: coerceString(raw.merchantName),
+      merchantName:
+        coerceString(raw.merchantName) ||
+        coerceString(ruleCandidate.merchantName),
       address: coerceString(raw.address),
       date,
       totalAmount: parsedAmount > 0 ? parsedAmount : ruleAmount,
@@ -216,13 +218,21 @@ export class ReceiptOcrService {
  - ruleCandidate JSON:
  ${ruleBlock}
  
+ QUY TAC TRICH XUAT TEN CUA HANG (QUAN TRONG):
+ - Ten cua hang THUONG NAM O 1-3 DONG DAU TIEN cua hoa don.
+ - Tim dong text lon nhat, noi bat nhat o phan dau hoa don. Do CHINH LA ten cua hang.
+ - Vi du: "Bangkok Street Food", "Highland Coffee", "Circle K", "Winmart" deu la ten cua hang.
+ - Neu tim duoc, merchantName PHAI tra ve chinh xac ten do. KHONG duoc de rong hoac null.
+ - Chi de merchantName rong khi THAT SU khong co bat ky ten cua hang nao tren hoa don.
+
  QUY TAC PHAN LOAI:
  - He thong su dung bo danh muc CO DINH.
  - Ban CHI DUOC PHEP chon categoryName phu hop nhat tu danh sach nay: [${categoryNames}].
  - TUYET DOI KHONG tu y tao ra ten danh muc moi hoac thay doi ten trong danh sach.
+ - Neu hoa don co mon an, do uong, nha hang, quan an, cafe -> CHON "An uong".
+ - Neu hoa don co thuc pham tuoi, sieu thi, cho -> Chon "Di cho" hoac "Mua sam".
  - Neu khong tim thay ten cua hang, hay nhin vao danh sach cac mon hang (items) de phan loai.
  - Vi du: Neu co "Oc huong", "Cua hap", "Budweiser", "Hau nuong" -> CHAC CHAN la "An uong".
- - Neu la sieu thi, cho, thuc pham tuoi song -> Chon "Di cho" hoac "Mua sam".
  - Neu khong co cai nao hop le, hay tra ve "Khac".
  - Luu y: Neu day khong phai la hoa don (vd: trang sach, van ban khong lien quan), hay tra ve JSON voi totalAmount: 0.
   
@@ -239,11 +249,10 @@ export class ReceiptOcrService {
  QUY TAC TRICH XUAT:
  1. Khong duoc tu bia du lieu. 
  2. totalAmount phai la so nguyen duong. Neu thay nhieu con so, hay tim "Tong cong", "Thanh tien", "Total", "Tong thanh toan".
- 3. Neu khong co ten cua hang ro rang, hay de merchantName la null.
- 4. currency mac dinh la "VND".
- 5. date phai la YYYY-MM-DD. Neu khong co nam, hay lay nam hien tai (2026).
- 6. suggestedNote: Tao mot ghi chu ngan gon, tu nhien. Neu co ten mon an thi ghi "An [ten mon dau tien]...", neu khong thi ghi "Mua sam tai [ten cua hang]".
- 7. Chi tra ve mot JSON object duy nhat, khong co text giai thich, khong markdown.
+ 3. currency mac dinh la "VND".
+ 4. date phai la YYYY-MM-DD. Neu khong co nam, hay lay nam hien tai (2026).
+ 5. suggestedNote: Tao mot ghi chu ngan gon, tu nhien. Neu co ten cua hang thi uu tien ghi "An tai [ten cua hang]". Neu co ten mon an thi ghi "An [ten mon dau tien]...", neu khong thi ghi "Mua sam tai [ten cua hang]".
+ 6. Chi tra ve mot JSON object duy nhat, khong co text giai thich, khong markdown.
  `.trim();
   }
 

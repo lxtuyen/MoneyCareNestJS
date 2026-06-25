@@ -1,12 +1,13 @@
 import { Controller, Get, Post, Patch, Delete, Body, Query, Param, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from 'src/modules/auth/jwt-auth.guard';
+import { PremiumGuard } from 'src/common/guards/premium.guard';
 import { User } from 'src/common/decorators/user.decorator';
 import { ok } from 'src/common/utils/response.util';
 import { SpendingInsightsService } from './spending-insights.service';
 import { ConfirmRecurringDto, DismissRecurringDto } from './dto/confirm-recurring.dto';
 
 @Controller('spending-insights')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PremiumGuard)
 export class SpendingInsightsController {
   constructor(
     private readonly spendingInsightsService: SpendingInsightsService,

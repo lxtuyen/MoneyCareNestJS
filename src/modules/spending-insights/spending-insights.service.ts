@@ -8,6 +8,20 @@ import { RecurringDetectResponseDto } from './dto/recurring-transactions.dto';
 import { ConfirmRecurringDto, DismissRecurringDto } from './dto/confirm-recurring.dto';
 import { RecurringCacheService } from 'src/common/cache/recurring-cache.service';
 
+/**
+ * Whitelist categories for recurring detection.
+ * Only transactions in these categories are scanned.
+ */
+const RECURRING_CATEGORY_WHITELIST = [
+  'Hóa đơn',
+  'Nhà cửa',
+  'Di chuyển',
+  'Học tập',
+  'Sức khỏe',
+  'Người thân',
+  'Tiết kiệm',
+];
+
 @Injectable()
 export class SpendingInsightsService {
   private readonly logger = new Logger(SpendingInsightsService.name);
@@ -99,8 +113,31 @@ export class SpendingInsightsService {
       return emptyResult;
     }
 
-    // 2. Map to analytics-service format
-    const txPayload = transactions.map((t) => ({
+    // 2. Filter by category whitelist
+    const filteredTransactions = transactions.filter(
+      (t) =>
+        t.category &&
+        RECURRING_CATEGORY_WHITELIST.includes(t.category.name),
+    );
+
+    if (filteredTransactions.length < 3) {
+      const emptyResult: RecurringDetectResponseDto = {
+        recurringItems: [],
+        totalMonthlyRecurring: 0,
+        scanMonths: months,
+        transactionCount: 0,
+        lastScannedAt: new Date().toISOString(),
+      };
+      await this.recurringCacheService.set(userId, emptyResult);
+      return emptyResult;
+    }
+
+    this.logger.log(
+      `Recurring category filter: ${filteredTransactions.length}/${transactions.length} transactions in whitelist`,
+    );
+
+    // 3. Map to analytics-service format
+    const txPayload = filteredTransactions.map((t) => ({
       id: t.id,
       amount: Number(t.amount),
       transaction_date:
@@ -259,6 +296,7 @@ export class SpendingInsightsService {
       totalSpent: item.total_spent,
       monthlyEstimate: item.monthly_estimate,
       amountTrend: item.amount_trend,
+      expectedDay: item.expected_day ?? null,
       recentTransactions: (item.recent_transactions || []).map((tx: any) => ({
         id: tx.id,
         amount: tx.amount,

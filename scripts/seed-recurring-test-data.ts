@@ -1,8 +1,9 @@
 /**
  * Seed Script: Fake Transaction Data for Recurring Detection Testing
  * 
- * Tạo giao dịch chi tiêu sinh viên (trợ cấp ~4 triệu/tháng) trong 6 tháng.
+ * Tạo giao dịch chi tiêu + thu nhập sinh viên (trợ cấp ~4 triệu/tháng) trong 6 tháng.
  * Budget: Nhà 1M, Ăn uống ~1.8M, Hóa đơn ~300k, Lặt vặt ~400-500k, dư ~400-500k.
+ * Thu nhập: Lương part-time ~4M/tháng + trợ cấp gia đình lâu lâu.
  * 
  * Bao gồm cả recurring (cố định, thói quen) và random (không lặp).
  * Script sẽ XÓA toàn bộ transactions cũ của user trước khi seed.
@@ -19,7 +20,7 @@ import { DataSource } from 'typeorm';
 
 // ── Config ──────────────────────────────────────────────
 
-const TARGET_USER_ID = 66; // Thay đổi nếu cần
+const TARGET_USER_ID = 68; // Thay đổi nếu cần
 const MONTHS_BACK = 6;
 
 // ── DB Connection ───────────────────────────────────────
@@ -167,6 +168,31 @@ const RECURRING_TEMPLATES: RecurringTemplate[] = [
   },
 ];
 
+// ── Income Recurring Templates ──────────────────────
+
+const INCOME_RECURRING_TEMPLATES: RecurringTemplate[] = [
+  {
+    categoryName: 'Trợ cấp',
+    notes: ['Trợ cấp tháng {m}', 'Ba mẹ gửi tháng {m}', 'Gia đình hỗ trợ tháng {m}'],
+    baseAmount: 4000000,
+    variancePct: 0.05,
+    frequency: 'monthly',
+    dayOfMonth: 5,
+  },
+];
+
+// ── Income Random Templates ─────────────────────────
+
+const INCOME_RANDOM_TEMPLATES: RandomTemplate[] = [
+  {
+    categoryName: 'Thưởng',
+    notes: ['Thưởng làm thêm', 'Bonus', 'Thưởng hiệu suất'],
+    minAmount: 200000,
+    maxAmount: 500000,
+    countPerMonth: [0, 0], // Very rare - will override below
+  },
+];
+
 // ── Random (non-recurring) transaction templates ────
 
 interface RandomTemplate {
@@ -226,7 +252,7 @@ const RANDOM_TEMPLATES: RandomTemplate[] = [
 
 interface GeneratedTx {
   amount: number;
-  type: 'expense';
+  type: 'expense' | 'income';
   transaction_date: string;
   note: string;
   category_name: string;
@@ -349,6 +375,62 @@ function generateRandomTransactions(): GeneratedTx[] {
   return txs;
 }
 
+// ── Generate Income Transactions ────────────────────
+
+function generateIncomeRecurringTransactions(): GeneratedTx[] {
+  const months = getMonthsBack(MONTHS_BACK);
+  const txs: GeneratedTx[] = [];
+
+  for (const template of INCOME_RECURRING_TEMPLATES) {
+    for (const { year, month } of months) {
+      if (Math.random() < (template.skipChance || 0)) continue;
+
+      const day = template.dayOfMonth || 1;
+      const dayJitter = randomBetween(-1, 1);
+      const note = template.notes[randomBetween(0, template.notes.length - 1)]
+        .replace('{m}', String(month));
+
+      txs.push({
+        amount: randomAmount(template.baseAmount, template.variancePct),
+        type: 'income',
+        transaction_date: dateStr(year, month, Math.max(1, day + dayJitter)),
+        note,
+        category_name: template.categoryName,
+        is_transfer: false,
+      });
+    }
+  }
+
+  return txs;
+}
+
+function generateIncomeRandomTransactions(): GeneratedTx[] {
+  const months = getMonthsBack(MONTHS_BACK);
+  const txs: GeneratedTx[] = [];
+
+  for (const { year, month } of months) {
+    for (const template of INCOME_RANDOM_TEMPLATES) {
+      // Trợ cấp: ~40% tháng có, Thưởng: ~15% tháng có
+      const chance = template.categoryName === 'Thưởng' ? 0.15 : 0.40;
+      if (Math.random() > chance) continue;
+
+      const day = randomBetween(1, 28);
+      const note = template.notes[randomBetween(0, template.notes.length - 1)];
+
+      txs.push({
+        amount: Math.round(randomBetween(template.minAmount, template.maxAmount) / 1000) * 1000,
+        type: 'income',
+        transaction_date: dateStr(year, month, day),
+        note,
+        category_name: template.categoryName,
+        is_transfer: false,
+      });
+    }
+  }
+
+  return txs;
+}
+
 // ── Main ────────────────────────────────────────────
 
 async function main() {
@@ -394,24 +476,37 @@ async function main() {
   // 4. Generate data
   const recurringTxs = generateRecurringTransactions();
   const randomTxs = generateRandomTransactions();
-  const allTxs = [...recurringTxs, ...randomTxs];
+  const incomeRecurringTxs = generateIncomeRecurringTransactions();
+  const incomeRandomTxs = generateIncomeRandomTransactions();
+  const allTxs = [...recurringTxs, ...randomTxs, ...incomeRecurringTxs, ...incomeRandomTxs];
 
   console.log(`📊 Đã tạo:`);
-  console.log(`   - ${recurringTxs.length} giao dịch recurring`);
-  console.log(`   - ${randomTxs.length} giao dịch random`);
+  console.log(`   - ${recurringTxs.length} giao dịch chi tiêu recurring`);
+  console.log(`   - ${randomTxs.length} giao dịch chi tiêu random`);
+  console.log(`   - ${incomeRecurringTxs.length} giao dịch thu nhập recurring`);
+  console.log(`   - ${incomeRandomTxs.length} giao dịch thu nhập random`);
   console.log(`   - ${allTxs.length} tổng cộng\n`);
 
   // 5. Tính budget estimate
-  const monthlyEstimate = new Map<string, number>();
+  const monthlyExpense = new Map<string, number>();
+  const monthlyIncome = new Map<string, number>();
   for (const tx of allTxs) {
     const month = tx.transaction_date.substring(0, 7);
-    monthlyEstimate.set(month, (monthlyEstimate.get(month) || 0) + tx.amount);
+    if (tx.type === 'expense') {
+      monthlyExpense.set(month, (monthlyExpense.get(month) || 0) + tx.amount);
+    } else {
+      monthlyIncome.set(month, (monthlyIncome.get(month) || 0) + tx.amount);
+    }
   }
-  const avgMonthly = Math.round(
-    [...monthlyEstimate.values()].reduce((s, v) => s + v, 0) / monthlyEstimate.size,
+  const avgExpense = Math.round(
+    [...monthlyExpense.values()].reduce((s, v) => s + v, 0) / monthlyExpense.size,
   );
-  console.log(`💰 Chi tiêu trung bình/tháng: ~${avgMonthly.toLocaleString('vi-VN')}đ`);
-  console.log(`   (Budget 4.000.000đ, dư ~${(4000000 - avgMonthly).toLocaleString('vi-VN')}đ)\n`);
+  const avgIncome = monthlyIncome.size > 0
+    ? Math.round([...monthlyIncome.values()].reduce((s, v) => s + v, 0) / monthlyIncome.size)
+    : 0;
+  console.log(`💰 Thu nhập trung bình/tháng: ~${avgIncome.toLocaleString('vi-VN')}đ`);
+  console.log(`💸 Chi tiêu trung bình/tháng: ~${avgExpense.toLocaleString('vi-VN')}đ`);
+  console.log(`📊 Tích lũy trung bình/tháng: ~${(avgIncome - avgExpense).toLocaleString('vi-VN')}đ\n`);
 
   // 5.5. Lấy wallet mapping
   const wallets = await dataSource.query(
@@ -461,9 +556,9 @@ async function main() {
     console.log(`⚠️  Bỏ qua ${skipped} giao dịch (không tìm thấy category)`);
   }
 
-  // 7. Summary
+  // 7. Summary - Expense
   console.log('\n═══════════════════════════════════════════════════');
-  console.log('  RECURRING PATTERNS ĐÃ TẠO');
+  console.log('  RECURRING PATTERNS ĐÃ TẠO (CHI TIÊU)');
   console.log('═══════════════════════════════════════════════════\n');
 
   const recurringByType = new Map<string, { count: number; avgAmount: number; freq: string }>();
@@ -494,15 +589,32 @@ async function main() {
     console.log(`     ${freqLabel} | ${val.count} lần | ~${val.avgAmount.toLocaleString('vi-VN')}đ\n`);
   }
 
-  // 8. Chi tiêu theo tháng
+  // 7.5. Summary - Income
   console.log('═══════════════════════════════════════════════════');
-  console.log('  CHI TIÊU THEO THÁNG');
+  console.log('  RECURRING PATTERNS ĐÃ TẠO (THU NHẬP)');
   console.log('═══════════════════════════════════════════════════\n');
 
-  const sortedMonths = [...monthlyEstimate.entries()].sort(([a], [b]) => a.localeCompare(b));
-  for (const [month, total] of sortedMonths) {
-    const bar = '█'.repeat(Math.round(total / 100000));
-    console.log(`  ${month}: ${total.toLocaleString('vi-VN').padStart(12)}đ ${bar}`);
+  for (const template of INCOME_RECURRING_TEMPLATES) {
+    const key = `${template.categoryName} - ${template.notes[0].replace('{m}', 'X')}`;
+    console.log(`  📌 ${key}`);
+    console.log(`     Hàng tháng | ${incomeRecurringTxs.length} lần | ~${template.baseAmount.toLocaleString('vi-VN')}đ\n`);
+  }
+  console.log(`  📌 Trợ cấp gia đình (random ~40% tháng)`);
+  console.log(`  📌 Thưởng (random ~15% tháng)\n`);
+
+  // 8. Tổng hợp theo tháng
+  console.log('═══════════════════════════════════════════════════');
+  console.log('  THU CHI THEO THÁNG');
+  console.log('═══════════════════════════════════════════════════\n');
+
+  const allMonths = new Set([...monthlyExpense.keys(), ...monthlyIncome.keys()]);
+  const sortedMonths = [...allMonths].sort();
+  for (const month of sortedMonths) {
+    const expense = monthlyExpense.get(month) || 0;
+    const income = monthlyIncome.get(month) || 0;
+    const net = income - expense;
+    const netSign = net >= 0 ? '+' : '';
+    console.log(`  ${month}: Thu ${income.toLocaleString('vi-VN').padStart(12)}đ | Chi ${expense.toLocaleString('vi-VN').padStart(12)}đ | ${netSign}${net.toLocaleString('vi-VN')}đ`);
   }
 
   console.log('\n═══════════════════════════════════════════════════');

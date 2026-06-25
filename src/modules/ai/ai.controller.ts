@@ -33,6 +33,7 @@ export class AiController {
       dto.ocrLines,
       dto.goalId,
       dto.forecastedSaving,
+      dto.imagePath,
     );
   }
 

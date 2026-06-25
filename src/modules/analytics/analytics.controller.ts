@@ -8,6 +8,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { JwtAuthGuard } from 'src/modules/auth/jwt-auth.guard';
+import { PremiumGuard } from 'src/common/guards/premium.guard';
 import { User } from 'src/common/decorators/user.decorator';
 import { AnalyticsService } from './analytics.service';
 import { AnalyticsEvaluationService } from './analytics-evaluation.service';
@@ -17,7 +18,7 @@ import { RunModelEvaluationDto } from './dto/run-model-evaluation.dto';
 import { SnapshotCronService } from './snapshot-cron.service';
 
 @Controller('analytics')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PremiumGuard)
 export class AnalyticsController {
   private readonly logger = new Logger(AnalyticsController.name);
 

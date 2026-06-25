@@ -38,13 +38,14 @@ export class AiService {
     ocrLines?: string,
     goalId?: number,
     forecastedSaving?: number,
+    imagePath?: string,
   ): Promise<ApiResponse<string>> {
     const userId = Number(userIdRaw);
     if (!Number.isFinite(userId)) {
       throw new BadRequestException('userId must be a number');
     }
 
-    return this.chatRouterService.handle(message, userId, ocrText, ocrLines, goalId, forecastedSaving);
+    return this.chatRouterService.handle(message, userId, ocrText, ocrLines, goalId, forecastedSaving, imagePath);
   }
 
   async scanReceipt(
