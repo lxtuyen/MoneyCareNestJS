@@ -61,6 +61,20 @@ export interface ChatbotBudgetRiskCardPayload {
   }>;
 }
 
+export interface ChatbotHabitSuggestionPayload {
+  habitName: string;
+  categoryName: string;
+  currentMonthCount: number;
+  currentMonthTotal: number;
+  avgPerTransaction: number;
+  projectedMonthCount: number;
+  projectedMonthTotal: number;
+  suggestedCount: number;
+  potentialSavings: number;
+  suggestionText: string;
+  isEarlyEstimate: boolean;
+}
+
 export interface ChatbotRecommendationCardPayload {
   title: string;
   description: string;
@@ -77,6 +91,7 @@ export interface ChatbotExpenseAnalysisPayload {
   anomalies: ChatbotAnomalyCardPayload[];
   budgetRisk: ChatbotBudgetRiskCardPayload | null;
   recommendations: ChatbotRecommendationCardPayload[];
+  habitSuggestions: ChatbotHabitSuggestionPayload[];
   emptyState?: {
     title: string;
     message: string;

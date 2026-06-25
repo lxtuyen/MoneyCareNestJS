@@ -41,7 +41,8 @@ function randomBetween(min: number, max: number): number {
 
 function randomAmount(base: number, variancePct: number): number {
   const variance = base * variancePct;
-  return Math.round(base + (Math.random() * 2 - 1) * variance);
+  const raw = base + (Math.random() * 2 - 1) * variance;
+  return Math.round(raw / 1000) * 1000; // Làm tròn đến 1.000đ
 }
 
 function dateStr(year: number, month: number, day: number): string {
@@ -334,7 +335,7 @@ function generateRandomTransactions(): GeneratedTx[] {
         const note = template.notes[randomBetween(0, template.notes.length - 1)];
 
         txs.push({
-          amount: randomBetween(template.minAmount, template.maxAmount),
+          amount: Math.round(randomBetween(template.minAmount, template.maxAmount) / 1000) * 1000,
           type: 'expense',
           transaction_date: dateStr(year, month, day),
           note,

@@ -9,6 +9,7 @@ import { norm } from 'src/common/utils/string.util';
 import { ApiResponse } from 'src/common/dto/api-response.dto';
 import { ok } from 'src/common/utils/response.util';
 import { AnalyticsService } from '../analytics/analytics.service';
+import { HabitCommitmentsService } from '../habit-commitments/habit-commitments.service';
 import {
   filterGoalBudgetRecommendations,
   resolvePrimaryGoalPrediction,
@@ -24,6 +25,7 @@ export class AiGoalAchievementChatService {
     private readonly goalRepo: Repository<SavingGoal>,
     private readonly savingGoalsStatisticsService: SavingGoalsStatisticsService,
     private readonly personalizationService: PersonalizationService,
+    private readonly habitCommitmentsService: HabitCommitmentsService,
   ) {}
 
   isGoalAchievementRequest(message: string): boolean {
@@ -303,7 +305,20 @@ export class AiGoalAchievementChatService {
       shortfall,
       daysDelayed,
       contributionHistory: reportTransactions,
+      habitSuggestions: shortfall > 0
+        ? this.scopeHabitSuggestionsToShortfall(
+            analytics.habitSuggestions || [],
+            shortfall,
+          )
+        : [],
     };
+
+    // Auto-delete commitments when shortfall disappears
+    if (shortfall <= 0 && prediction.goalId) {
+      this.clearGoalCommitments(userId, prediction.goalId).catch((err) =>
+        this.logger.warn(`Failed to clear commitments for goal ${prediction.goalId}: ${err.message}`),
+      );
+    }
 
     const responseText = `__GOAL_ACHIEVEMENT_INSIGHT__${JSON.stringify(payload)}`;
     return ok('', responseText);
@@ -337,5 +352,67 @@ export class AiGoalAchievementChatService {
       }
     }
     return summaryText;
+  }
+
+  /**
+   * Re-scope habit suggestions so total potentialSavings ≈ shortfall.
+   * Only include enough items to cover the gap; adjust last item's
+   * reduction count if it would exceed.
+   */
+  private scopeHabitSuggestionsToShortfall(
+    suggestions: any[],
+    shortfall: number,
+  ): any[] {
+    if (!suggestions.length || shortfall <= 0) return [];
+
+    // Keep analytics' original order (new habits first, then committed)
+    // Do NOT re-sort by potentialSavings — that would undo priority ordering
+
+    const result: any[] = [];
+    let remaining = shortfall;
+
+    for (const s of suggestions) {
+      if (remaining <= 0) break;
+
+      const avg = s.avgPerTransaction || 0;
+      if (avg <= 0) continue;
+
+      // Analytics already calculated the correct suggestedCount
+      // (respecting committed habits). Use its reduction as the max.
+      const analyticsReduce = s.projectedMonthCount - s.suggestedCount;
+      if (analyticsReduce <= 0) continue;
+
+      // How many reductions needed for remaining gap?
+      const neededReduce = Math.ceil(remaining / avg);
+      const actualReduce = Math.min(neededReduce, analyticsReduce);
+      const adjustedSavings = Math.round(actualReduce * avg);
+
+      // Calculate adjusted suggestedCount from analytics' suggestedCount
+      // (add back unused reductions)
+      const adjustedSuggestedCount =
+        s.suggestedCount + (analyticsReduce - actualReduce);
+
+      result.push({
+        ...s,
+        suggestedCount: adjustedSuggestedCount,
+        potentialSavings: adjustedSavings,
+        suggestionText: `Bạn có thể cân nhắc giảm ${s.habitName} từ ~${s.projectedMonthCount} xuống ${adjustedSuggestedCount} lần/tháng, tiết kiệm ~${adjustedSavings.toLocaleString('vi-VN')}đ`,
+      });
+
+      remaining -= adjustedSavings;
+    }
+
+    return result.slice(0, 5);
+  }
+
+  /**
+   * Xóa tất cả cam kết của 1 goal khi shortfall không còn.
+   */
+  private async clearGoalCommitments(
+    userId: number,
+    goalId: number,
+  ): Promise<void> {
+    await this.habitCommitmentsService.removeByGoal(userId, goalId);
+    this.logger.log(`Cleared commitments for goal ${goalId} (shortfall resolved)`);
   }
 }

@@ -23,6 +23,7 @@ import { AnalyticsServiceClient } from './analytics-service-client.service';
 import { MonthlyAnalyticsSnapshot } from './entities/monthly-analytics-snapshot.entity';
 import { SnapshotService } from './snapshot.service';
 import { SnapshotCronService } from './snapshot-cron.service';
+import { HabitCommitment } from '../habit-commitments/entities/habit-commitment.entity';
 
 @Module({
   imports: [
@@ -34,6 +35,7 @@ import { SnapshotCronService } from './snapshot-cron.service';
       AiPredictionRun,
       AiPredictionEvaluation,
       MonthlyAnalyticsSnapshot,
+      HabitCommitment,
     ]),
     SpendingPlansModule,
     PersonalizationModule,

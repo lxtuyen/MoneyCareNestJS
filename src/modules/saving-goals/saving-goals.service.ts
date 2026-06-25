@@ -320,19 +320,26 @@ export class SavingGoalsService {
     const ownerId = userId ?? goal.user?.id;
     if (!ownerId) throw new BadRequestException('User owner not found');
 
-    if (goal.status !== SavingGoalStatus.ACTIVE) {
-      const activeGoals = await this.goalRepo.find({
-        where: {
-          user: { id: ownerId },
-          is_completed: false,
-          status: SavingGoalStatus.ACTIVE,
-        },
-        select: ['id', 'name'],
-      });
-      if (activeGoals.length >= 2) {
-        throw new BadRequestException({
-          message: 'Đã đạt giới hạn tối đa 2 mục tiêu hoạt động đồng thời.',
-          activeGoals: activeGoals.map((g) => ({ id: g.id, name: g.name })),
+    const activeGoals = await this.goalRepo.find({
+      where: {
+        user: { id: ownerId },
+        is_completed: false,
+        status: SavingGoalStatus.ACTIVE,
+      },
+    });
+    // Auto-pause other active goals (limit: 1 active goal)
+    for (const ag of activeGoals) {
+      if (ag.id !== goal.id) {
+        ag.status = SavingGoalStatus.PAUSED;
+        await this.goalRepo.save(ag);
+        await this.spendingPlansService.syncSavingsBudget(ownerId, {
+          savingGoalId: ag.id,
+          name: ag.name,
+          target: ag.target ?? 0,
+          startDate: ag.start_date ?? new Date(),
+          endDate: ag.end_date,
+          isBudgetEnabled: false,
+          status: SavingGoalStatus.PAUSED,
         });
       }
     }
@@ -394,10 +401,18 @@ export class SavingGoalsService {
       select: ['id', 'name'],
     });
 
-    if (activeGoals.length >= 2) {
-      throw new BadRequestException({
-        message: 'Đã đạt giới hạn tối đa 2 mục tiêu hoạt động đồng thời.',
-        activeGoals: activeGoals.map((g) => ({ id: g.id, name: g.name })),
+    // Auto-pause other active goals (limit: 1 active goal)
+    for (const ag of activeGoals) {
+      ag.status = SavingGoalStatus.PAUSED;
+      await this.goalRepo.save(ag);
+      await this.spendingPlansService.syncSavingsBudget(userId, {
+        savingGoalId: ag.id,
+        name: ag.name,
+        target: ag.target ?? 0,
+        startDate: ag.start_date ?? new Date(),
+        endDate: ag.end_date,
+        isBudgetEnabled: false,
+        status: SavingGoalStatus.PAUSED,
       });
     }
 

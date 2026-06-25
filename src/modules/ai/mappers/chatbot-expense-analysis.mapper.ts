@@ -67,6 +67,7 @@ export function mapChatbotExpenseAnalysisPayload(
         }
       : null,
     recommendations,
+    habitSuggestions: (analytics.habitSuggestions || []).slice(0, 5),
     emptyState: hasTransactions
       ? undefined
       : {

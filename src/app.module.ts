@@ -26,6 +26,7 @@ import { ScenarioPlanningModule } from './modules/scenario-planning/scenario-pla
 import { CouplesModule } from './modules/couples/couples.module';
 import { PaymentsModule } from './modules/payments/payments.module';
 import { SpendingInsightsModule } from './modules/spending-insights/spending-insights.module';
+import { HabitCommitmentsModule } from './modules/habit-commitments/habit-commitments.module';
 
 @Module({
   imports: [
@@ -87,6 +88,7 @@ import { SpendingInsightsModule } from './modules/spending-insights/spending-ins
     CouplesModule,
     PaymentsModule,
     SpendingInsightsModule,
+    HabitCommitmentsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

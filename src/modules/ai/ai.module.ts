@@ -25,6 +25,7 @@ import { UserCategoryPreference } from 'src/modules/categories/entities/user-cat
 import { PersonalizationModule } from 'src/modules/personalization/personalization.module';
 import { ScenarioPlanningModule } from 'src/modules/scenario-planning/scenario-planning.module';
 import { AnalyticsModule } from '../analytics/analytics.module';
+import { HabitCommitmentsModule } from '../habit-commitments/habit-commitments.module';
 import { AiBudgetRecommendationChatService } from './ai-budget-recommendation-chat.service';
 import { AiGoalAchievementChatService } from './ai-goal-achievement-chat.service';
 
@@ -47,6 +48,7 @@ import { AiGoalAchievementChatService } from './ai-goal-achievement-chat.service
     PersonalizationModule,
     ScenarioPlanningModule,
     AnalyticsModule,
+    HabitCommitmentsModule,
   ],
   controllers: [AiController],
   providers: [

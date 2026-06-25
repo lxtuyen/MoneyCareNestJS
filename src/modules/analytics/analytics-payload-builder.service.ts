@@ -10,6 +10,7 @@ import { AiFeedbackService } from '../ai-feedback/ai-feedback.service';
 import { AnalyticsEvaluationService } from './analytics-evaluation.service';
 import { GoalAchievementPredictionService } from '../saving-goals/goal-achievement-prediction.service';
 import { SpendingInsightsService } from '../spending-insights/spending-insights.service';
+import { HabitCommitment } from '../habit-commitments/entities/habit-commitment.entity';
 import { GoalAchievementPredictionSummaryDto } from '../saving-goals/dto/goal-achievement-prediction.dto';
 import { getVietnamMonthRange } from 'src/common/utils/date.util';
 import {
@@ -47,6 +48,8 @@ export class AnalyticsPayloadBuilderService {
     @Inject(forwardRef(() => GoalAchievementPredictionService))
     private readonly goalAchievementPredictionService: GoalAchievementPredictionService,
     private readonly spendingInsightsService: SpendingInsightsService,
+    @InjectRepository(HabitCommitment)
+    private readonly habitCommitmentRepo: Repository<HabitCommitment>,
   ) {}
 
   /**
@@ -164,6 +167,7 @@ export class AnalyticsPayloadBuilderService {
       target_month: targetPeriod.month,
       target_year: targetPeriod.year,
       confirmed_recurring: [],
+      committed_habits: [],
     };
 
     // Enrich with confirmed recurring data
@@ -179,6 +183,23 @@ export class AnalyticsPayloadBuilderService {
       }));
     } catch (error) {
       this.logger.warn(`Cannot load confirmed recurring: ${error.message}`);
+    }
+
+    // Enrich with committed habits
+    try {
+      const commitments = await this.habitCommitmentRepo.find({
+        where: {
+          userId,
+          month: targetPeriod.month,
+          year: targetPeriod.year,
+        },
+      });
+      requestData.committed_habits = commitments.map((c) => ({
+        habit_name: c.subcategoryName,
+        committed_count: c.committedCount,
+      }));
+    } catch (error) {
+      this.logger.warn(`Cannot load committed habits: ${error.message}`);
     }
 
     return {

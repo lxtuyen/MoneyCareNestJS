@@ -7,6 +7,14 @@ import {
   AnalyticsServiceResponse,
 } from '../types/analytics-service-response.type';
 
+/** Round to nearest 1.000đ for clean display */
+function roundK(v: number | undefined | null): number {
+  return v == null ? 0 : Math.round(v / 1000) * 1000;
+}
+function roundKOr(v: number | undefined | null): number | undefined {
+  return v == null ? undefined : Math.round(v / 1000) * 1000;
+}
+
 export function mapAnalyticsResponse(
   data: AnalyticsServiceResponse,
   goalAchievement: GoalAchievementPredictionSummaryDto | null,
@@ -53,7 +61,7 @@ export function mapAnalyticsResponse(
   return {
     financialHealthScore: data.financial_health_score,
     cashFlowTrend: data.cash_flow_trend,
-    monthlyForecast: data.monthly_forecast,
+    monthlyForecast: roundK(data.monthly_forecast),
     anomalies: (data.anomalies || []).map((anomaly): AnalyticsMappedAnomaly => {
       const tx = transactionLookup.get(anomaly.transaction_id);
       return {
@@ -96,7 +104,7 @@ export function mapAnalyticsResponse(
           status: item.status,
           forecastAmount:
             forecastAmount !== null && forecastAmount !== undefined
-              ? Math.round(forecastAmount)
+              ? roundK(forecastAmount)
               : null,
         };
       }),
@@ -139,9 +147,9 @@ export function mapAnalyticsResponse(
       ? {
           method: data.ai_budgeting.method,
           modelVersion: data.ai_budgeting.model_version,
-          targetSavingsAmount: data.ai_budgeting.target_savings_amount,
-          recommendedTotalBudget: data.ai_budgeting.recommended_total_budget,
-          expectedSavingsAmount: data.ai_budgeting.expected_savings_amount,
+          targetSavingsAmount: roundK(data.ai_budgeting.target_savings_amount),
+          recommendedTotalBudget: roundK(data.ai_budgeting.recommended_total_budget),
+          expectedSavingsAmount: roundK(data.ai_budgeting.expected_savings_amount),
           confidence: data.ai_budgeting.confidence,
           strategy: data.ai_budgeting.strategy,
           items: (data.ai_budgeting.items || []).map((item) => {
@@ -158,11 +166,11 @@ export function mapAnalyticsResponse(
               categoryId: itemCategoryId || undefined,
               canApply,
               categoryName: item.category_name,
-              currentLimitAmount: item.current_limit_amount,
-              spentAmount: item.spent_amount,
-              recommendedLimitAmount: item.recommended_limit_amount,
-              predictedSpendAmount: item.predicted_spend_amount,
-              adjustmentAmount: item.adjustment_amount,
+              currentLimitAmount: roundK(item.current_limit_amount),
+              spentAmount: roundK(item.spent_amount),
+              recommendedLimitAmount: roundK(item.recommended_limit_amount),
+              predictedSpendAmount: roundK(item.predicted_spend_amount),
+              adjustmentAmount: roundK(item.adjustment_amount),
               actionType: item.action_type,
               riskBefore: item.risk_before,
               riskAfter: item.risk_after,
@@ -184,8 +192,8 @@ export function mapAnalyticsResponse(
             categoryName: (pred.category_name || pred['categoryName']) ?? '',
             limitAmount: pred.limit_amount ?? pred['limitAmount'] ?? 0,
             actualAmount: pred.actual_amount ?? pred['actualAmount'] ?? 0,
-            totalForecast: pred.total_forecast ?? pred['totalForecast'] ?? 0,
-            exceedAmount: pred.exceed_amount ?? pred['exceedAmount'] ?? 0,
+            totalForecast: roundK(pred.total_forecast ?? pred['totalForecast'] ?? 0),
+            exceedAmount: roundK(pred.exceed_amount ?? pred['exceedAmount'] ?? 0),
             willExceed: pred.will_exceed ?? pred['willExceed'] ?? false,
             exceedProbability:
               pred.exceed_probability ?? pred['exceedProbability'] ?? 0,
@@ -247,18 +255,21 @@ function mapMonthlyForecast(
     targetYear: forecast.target_year || forecast.targetYear,
     periodStart: forecast.period_start || forecast.periodStart,
     periodEnd: forecast.period_end || forecast.periodEnd,
-    actualAmount:
+    actualAmount: roundKOr(
       forecast.actual_amount !== undefined
         ? forecast.actual_amount
         : forecast.actualAmount,
-    predictedRemainingAmount:
+    ),
+    predictedRemainingAmount: roundKOr(
       forecast.predicted_remaining_amount !== undefined
         ? forecast.predicted_remaining_amount
         : forecast.predictedRemainingAmount,
-    totalForecast:
+    ),
+    totalForecast: roundK(
       forecast.total_forecast !== undefined
         ? forecast.total_forecast
         : forecast.totalForecast,
+    ),
     confidence: forecast.confidence,
     riskLevel: forecast.risk_level || forecast.riskLevel || 'low',
     modelNotes: forecast.model_notes || forecast.modelNotes || '',
@@ -270,14 +281,16 @@ function mapMonthlyForecast(
       weekIndex: week.week_index || week.weekIndex,
       periodStart: week.period_start || week.periodStart,
       periodEnd: week.period_end || week.periodEnd,
-      predictedAmount:
+      predictedAmount: roundKOr(
         week.predicted_amount !== undefined
           ? week.predicted_amount
           : week.predictedAmount,
-      actualAmount:
+      ),
+      actualAmount: roundKOr(
         week.actual_amount !== undefined
           ? week.actual_amount
           : week.actualAmount,
+      ),
       riskLevel: week.risk_level || week.riskLevel || 'low',
     })),
     categoryForecasts: (
@@ -286,18 +299,21 @@ function mapMonthlyForecast(
       []
     ).map((category) => ({
       categoryName: category.category_name || category.categoryName,
-      predictedAmount:
+      predictedAmount: roundKOr(
         category.predicted_amount !== undefined
           ? category.predicted_amount
           : category.predictedAmount,
-      actualAmount:
+      ),
+      actualAmount: roundKOr(
         category.actual_amount !== undefined
           ? category.actual_amount
           : category.actualAmount,
-      remainingForecastAmount:
+      ),
+      remainingForecastAmount: roundKOr(
         category.remaining_forecast_amount !== undefined
           ? category.remaining_forecast_amount
           : category.remainingForecastAmount,
+      ),
       trend: category.trend || 'stable',
       confidence: category.confidence,
       dataPoints:
@@ -312,10 +328,11 @@ function mapMonthlyForecast(
         periodStart: riskWindow.period_start || riskWindow.periodStart,
         periodEnd: riskWindow.period_end || riskWindow.periodEnd,
         riskLevel: riskWindow.risk_level || riskWindow.riskLevel || 'low',
-        predictedAmount:
+        predictedAmount: roundKOr(
           riskWindow.predicted_amount !== undefined
             ? riskWindow.predicted_amount
             : riskWindow.predictedAmount,
+        ),
         reason: riskWindow.reason || '',
         reasonCodes: riskWindow.reason_codes || riskWindow.reasonCodes || [],
       }),
@@ -323,10 +340,11 @@ function mapMonthlyForecast(
     dailyPoints: (forecast.daily_points || forecast.dailyPoints || []).map(
       (point) => ({
         date: point.date,
-        predictedAmount:
+        predictedAmount: roundKOr(
           point.predicted_amount !== undefined
             ? point.predicted_amount
             : point.predictedAmount,
+        ),
       }),
     ),
     topDrivers: (forecast.top_drivers || forecast.topDrivers || []).map(

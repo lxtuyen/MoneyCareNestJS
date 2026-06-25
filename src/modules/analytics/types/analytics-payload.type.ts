@@ -82,4 +82,8 @@ export interface AnalyticsAnalyzeRequestPayload {
     monthly_estimate: number;
     description: string;
   }[];
+  committed_habits: {
+    habit_name: string;
+    committed_count: number;
+  }[];
 }
