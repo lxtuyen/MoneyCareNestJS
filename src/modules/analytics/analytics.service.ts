@@ -461,6 +461,7 @@ export class AnalyticsService {
         strategy: 'stability_first',
         items: [],
         budgetExceedPredictions: [],
+        fixedCostBudget: null,
         summary:
           'Chưa có kết quả AI Budgeting nâng cao, hệ thống tạm dùng dữ liệu dự phòng.',
       },

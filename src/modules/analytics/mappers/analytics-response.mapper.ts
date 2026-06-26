@@ -210,6 +210,24 @@ export function mapAnalyticsResponse(
               pred.daily_forecast_amount ?? pred['dailyForecastAmount'] ?? null,
             isFrequent: pred.is_frequent ?? pred['isFrequent'] ?? false,
           })),
+          fixedCostBudget: (() => {
+            const fcb = data.ai_budgeting.fixed_cost_budget || data.ai_budgeting['fixedCostBudget'];
+            if (!fcb) return null;
+            const totalFixedCost = fcb.total_fixed_cost ?? (fcb as any).totalFixedCost ?? 0;
+            const categories = (fcb.categories || []).map((cat: any) => ({
+              categoryName: cat.category_name ?? cat.categoryName ?? '',
+              totalAmount: roundK(cat.total_amount ?? cat.totalAmount ?? 0),
+              items: (cat.items || []).map((item: any) => ({
+                description: item.description ?? '',
+                amount: roundK(item.amount ?? 0),
+                frequency: item.frequency ?? 'monthly',
+              })),
+            }));
+            return {
+              totalFixedCost: roundK(totalFixedCost),
+              categories,
+            };
+          })(),
           summary: data.ai_budgeting.summary,
         }
       : null,

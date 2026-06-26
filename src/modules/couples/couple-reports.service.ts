@@ -80,6 +80,7 @@ export class CoupleReportsService {
             'payer.profile',
             'user',
             'user.profile',
+            'wallet',
           ],
           order: { transaction_date: 'DESC' },
         }),
@@ -727,6 +728,13 @@ export class CoupleReportsService {
       });
       if (txCount === 0) continue;
 
+      // Skip low balance warning if the most recent transaction was a deposit or transfer-in (type === 'income')
+      const lastTx = await this.transactionRepo.findOne({
+        where: { wallet: { id: wallet.id } },
+        order: { transaction_date: 'DESC', id: 'DESC' },
+      });
+      if (lastTx && lastTx.type === 'income') continue;
+
       const balanceFmt = balance.toLocaleString('vi-VN');
       drafts.push({
         coupleId,
@@ -743,17 +751,26 @@ export class CoupleReportsService {
     }
 
     // ── Alert 7: Chi chung vượt thu chung (rule-based) ─────────────────────
-    const { totalIncome, totalExpense } = summary;
-    if (totalExpense > 0 && totalExpense > totalIncome) {
-      const overspend = totalExpense - totalIncome;
-      const severity = overspend / Math.max(totalIncome, 1) >= 0.3 ? 'high' : 'medium';
+    const sharedWalletIncome = this.sum(
+      transactions.filter(
+        (t) => t.type === 'income' && t.wallet && t.wallet.coupleId === coupleId,
+      ),
+    );
+    const sharedWalletExpense = this.sum(
+      transactions.filter(
+        (t) => t.type === 'expense' && t.wallet && t.wallet.coupleId === coupleId,
+      ),
+    );
+    if (sharedWalletExpense > 0 && sharedWalletExpense > sharedWalletIncome) {
+      const overspend = sharedWalletExpense - sharedWalletIncome;
+      const severity = overspend / Math.max(sharedWalletIncome, 1) >= 0.3 ? 'high' : 'medium';
       drafts.push({
         coupleId,
         alertKey: `shared-overspend:${month}`,
         type: 'shared_overspend',
         severity,
         title: 'Chi chung vượt thu chung',
-        message: `Tháng ${month} hai bạn đã chi chung nhiều hơn thu chung ${overspend.toLocaleString('vi-VN')} đ. Hãy cùng rà soát và điều chỉnh chi tiêu.`,
+        message: `Tháng ${month} hai bạn đã chi chung nhiều hơn thu chung ${overspend.toLocaleString('vi-VN')} đ (tính từ các ví chung). Hãy cùng rà soát và điều chỉnh chi tiêu.`,
         transactionId: null,
         categoryId: null,
         amount: overspend,

@@ -212,6 +212,23 @@ export interface AnalyticsServiceBudgetRecommendationResponse {
   reason: string;
 }
 
+export interface AnalyticsServiceFixedCostItem {
+  description: string;
+  amount: number;
+  frequency: string;
+}
+
+export interface AnalyticsServiceFixedCostCategory {
+  category_name: string;
+  total_amount: number;
+  items: AnalyticsServiceFixedCostItem[];
+}
+
+export interface AnalyticsServiceFixedCostBudget {
+  total_fixed_cost: number;
+  categories: AnalyticsServiceFixedCostCategory[];
+}
+
 export interface AnalyticsServiceAiBudgetingResponse {
   method: string;
   model_version: string;
@@ -223,6 +240,8 @@ export interface AnalyticsServiceAiBudgetingResponse {
   items: AnalyticsServiceBudgetRecommendationResponse[];
   budget_exceed_predictions?: AnalyticsServiceBudgetExceedPredictionResponse[];
   budgetExceedPredictions?: AnalyticsServiceBudgetExceedPredictionResponse[];
+  fixed_cost_budget?: AnalyticsServiceFixedCostBudget | null;
+  fixedCostBudget?: AnalyticsServiceFixedCostBudget | null;
   summary: string;
 }
 
@@ -457,6 +476,23 @@ export interface AnalyticsMappedBudgetExceedPrediction {
   isFrequent: boolean;
 }
 
+export interface AnalyticsMappedFixedCostItem {
+  description: string;
+  amount: number;
+  frequency: string;
+}
+
+export interface AnalyticsMappedFixedCostCategory {
+  categoryName: string;
+  totalAmount: number;
+  items: AnalyticsMappedFixedCostItem[];
+}
+
+export interface AnalyticsMappedFixedCostBudget {
+  totalFixedCost: number;
+  categories: AnalyticsMappedFixedCostCategory[];
+}
+
 export interface AnalyticsMappedAiBudgeting {
   method: string;
   modelVersion: string;
@@ -490,5 +526,6 @@ export interface AnalyticsMappedAiBudgeting {
     reason: string;
   }>;
   budgetExceedPredictions: AnalyticsMappedBudgetExceedPrediction[];
+  fixedCostBudget: AnalyticsMappedFixedCostBudget | null;
   summary: string;
 }

@@ -226,10 +226,15 @@ export class TransactionService {
       payer = await this.userRepo.findOne({ where: { id: payerId } });
       if (!payer) throw new NotFoundException('Payer not found');
 
-      if (wallet && wallet.coupleId !== dto.coupleId) {
-        throw new BadRequestException(
-          'Ví chọn không khớp với không gian cặp đôi của giao dịch.',
-        );
+      if (wallet) {
+        if (wallet.coupleId && wallet.coupleId !== dto.coupleId) {
+          throw new BadRequestException(
+            'Ví chọn không khớp với không gian cặp đôi của giao dịch.',
+          );
+        }
+        if (!wallet.coupleId && wallet.user && wallet.user.id !== dto.userId && wallet.user.id !== payerId) {
+          throw new ForbiddenException('Bạn không có quyền sử dụng ví này.');
+        }
       }
     } else {
       if (wallet && wallet.user && wallet.user.id !== dto.userId) {

@@ -63,6 +63,7 @@ export class AiBudgetRecommendationChatService {
       recommendedTotalBudget: aiBudgeting.recommendedTotalBudget,
       expectedSavingsAmount: aiBudgeting.expectedSavingsAmount,
       confidence: aiBudgeting.confidence,
+      fixedCostBudget: aiBudgeting.fixedCostBudget || null,
       items: aiBudgeting.items.map((item) => ({
         recommendationId: item.recommendationId,
         planId: item.planId,
