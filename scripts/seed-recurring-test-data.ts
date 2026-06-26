@@ -47,7 +47,8 @@ function randomAmount(base: number, variancePct: number): number {
 }
 
 function dateStr(year: number, month: number, day: number): string {
-  const d = new Date(year, month - 1, Math.min(day, 28));
+  // Use Date.UTC to avoid local timezone offset shifts (which changes the date when calling toISOString)
+  const d = new Date(Date.UTC(year, month - 1, Math.min(day, 28), 12, 0, 0));
   return d.toISOString();
 }
 
@@ -72,6 +73,7 @@ interface RecurringTemplate {
   dayOfMonth?: number; // for monthly
   dayOfWeek?: number; // 0=Sun, 1=Mon... for weekly
   skipChance?: number; // 0.0 - 1.0 chance to skip
+  jitter?: number; // optional day jitter (default: 1)
 }
 
 const RECURRING_TEMPLATES: RecurringTemplate[] = [
@@ -83,6 +85,7 @@ const RECURRING_TEMPLATES: RecurringTemplate[] = [
     variancePct: 0.0,
     frequency: 'monthly',
     dayOfMonth: 5,
+    jitter: 0, // Cố định chính xác ngày 5 hàng tháng
   },
   {
     categoryName: 'Hóa đơn',
@@ -91,6 +94,7 @@ const RECURRING_TEMPLATES: RecurringTemplate[] = [
     variancePct: 0.15,
     frequency: 'monthly',
     dayOfMonth: 20,
+    jitter: 1, // Lệch tối đa 1 ngày (19-21)
   },
   {
     categoryName: 'Hóa đơn',
@@ -99,6 +103,7 @@ const RECURRING_TEMPLATES: RecurringTemplate[] = [
     variancePct: 0.10,
     frequency: 'monthly',
     dayOfMonth: 22,
+    jitter: 1, // Lệch tối đa 1 ngày (21-23)
   },
   {
     categoryName: 'Hóa đơn',
@@ -107,6 +112,7 @@ const RECURRING_TEMPLATES: RecurringTemplate[] = [
     variancePct: 0.0,
     frequency: 'monthly',
     dayOfMonth: 15,
+    jitter: 0, // Cố định chính xác ngày 15 hàng tháng
   },
   {
     categoryName: 'Hóa đơn',
@@ -115,6 +121,7 @@ const RECURRING_TEMPLATES: RecurringTemplate[] = [
     variancePct: 0.10,
     frequency: 'monthly',
     dayOfMonth: 10,
+    jitter: 1,
   },
 
   // ── Ăn cơm hàng ngày (daily recurring) ────────────
@@ -178,6 +185,7 @@ const INCOME_RECURRING_TEMPLATES: RecurringTemplate[] = [
     variancePct: 0.05,
     frequency: 'monthly',
     dayOfMonth: 5,
+    jitter: 0, // Cố định chính xác ngày 5 hàng tháng
   },
 ];
 
@@ -270,7 +278,8 @@ function generateRecurringTransactions(): GeneratedTx[] {
         if (Math.random() < (template.skipChance || 0)) continue;
 
         const day = template.dayOfMonth || 1;
-        const dayJitter = randomBetween(-1, 1); // ±1 ngày
+        const jitterRange = template.jitter !== undefined ? template.jitter : 1;
+        const dayJitter = jitterRange > 0 ? randomBetween(-jitterRange, jitterRange) : 0;
         const note = template.notes[randomBetween(0, template.notes.length - 1)]
           .replace('{m}', String(month));
 
@@ -386,7 +395,8 @@ function generateIncomeRecurringTransactions(): GeneratedTx[] {
       if (Math.random() < (template.skipChance || 0)) continue;
 
       const day = template.dayOfMonth || 1;
-      const dayJitter = randomBetween(-1, 1);
+      const jitterRange = template.jitter !== undefined ? template.jitter : 1;
+      const dayJitter = jitterRange > 0 ? randomBetween(-jitterRange, jitterRange) : 0;
       const note = template.notes[randomBetween(0, template.notes.length - 1)]
         .replace('{m}', String(month));
 

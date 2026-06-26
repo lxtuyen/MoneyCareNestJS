@@ -18,6 +18,7 @@ import { GoogleLoginDto } from './dto/google-login.dto';
 import { ConfigService } from '@nestjs/config';
 import { OAuth2Client } from 'google-auth-library';
 import { SpendingPlan } from 'src/modules/spending-plans/entities/spending-plan.entity';
+import { Subscription } from 'src/modules/payments/entities/subscription.entity';
 
 @Injectable()
 export class AuthService {
@@ -78,11 +79,12 @@ export class AuthService {
 
   async login(
     dto: LoginDto,
-  ): Promise<ApiResponse<{ accessToken: string; user: any }>> {
+  ): Promise<ApiResponse<{ accessToken: string; user: any; subscription?: any }>> {
     const user = await this.userRepo
       .createQueryBuilder('user')
       .leftJoinAndSelect('user.savingGoals', 'savingGoals')
       .leftJoinAndSelect('user.profile', 'profile')
+      .leftJoinAndSelect('user.subscriptions', 'subscriptions')
       .addSelect('user.password')
       .where('user.email = :email', { email: dto.email })
       .getOne();
@@ -97,6 +99,7 @@ export class AuthService {
     }
 
     const selectedGoal = user.savingGoals.find((goal) => goal.is_selected);
+    const subscriptionStatus = this.getPremiumStatus(user.subscriptions || []);
 
     const payload = { sub: user.id, email: user.email, role: user.role };
     const accessToken = this.jwtService.sign(payload);
@@ -116,13 +119,14 @@ export class AuthService {
           shouldRunInitialFinancialSetup:
             await this.shouldRunInitialFinancialSetup(user.id),
         },
+        subscription: subscriptionStatus,
       },
     });
   }
 
   async googleLogin(
     dto: GoogleLoginDto,
-  ): Promise<ApiResponse<{ accessToken: string; user: any }>> {
+  ): Promise<ApiResponse<{ accessToken: string; user: any; subscription?: any }>> {
     try {
       const ticket = await this.googleClient.verifyIdToken({
         idToken: dto.idToken,
@@ -138,7 +142,7 @@ export class AuthService {
 
       let user = await this.userRepo.findOne({
         where: { email },
-        relations: ['profile', 'savingGoals'],
+        relations: ['profile', 'savingGoals', 'subscriptions'],
       });
 
       if (!user) {
@@ -176,6 +180,7 @@ export class AuthService {
       const accessToken = this.jwtService.sign(jwtPayload);
 
       const selectedGoal = user.savingGoals?.find((f) => f.is_selected) ?? null;
+      const subscriptionStatus = this.getPremiumStatus(user.subscriptions || []);
 
       return new ApiResponse({
         success: true,
@@ -192,6 +197,7 @@ export class AuthService {
             shouldRunInitialFinancialSetup:
               await this.shouldRunInitialFinancialSetup(user.id),
           },
+          subscription: subscriptionStatus,
         },
       });
     } catch (error) {
@@ -206,5 +212,45 @@ export class AuthService {
     });
 
     return planCount === 0;
+  }
+
+  private getPremiumStatus(subscriptions: Subscription[]): {
+    isPremium: boolean;
+    isGracePeriod: boolean;
+    expiresAt: Date | null;
+  } {
+    if (!subscriptions || subscriptions.length === 0) {
+      return { isPremium: false, isGracePeriod: false, expiresAt: null };
+    }
+
+    const now = new Date();
+
+    // Sort subscriptions descending by createdAt to find the latest
+    const sorted = [...subscriptions].sort(
+      (a, b) => b.createdAt.getTime() - a.createdAt.getTime(),
+    );
+
+    const activeOrGrace = sorted.find(
+      (sub) => sub.status === 'active' || sub.status === 'grace',
+    );
+
+    if (!activeOrGrace) {
+      return { isPremium: false, isGracePeriod: false, expiresAt: null };
+    }
+
+    const endDate = activeOrGrace.endDate ? new Date(activeOrGrace.endDate) : null;
+    const graceEndDate = activeOrGrace.graceEndDate
+      ? new Date(activeOrGrace.graceEndDate)
+      : null;
+
+    const isActive =
+      activeOrGrace.status === 'active' && endDate !== null && now <= endDate;
+    const isGrace = !isActive && graceEndDate !== null && now <= graceEndDate;
+
+    return {
+      isPremium: isActive || isGrace,
+      isGracePeriod: isGrace,
+      expiresAt: endDate,
+    };
   }
 }
