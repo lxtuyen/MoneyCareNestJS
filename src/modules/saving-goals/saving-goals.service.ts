@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Injectable,
   NotFoundException,
+  Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -19,9 +20,13 @@ import { Transaction } from 'src/modules/transactions/entities/transaction.entit
 import { SpendingPlansService } from 'src/modules/spending-plans/spending-plans.service';
 import { PersonalizationService } from 'src/modules/personalization/personalization.service';
 import { BudgetSuggestionResponseDto } from './dto/budget-suggestion.dto';
+import { SnapshotService } from 'src/modules/analytics/snapshot.service';
+import { getVietnamNow } from 'src/common/utils/date.util';
 
 @Injectable()
 export class SavingGoalsService {
+  private readonly logger = new Logger(SavingGoalsService.name);
+
   constructor(
     @InjectRepository(SavingGoal)
     private readonly goalRepo: Repository<SavingGoal>,
@@ -37,7 +42,29 @@ export class SavingGoalsService {
 
     private readonly spendingPlansService: SpendingPlansService,
     private readonly personalizationService: PersonalizationService,
+    private readonly snapshotService: SnapshotService,
   ) {}
+
+  private async invalidateAnalyticsCache(userId: number): Promise<void> {
+    try {
+      const now = getVietnamNow();
+      const month = now.getMonth() + 1;
+      const year = now.getFullYear();
+
+      const snapshot = await this.snapshotService.getOrCreateSnapshot(
+        userId,
+        month,
+        year,
+      );
+      snapshot.aiComputedAt = null;
+      await this.snapshotService['snapshotRepo'].save(snapshot);
+      this.logger.log(
+        `Invalidated analytics cache for user ${userId} for ${month}/${year} due to saving goal change`,
+      );
+    } catch (e) {
+      this.logger.warn(`Failed to invalidate analytics cache: ${e.message}`);
+    }
+  }
 
   async create(
     dto: CreateSavingGoalDto,
@@ -78,6 +105,9 @@ export class SavingGoalsService {
       isBudgetEnabled: false,
       status: savedGoal.status,
     });
+
+    // Invalidate analytics cache since a new goal is created
+    await this.invalidateAnalyticsCache(user.id);
 
     const reloadedGoal = await this.goalRepo.findOne({
       where: { id: savedGoal.id },
@@ -179,8 +209,10 @@ export class SavingGoalsService {
       startDate: updated.start_date ?? new Date(),
       endDate: updated.end_date,
       isBudgetEnabled: updated.status === SavingGoalStatus.ACTIVE ? updated.is_budget_enabled : false,
-      status: updated.status,
     });
+
+    // Invalidate analytics cache since the goal is updated
+    await this.invalidateAnalyticsCache(goal.user.id);
 
     return ok(updated);
   }
@@ -261,6 +293,10 @@ export class SavingGoalsService {
       await this.walletRepo.remove(goalWallet);
     }
 
+    if (ownerId) {
+      await this.invalidateAnalyticsCache(ownerId);
+    }
+
     return ok('Deleted successfully');
   }
 
@@ -289,6 +325,9 @@ export class SavingGoalsService {
 
     goal.is_selected = true;
     const updated = await this.goalRepo.save(goal);
+
+    await this.invalidateAnalyticsCache(userId);
+
     return ok(updated);
   }
 
@@ -360,6 +399,8 @@ export class SavingGoalsService {
       isBudgetEnabled: updated.is_budget_enabled,
       status: updated.status,
     });
+
+    await this.invalidateAnalyticsCache(ownerId);
 
     return ok(updated);
   }
