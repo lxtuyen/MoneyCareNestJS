@@ -535,12 +535,17 @@ async function main() {
   let inserted = 0;
   let skipped = 0;
 
+  // Track balance changes per wallet: walletId -> net delta
+  const walletBalanceDelta = new Map<number, number>();
+
   for (const tx of allTxs) {
     const categoryId = categoryMap.get(tx.category_name);
     if (!categoryId) {
       skipped++;
       continue;
     }
+
+    const targetWalletId = tx.wallet_id || defaultWalletId;
 
     await dataSource.query(
       `INSERT INTO transactions (amount, type, transaction_date, note, "isTransfer", "userId", "categoryId", "splitMethod", "walletId")
@@ -554,15 +559,47 @@ async function main() {
         TARGET_USER_ID,
         categoryId,
         'none',
-        tx.wallet_id || defaultWalletId,
+        targetWalletId,
       ],
     );
     inserted++;
+
+    // Accumulate balance delta for each wallet
+    if (targetWalletId) {
+      const current = walletBalanceDelta.get(targetWalletId) ?? 0;
+      const delta = tx.type === 'income' ? tx.amount : -tx.amount;
+      walletBalanceDelta.set(targetWalletId, current + delta);
+    }
   }
 
   console.log(`✅ Đã insert ${inserted} giao dịch vào DB`);
   if (skipped > 0) {
     console.log(`⚠️  Bỏ qua ${skipped} giao dịch (không tìm thấy category)`);
+  }
+
+  // 6.5. Cập nhật số dư ví dựa trên tổng giao dịch đã seed
+  if (walletBalanceDelta.size > 0) {
+    console.log('\n💳 Cập nhật số dư ví:');
+    for (const [walletId, delta] of walletBalanceDelta) {
+      // Recalculate wallet balance from scratch using all transactions (not just seeded ones)
+      const result = await dataSource.query(
+        `SELECT
+           COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE -amount END), 0) AS net
+         FROM transactions
+         WHERE "walletId" = $1 AND "isTransfer" = false`,
+        [walletId],
+      );
+      const netBalance = Number(result[0].net);
+
+      await dataSource.query(
+        `UPDATE wallets SET balance = $1 WHERE id = $2`,
+        [netBalance, walletId],
+      );
+
+      const walletInfo = wallets.find((w: { id: number; name: string }) => w.id === walletId);
+      const walletName = walletInfo?.name ?? `ID ${walletId}`;
+      console.log(`   ✅ ${walletName}: ${netBalance.toLocaleString('vi-VN')}đ`);
+    }
   }
 
   // 7. Summary - Expense
