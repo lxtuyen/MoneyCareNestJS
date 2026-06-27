@@ -73,6 +73,10 @@ export class MonthlyAnalyticsSnapshot {
     { mean: number; stdDev: number; count: number }
   > | null;
 
+  // ─── AI computation tracking ────────────────────────────────────
+  @Column({ type: 'timestamptz', nullable: true })
+  aiComputedAt!: Date | null;
+
   // ─── Metadata ──────────────────────────────────────────────────
 
   @CreateDateColumn()

@@ -92,6 +92,30 @@ export class SnapshotService {
 
     snapshot.transactionCount += delta.countChange;
 
+    // Invalidate AI cache — force recompute on next read
+    snapshot.aiComputedAt = null;
+
+    await this.snapshotRepo.save(snapshot);
+  }
+
+  async saveAiResults(
+    snapshot: MonthlyAnalyticsSnapshot,
+    aiData: {
+      healthScore: number | null;
+      cashFlowTrend: string | null;
+      forecastData: any | null;
+      budgetingData: any | null;
+      anomalies: any[] | null;
+      insights: any[] | null;
+    },
+  ): Promise<void> {
+    snapshot.healthScore = aiData.healthScore;
+    snapshot.cashFlowTrend = aiData.cashFlowTrend;
+    snapshot.forecastData = aiData.forecastData;
+    snapshot.budgetingData = aiData.budgetingData;
+    snapshot.anomalies = aiData.anomalies;
+    snapshot.insights = aiData.insights;
+    snapshot.aiComputedAt = new Date();
     await this.snapshotRepo.save(snapshot);
   }
 

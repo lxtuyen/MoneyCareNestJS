@@ -17,21 +17,20 @@
  */
 
 import { DataSource } from 'typeorm';
+import * as dotenv from 'dotenv';
+
+dotenv.config();
 
 // ── Config ──────────────────────────────────────────────
 
-const TARGET_USER_ID = 68; // Thay đổi nếu cần
-const MONTHS_BACK = 6;
+const TARGET_USER_ID = 1; // Thay đổi nếu cần
+const MONTHS_BACK = 3;
 
 // ── DB Connection ───────────────────────────────────────
 
 const dataSource = new DataSource({
   type: 'postgres',
-  host: 'localhost',
-  port: 5432,
-  username: 'postgres',
-  password: '123',
-  database: 'moneycare',
+  url: process.env.DATABASE_URL,
 });
 
 // ── Helpers ─────────────────────────────────────────────

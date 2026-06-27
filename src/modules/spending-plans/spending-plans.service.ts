@@ -86,7 +86,7 @@ export class SpendingPlansService {
 
     const plans = await this.planRepo.find({
       where,
-      relations: ['estimatedExpenses'],
+      relations: ['estimatedExpenses', 'estimatedExpenses.category'],
       order: { createdAt: 'DESC' },
     });
     plans.forEach((plan) => this.applyCalculation(plan));
@@ -105,7 +105,7 @@ export class SpendingPlansService {
   async findActive(userId: number) {
     const plan = await this.planRepo.findOne({
       where: { user: { id: userId }, status: SpendingPlanStatus.ACTIVE },
-      relations: ['estimatedExpenses'],
+      relations: ['estimatedExpenses', 'estimatedExpenses.category'],
     });
     if (plan) {
       this.applyCalculation(plan);
@@ -229,6 +229,7 @@ export class SpendingPlansService {
 
     return {
       ...plan,
+      estimatedExpenses: context.planItems,
       fixedExpenses: context.planItems,
     };
   }
@@ -280,7 +281,11 @@ export class SpendingPlansService {
   public async loadPlanForUser(id: number, userId: number) {
     const plan = await this.planRepo.findOne({
       where: { id, user: { id: userId } },
-      relations: ['estimatedExpenses', 'user'],
+      relations: [
+        'estimatedExpenses',
+        'estimatedExpenses.category',
+        'user',
+      ],
       order: { estimatedExpenses: { createdAt: 'ASC' } },
     });
     if (!plan) {

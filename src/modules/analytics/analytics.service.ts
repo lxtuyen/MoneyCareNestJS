@@ -51,7 +51,9 @@ export class AnalyticsService {
       targetPeriod.year,
     );
 
-    if (snapshot.isCompleted && snapshot.healthScore !== null) {
+    const hasFreshAiData = snapshot.aiComputedAt !== null && snapshot.healthScore !== null;
+
+    if (snapshot.isCompleted && hasFreshAiData) {
       this.logger.log(
         `Returning cached snapshot for user ${userId}: ${targetPeriod.month}/${targetPeriod.year}`,
       );
@@ -59,7 +61,15 @@ export class AnalyticsService {
       return ok(mapped, 'Lấy kết quả phân tích tài chính thành công (cached)');
     }
 
-    // Không có snapshot → full analysis (fallback cho tháng hiện tại hoặc chưa có AI data)
+    if (!snapshot.isCompleted && hasFreshAiData) {
+      this.logger.log(
+        `Returning cached AI data for current month: user ${userId}: ${targetPeriod.month}/${targetPeriod.year}`,
+      );
+      const mapped = this.buildFromSnapshot(snapshot);
+      return ok(mapped, 'Lấy kết quả phân tích tài chính thành công (current month cached)');
+    }
+
+    // Không có snapshot hoặc stale → full analysis (fallback cho tháng hiện tại hoặc chưa có AI data)
     const {
       requestData,
       spendingPlanPayload,
@@ -76,6 +86,21 @@ export class AnalyticsService {
         spendingPlanPayload,
         transactions,
       );
+
+      // Save AI results with budgetRisk to snapshot for current month caching
+      await this.snapshotService.saveAiResults(snapshot, {
+        healthScore: mapped.financialHealthScore,
+        cashFlowTrend: mapped.cashFlowTrend,
+        forecastData: mapped.forecasting,
+        budgetingData: mapped.aiBudgeting
+          ? {
+              ...mapped.aiBudgeting,
+              budgetRisk: mapped.budgetRisk,
+            }
+          : { budgetRisk: mapped.budgetRisk },
+        anomalies: mapped.anomalies,
+        insights: mapped.insights,
+      });
 
       this.logPredictionRun(userId, mapped, requestData.period, {
         transactionCount: transactions.length,
@@ -490,7 +515,7 @@ export class AnalyticsService {
       cashFlowTrend: snapshot.cashFlowTrend ?? (netBalance >= 0 ? 'stable' : 'worsening'),
       monthlyForecast: totalExpense,
       anomalies: snapshot.anomalies ?? [],
-      budgetRisk: {
+      budgetRisk: (snapshot.budgetingData as any)?.budgetRisk || {
         riskLevel: 'low',
         message: 'Dữ liệu từ snapshot tháng đã hoàn thành.',
         items: [],
