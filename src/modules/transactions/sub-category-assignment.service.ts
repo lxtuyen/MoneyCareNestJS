@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { IsNull, Repository } from 'typeorm';
 import { SubCategory } from '../categories/entities/sub-category.entity';
@@ -49,7 +49,7 @@ const NOTE_GROUPS: Record<string, string[]> = {
   Internet: ['internet', 'wifi', 'fpt', 'viettel', 'vnpt'],
   'Điện thoại': ['dien thoai', 'sim', 'nap tien', 'mobile'],
   // --- Nhà cửa ---
-  'Tiền nhà': ['tien nha', 'tien tro', 'tien phong'],
+  'Tiền nhà': ['tien tro', 'tien phong'],
   // --- Giải trí ---
   'Xem phim': ['phim', 'cgv', 'lotte cinema', 'galaxy', 'rap phim'],
   Game: ['game', 'steam', 'play store', 'app store'],
@@ -64,7 +64,7 @@ const NOTE_GROUPS: Record<string, string[]> = {
 };
 
 @Injectable()
-export class SubCategoryAssignmentService {
+export class SubCategoryAssignmentService implements OnModuleInit {
   private readonly logger = new Logger(SubCategoryAssignmentService.name);
 
   constructor(
@@ -73,6 +73,20 @@ export class SubCategoryAssignmentService {
     @InjectRepository(Transaction)
     private readonly transactionRepo: Repository<Transaction>,
   ) {}
+
+  async onModuleInit() {
+    this.logger.log(
+      'Running startup backfill for transaction subcategories...',
+    );
+    try {
+      const stats = await this.backfillKeywordOnly();
+      this.logger.log(
+        `Startup backfill completed: assigned ${stats.assigned} transactions`,
+      );
+    } catch (e) {
+      this.logger.warn(`Startup backfill failed: ${e.message}`);
+    }
+  }
 
   /**
    * Gán SubCategory cho transaction dựa trên note (keyword-only).
