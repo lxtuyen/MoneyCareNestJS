@@ -98,11 +98,13 @@ export class AnalyticsService {
               budgetRisk: mapped.budgetRisk,
               savingGoalProjections: mapped.savingGoalProjections,
               goalAchievement: mapped.goalAchievement,
+              habitSuggestions: mapped.habitSuggestions,
             }
           : {
               budgetRisk: mapped.budgetRisk,
               savingGoalProjections: mapped.savingGoalProjections,
               goalAchievement: mapped.goalAchievement,
+              habitSuggestions: mapped.habitSuggestions,
             },
         anomalies: mapped.anomalies,
         insights: mapped.insights,
@@ -566,7 +568,7 @@ export class AnalyticsService {
       aiBudgeting: (snapshot.budgetingData as AnalyticsMappedAiBudgeting) ?? null,
       goalAchievement: (snapshot.budgetingData as any)?.goalAchievement ?? null,
       unpaidRecurring: [],
-      habitSuggestions: [],
+      habitSuggestions: (snapshot.budgetingData as any)?.habitSuggestions || [],
     };
   }
 }
