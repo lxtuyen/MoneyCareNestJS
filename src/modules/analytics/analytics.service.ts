@@ -96,8 +96,14 @@ export class AnalyticsService {
           ? {
               ...mapped.aiBudgeting,
               budgetRisk: mapped.budgetRisk,
+              savingGoalProjections: mapped.savingGoalProjections,
+              goalAchievement: mapped.goalAchievement,
             }
-          : { budgetRisk: mapped.budgetRisk },
+          : {
+              budgetRisk: mapped.budgetRisk,
+              savingGoalProjections: mapped.savingGoalProjections,
+              goalAchievement: mapped.goalAchievement,
+            },
         anomalies: mapped.anomalies,
         insights: mapped.insights,
       });
@@ -520,7 +526,7 @@ export class AnalyticsService {
         message: 'Dữ liệu từ snapshot tháng đã hoàn thành.',
         items: [],
       },
-      savingGoalProjections: [],
+      savingGoalProjections: (snapshot.budgetingData as any)?.savingGoalProjections || [],
       insights: snapshot.insights ?? [
         {
           title: 'Tổng quan tháng',
@@ -558,7 +564,7 @@ export class AnalyticsService {
             nextMonthForecast: null,
           },
       aiBudgeting: (snapshot.budgetingData as AnalyticsMappedAiBudgeting) ?? null,
-      goalAchievement: null,
+      goalAchievement: (snapshot.budgetingData as any)?.goalAchievement ?? null,
       unpaidRecurring: [],
       habitSuggestions: [],
     };
